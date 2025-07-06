@@ -1,0 +1,59 @@
+---
+title: "Testing DuckDB Pipeline"
+format: html
+---
+
+```{python}
+#| label: import-data
+
+import pandas as pd
+import soccerdata as sd
+
+fbref = sd.FBref(leagues="GER-Bundesliga", seasons="2425")
+results_raw = fbref.read_schedule().reset_index()
+```
+
+```{python}
+#| label: setup-connection
+
+import duckdb
+
+# establish duckdb connection
+con = duckdb.connect("data/results.duckdb")
+
+# store raw data
+con.register("results_raw", results_raw)
+con.execute("CREATE OR REPLACE TABLE results AS SELECT * FROM results_raw")
+
+# query data
+with duckdb.connect("data/results.duckdb") as con:
+    df = con.execute("SELECT * FROM results").df()
+
+df.head()
+```
+
+```{python}
+#| label: transform-data
+
+# transformation query
+with duckdb.connect("data/results.duckdb") as con:
+    con.execute("""
+        CREATE OR REPLACE TABLE results_processed AS
+        SELECT season, home_team, away_team, score, home_xg, away_xg,
+            CAST(SPLIT_PART(score, '–', 1) AS INTEGER) AS home_goals,
+            CAST(SPLIT_PART(score, '–', 2) AS INTEGER) AS away_goals,
+            (home_goals * 0.3) + (home_xg * 0.7) AS home_weighted,
+            (away_goals * 0.3) + (away_xg * 0.7) AS away_weighted,
+        FROM results_raw
+        WHERE week IS NOT NULL
+        """)
+
+    df = con.execute("SELECT * FROM results_processed").df()
+
+df.head()
+```
+
+Questions:
+
+- Should we scrape the data manually? Is soccerdata reliable enough to build the pipeline around?
+    - Another option would be using R to import the data, with [worldfootballR](https://jaseziv.github.io/worldfootballR/) (there are also a few options for getting betting odds, such as [footballdatr](https://github.com/Torvaney/footballdatr)).

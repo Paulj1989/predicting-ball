@@ -1,0 +1,369 @@
+---
+title: "Fitting a Poisson Model"
+format: html
+---
+
+## Import & Wrangle Data
+
+```{python}
+#| label: import-data
+
+import pandas as pd
+import soccerdata as sd
+
+fbref = sd.FBref(leagues="GER-Bundesliga", seasons=["2425", "2324", "2223"])
+results_raw = fbref.read_schedule().reset_index()
+```
+
+```{python}
+#| label: transform-data
+
+
+def split_score(df, col="score"):
+    goals = df[col].str.split("–", expand=True).astype(int)
+    return df.assign(home_goals=goals[0], away_goals=goals[1])
+
+
+def calculate_weighted_goals(df, goal_weight=0.3, xg_weight=0.7):
+    return df.assign(
+        home_weighted=(df["home_goals"] * goal_weight) + (df["home_xg"] * xg_weight),
+        away_weighted=(df["away_goals"] * goal_weight) + (df["away_xg"] * xg_weight),
+    )
+
+
+df = (
+    results_raw.dropna(subset=["week"]).pipe(split_score).pipe(calculate_weighted_goals)
+)
+```
+
+## Compute Team Strengths
+
+```{python}
+#| label: model-functions
+
+import numpy as np
+from scipy.stats import poisson
+from scipy.optimize import minimize
+
+# log likelihood estimation
+def log_likelihood(
+    home_goals_observed,
+    away_goals_observed,
+    home_attack,
+    home_defense,
+    away_attack,
+    away_defense,
+    home_advantage,
+):
+    home_goals_predicted = np.exp(home_attack + away_defense + home_advantage)
+    away_goals_predicted = np.exp(away_attack + home_defense)
+
+    if home_goals_predicted < 0 or away_goals_predicted < 0:
+        return 10000
+
+    home_llk = poisson.pmf(home_goals_observed, home_goals_predicted)
+    away_llk = poisson.pmf(away_goals_observed, away_goals_predicted)
+
+    log_llk = np.log(home_llk) + np.log(away_llk)
+
+    return -log_llk
+
+# poisson model
+def fit_poisson_model(df):
+    teams = np.sort(np.unique(np.concatenate([df["home_team"], df["away_team"]])))
+    n_teams = len(teams)
+
+    params = np.concatenate(
+        (
+            np.random.uniform(0.5, 1.5, (n_teams)),  # attack strength
+            np.random.uniform(0, -1, (n_teams)),  # defense strength
+            [0.25],  # home advantage
+        )
+    )
+
+    def _fit(params, df, teams):
+        attack_params = dict(zip(teams, params[:n_teams]))
+        defense_params = dict(zip(teams, params[n_teams : (2 * n_teams)]))
+        home_advantage = params[-1]
+
+        llk = list()
+        for idx, row in df.iterrows():
+            tmp = log_likelihood(
+                int(row["home_weighted"]),
+                int(row["away_weighted"]),
+                attack_params[row["home_team"]],
+                defense_params[row["home_team"]],
+                attack_params[row["away_team"]],
+                defense_params[row["away_team"]],
+                home_advantage,
+            )
+            llk.append(tmp)
+
+        return np.sum(llk)
+
+    options = {
+        "maxiter": 100,
+        "disp": False,
+    }
+
+    constraints = [{"type": "eq", "fun": lambda x: sum(x[:n_teams]) - n_teams}]
+
+    res = minimize(
+        _fit,
+        params,
+        args=(df, teams),
+        constraints=constraints,
+        options=options,
+    )
+
+    params = dict(
+        zip(
+            ["attack_" + team for team in teams]
+            + ["defense_" + team for team in teams]
+            + ["home_adv"],
+            res["x"],
+        )
+    )
+
+    return params
+```
+
+I am fitting the poisson model to the entire dataset because otherwise it can't handle promoted teams.
+
+```{python}
+#| label: estimate-parameters
+
+params = fit_poisson_model(df)
+```
+
+## Simulate Bundesliga Season
+
+```{python}
+#| label: match-functions
+
+from scipy.stats import poisson
+
+
+# generate probability matrix
+def generate_prob_matrix(home_team, away_team, params, max_goals=10):
+    home_attack = params["attack_" + home_team]
+    home_defense = params["defense_" + home_team]
+    away_attack = params["attack_" + away_team]
+    away_defense = params["defense_" + away_team]
+    home_advantage = params["home_adv"]
+
+    home_goal_expectation = np.exp(home_attack + away_defense + home_advantage)
+    away_goal_expectation = np.exp(away_attack + home_defense)
+
+    home_probs = poisson.pmf(range(max_goals + 1), home_goal_expectation)
+    away_probs = poisson.pmf(range(max_goals + 1), away_goal_expectation)
+
+    prob_matrix = np.outer(home_probs, away_probs)
+    return prob_matrix
+
+
+# compute expected goals from the probability matrix
+def predict_goals(prob_matrix):
+    max_goals = prob_matrix.shape[0] - 1
+    home_goals = sum(i * np.sum(prob_matrix[i, :]) for i in range(max_goals + 1))
+    away_goals = sum(j * np.sum(prob_matrix[:, j]) for j in range(max_goals + 1))
+    return home_goals, away_goals
+
+
+# simulate match score and points
+def simulate_match_score(home_team, away_team, params):
+    prob_matrix = generate_prob_matrix(home_team, away_team, params)
+    pred_home_goals, pred_away_goals = predict_goals(prob_matrix)
+
+    home_goals = np.random.poisson(pred_home_goals)
+    away_goals = np.random.poisson(pred_away_goals)
+
+    gd_home = home_goals - away_goals
+
+    if home_goals > away_goals:
+        return {home_team: 3, away_team: 0, "gd_home": gd_home}
+    elif home_goals < away_goals:
+        return {home_team: 0, away_team: 3, "gd_home": gd_home}
+    else:
+        return {home_team: 1, away_team: 1, "gd_home": gd_home}
+```
+
+```{python}
+#| label: season-functions
+
+# simulate full season and return league table with points and goal difference
+def simulate_season(fixtures_df, params):
+    teams = pd.unique(fixtures_df[["home_team", "away_team"]].values.ravel())
+    points = {team: 0 for team in teams}
+    goal_diff = {team: 0 for team in teams}
+
+    for _, row in fixtures_df.iterrows():
+        result = simulate_match_score(row["home_team"], row["away_team"], params)
+        points[row["home_team"]] += result[row["home_team"]]
+        points[row["away_team"]] += result[row["away_team"]]
+        goal_diff[row["home_team"]] += result["gd_home"]
+        goal_diff[row["away_team"]] -= result["gd_home"]
+
+    table = pd.DataFrame(
+        {
+            "team": list(points.keys()),
+            "points": list(points.values()),
+            "goal_diff": [goal_diff[t] for t in points.keys()],
+        }
+    )
+    table = table.sort_values(
+        ["points", "goal_diff"], ascending=[False, False]
+    ).reset_index(drop=True)
+    table["position"] = table.index + 1
+    return table
+
+
+# run many simulations, collect results
+def run_sims(fixtures_df, params, sims=10000):
+    sim_results = []
+    for sim in range(sims):
+        table = simulate_season(fixtures_df, params)
+        table["simulation"] = sim
+        sim_results.append(table)
+    return pd.concat(sim_results, ignore_index=True)
+```
+
+```{python}
+#| label: simulate-season
+
+test_data = df.loc[df["season"] == "2425"]
+sim_results = run_sims(test_data, params, sims=10000)
+```
+
+### Calculate Predicted Outcomes
+
+```{python}
+# | label: summary-functions
+
+# summarise simulated outcomes
+def summarise_outcomes(sim_results, params, sims):
+    teams = sim_results["team"].unique()
+
+    # title probability
+    title_probs = (
+        sim_results[sim_results["position"] == 1]
+        .groupby("team")
+        .size()
+        .reindex(teams, fill_value=0)
+        .div(sims)
+        .reset_index(name="title_probs")
+    )
+
+    # top four probability
+    ucl_probs = (
+        sim_results[sim_results["position"] <= 4]
+        .groupby("team")
+        .size()
+        .reindex(teams, fill_value=0)
+        .div(sims)
+        .reset_index(name="ucl_probs")
+    )
+
+    # relegation probability (bottom two)
+    n_teams = len(teams)
+    relegation_probs = (
+        sim_results[sim_results["position"] > n_teams - 2]
+        .groupby("team")
+        .size()
+        .reindex(teams, fill_value=0)
+        .div(sims)
+        .reset_index(name="relegation_probs")
+    )
+
+    # mean points
+    mean_points = sim_results.groupby("team")["points"].mean().reset_index()
+    # mean goal difference
+    mean_gd = sim_results.groupby("team")["goal_diff"].mean().reset_index()
+
+    # extract ratings
+    ratings = []
+    for team in teams:
+        attack = params.get(f"attack_{team}", np.nan)
+        defense = params.get(f"defense_{team}", np.nan)
+        ratings.append(
+            {"team": team, "attack_rating": attack, "defense_rating": defense}
+        )
+    ratings_df = pd.DataFrame(ratings)
+
+    # merge all together
+    summary = (
+        mean_points.merge(mean_gd, on="team")
+        .merge(title_probs, on="team")
+        .merge(ucl_probs, on="team")
+        .merge(relegation_probs, on="team")
+        .merge(ratings_df, on="team")
+        .sort_values("points", ascending=False)
+        .reset_index(drop=True)
+    )
+
+    return summary
+```
+
+```{python}
+#| label: summarise-outcomes
+
+summary = summarise_outcomes(sim_results, params, sims=10000)
+```
+
+#### Generate Prediction Outputs
+
+```{python}
+#| label: predictions-table
+
+from great_tables import GT, style, loc
+
+
+def display_league_predictions(df):
+    tbl = (
+        GT(df, rowname_col="team")
+        .cols_label(
+            points="Points",
+            goal_diff="Goal Difference",
+            attack_rating="Attack",
+            defense_rating="Defense",
+            title_probs="Meisterschale",
+            ucl_probs="Champions League",
+            relegation_probs="Relegation",
+        )
+        .cols_move(columns=["attack_rating", "defense_rating"], after="goal_diff")
+        .tab_spanner(
+            label="Team Ratings",
+            columns=["attack_rating", "defense_rating"],
+        )
+        .tab_spanner(
+            label="Simulated Probabilities",
+            columns=["title_probs", "ucl_probs", "relegation_probs"],
+        )
+        .fmt_integer(columns=["points", "goal_diff"])
+        .fmt_number(columns=["attack_rating", "defense_rating"], decimals=2)
+        .fmt_percent(
+            columns=["title_probs", "ucl_probs", "relegation_probs"],
+            decimals=1,
+            drop_trailing_zeros=True,
+        )
+        .cols_align(align="center")
+        .tab_style(
+            style=[style.text(weight="bold")],
+            locations=loc.stub(),
+        )
+        .tab_header(
+            title="Simulated Bundesliga Table 2024/25",
+            subtitle=(
+                "10,000 simulations drawn from Poisson distributions, using log "
+                "likelihood to estimate team ratings from goals & xG data."
+            ),
+        )
+        .tab_options(table_width="1100px")
+        .save("outputs/buli_sims")
+    )
+
+    return tbl
+
+
+display_league_predictions(summary)
+```
