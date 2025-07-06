@@ -55,5 +55,6 @@ df.head()
 
 Questions:
 
-- Should we scrape the data manually? Is soccerdata reliable enough to build the pipeline around?
-    - Another option would be using R to import the data, with [worldfootballR](https://jaseziv.github.io/worldfootballR/) (there are also a few options for getting betting odds, such as [footballdatr](https://github.com/Torvaney/footballdatr)).
+- Given that we are probably going to be drawing data from several sources, some of which are not covered by soccerdata (Transfermarkt, for example), it might make more sense to use R to ingest the data.
+    - Some comination of [worldfootballR](https://jaseziv.github.io/worldfootballR/) for FBRef and Transfermarkt data and [footballdatr](https://github.com/Torvaney/footballdatr) for betting odds (from football-data.co.uk) would get the job done.
+- Alternatively, we could scrape the data manually. This seems like it is *probably* more effort than it is worth, and worldfootballR is pretty well maintained.
