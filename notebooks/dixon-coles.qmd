@@ -1,0 +1,731 @@
+---
+title: "Fitting a Dixon-Coles Model"
+format: html
+---
+
+```{python}
+
+import duckdb
+import warnings
+
+import numpy as np
+import pandas as pd
+
+from functools import lru_cache
+from scipy.optimize import minimize
+from scipy.stats import poisson
+
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+```
+
+## Import & Wrangle Data
+
+```{python}
+def prepare_bundesliga_data(db_path="data/club_football.duckdb"):
+    """Load and prepare Bundesliga data for modelling.
+    """
+    with duckdb.connect(db_path) as con:
+        df = con.execute("SELECT * FROM club_seasons").df()
+
+    df = df.copy()
+    df['date'] = pd.to_datetime(df['date'])
+    df = df.dropna(subset=['home_xg', 'away_xg'])
+
+    # weight goals and xg
+    df['home_goals_weighted'] = 0.3 * df['home_goals'] + 0.7 * df['home_xg']
+    df['away_goals_weighted'] = 0.3 * df['away_goals'] + 0.7 * df['away_xg']
+
+    # log squad values
+    df['home_value_log'] = np.log(df['home_value'].replace(0, np.nan)).fillna(0.0)
+    df['away_value_log'] = np.log(df['away_value'].replace(0, np.nan)).fillna(0.0)
+
+    return df
+```
+
+## Compute Team Strengths
+
+```{python}
+
+def _dixon_coles_corrections(home_goals, away_goals, lambda_h, lambda_a, rho):
+    """Dixon-Coles low score corrections"""
+    corr = np.ones_like(lambda_h, dtype=float)
+
+    # masks for low scores
+    mask_00 = (home_goals == 0) & (away_goals == 0)
+    mask_01 = (home_goals == 0) & (away_goals == 1)
+    mask_10 = (home_goals == 1) & (away_goals == 0)
+    mask_11 = (home_goals == 1) & (away_goals == 1)
+
+    # apply corrections
+    corr[mask_00] = 1 - lambda_h[mask_00] * lambda_a[mask_00] * rho
+    corr[mask_01] = 1 + lambda_h[mask_01] * rho
+    corr[mask_10] = 1 + lambda_a[mask_10] * rho
+    corr[mask_11] = 1 - rho
+
+    return np.maximum(corr, 1e-10)
+```
+
+
+```{python}
+
+@lru_cache(maxsize=10000)
+def cached_poisson_pmf(k, mu):
+    """Cache Poisson PMF calculations."""
+    return poisson.pmf(k, mu)
+```
+
+
+```{python}
+def fit_dixon_coles(df, initial_time_decay=0.0035):
+    """Fit Dixon-Coles model."""
+
+    teams = sorted(
+        pd.unique(np.concatenate([df["home_team"].values, df["away_team"].values]))
+    )
+    n_teams = len(teams)
+    team_to_idx = {t: i for i, t in enumerate(teams)}
+
+    # prepare data
+    m = df.copy()
+    m["home_idx"] = m["home_team"].map(team_to_idx).astype(int)
+    m["away_idx"] = m["away_team"].map(team_to_idx).astype(int)
+    days_ago = (m["date"].max() - m["date"]).dt.days.values
+
+    home_idx = m["home_idx"].values
+    away_idx = m["away_idx"].values
+    home_g = np.round(m["home_goals_weighted"]).astype(int).values
+    away_g = np.round(m["away_goals_weighted"]).astype(int).values
+    home_val = m["home_value_log"].values
+    away_val = m["away_value_log"].values
+    n_matches = len(m)
+
+    # vectorized initialization using initial time decay for weights
+    initial_weights = np.exp(-initial_time_decay * days_ago)
+
+    # weighted stats for initialization
+    home_goals_weighted = {}
+    away_goals_weighted = {}
+    home_conceded_weighted = {}
+    away_conceded_weighted = {}
+    home_weight_sum = {}
+    away_weight_sum = {}
+
+    for t in teams:
+        home_mask = m["home_team"] == t
+        away_mask = m["away_team"] == t
+
+        home_goals_weighted[t] = np.sum(
+            m.loc[home_mask, "home_goals_weighted"].values * initial_weights[home_mask]
+        )
+        away_goals_weighted[t] = np.sum(
+            m.loc[away_mask, "away_goals_weighted"].values * initial_weights[away_mask]
+        )
+        home_conceded_weighted[t] = np.sum(
+            m.loc[home_mask, "away_goals_weighted"].values * initial_weights[home_mask]
+        )
+        away_conceded_weighted[t] = np.sum(
+            m.loc[away_mask, "home_goals_weighted"].values * initial_weights[away_mask]
+        )
+        home_weight_sum[t] = np.sum(initial_weights[home_mask])
+        away_weight_sum[t] = np.sum(initial_weights[away_mask])
+
+    goals_for = np.array(
+        [(home_goals_weighted.get(t, 0) + away_goals_weighted.get(t, 0)) for t in teams]
+    )
+    goals_against = np.array(
+        [
+            (home_conceded_weighted.get(t, 0) + away_conceded_weighted.get(t, 0))
+            for t in teams
+        ]
+    )
+    total_weights = np.array(
+        [(home_weight_sum.get(t, 0) + away_weight_sum.get(t, 0)) for t in teams]
+    )
+
+    avg_gf = np.where(total_weights > 0, goals_for / total_weights, 1.3)
+    avg_ga = np.where(total_weights > 0, goals_against / total_weights, 1.3)
+    league_avg = avg_gf.mean()
+
+    attack_init = np.log(np.maximum(avg_gf / league_avg, 0.3))
+    defense_init = np.log(np.maximum(avg_ga / league_avg, 0.3))
+
+    # initial parameters
+    x0 = np.concatenate(
+        [attack_init, defense_init, [0.25, 0.0, 0.0, 0.0, initial_time_decay]]
+    )
+
+    # bounds
+    bounds = (
+        [(-2.0, 2.0)] * n_teams
+        + [(-2.0, 2.0)] * n_teams
+        + [(0.0, 0.6), (-0.15, 0.15), (-0.5, 0.5), (-0.5, 0.5), (0.0001, 0.01)]
+    )
+
+    # pre-cache common poisson values
+    unique_goals = np.unique(np.concatenate([home_g, away_g]))
+    lambda_range = np.linspace(0.1, 8.0, 80)
+    for g in unique_goals:
+        for lam in lambda_range:
+            _ = cached_poisson_pmf(int(g), float(round(lam, 2)))
+
+    def _nll_with_grad(x):
+        """Negative log-likelihood with analytical gradients including time decay."""
+
+        # extract parameters
+        attack_raw = x[:n_teams]
+        defense_raw = x[n_teams : 2 * n_teams]
+        attack = attack_raw - attack_raw.mean()
+        defense = defense_raw - defense_raw.mean()
+
+        home_adv = x[2 * n_teams]
+        rho = x[2 * n_teams + 1]
+        beta_att = x[2 * n_teams + 2]
+        beta_def = x[2 * n_teams + 3]
+        time_decay = x[2 * n_teams + 4]
+
+        # compute weights with current time_decay
+        weights = np.exp(-time_decay * days_ago)
+
+        # compute strengths
+        home_strength = (
+            attack[home_idx]
+            + defense[away_idx]
+            + home_adv
+            + beta_att * home_val
+            + beta_def * away_val
+        )
+
+        away_strength = (
+            attack[away_idx]
+            + defense[home_idx]
+            + beta_att * away_val
+            + beta_def * home_val
+        )
+
+        lambda_h = np.clip(np.exp(home_strength), 1e-3, 12.0)
+        lambda_a = np.clip(np.exp(away_strength), 1e-3, 12.0)
+
+        # use cached poisson pmf where possible
+        ph = np.array(
+            [
+                cached_poisson_pmf(int(g), float(round(l, 2)))
+                for g, l in zip(home_g, lambda_h)
+            ]
+        )
+        pa = np.array(
+            [
+                cached_poisson_pmf(int(g), float(round(l, 2)))
+                for g, l in zip(away_g, lambda_a)
+            ]
+        )
+
+        # apply dixon-coles corrections
+        corr = _dixon_coles_corrections(home_g, away_g, lambda_h, lambda_a, rho)
+
+        probs = ph * pa * corr
+        probs = np.maximum(probs, 1e-15)
+
+        log_p = np.log(probs)
+        weighted_log_p = weights * log_p
+        nll = -np.sum(weighted_log_p)
+
+        # gradient computation
+        grad = np.zeros_like(x)
+
+        # poisson score residuals
+        score_h = home_g / lambda_h - 1.0
+        score_a = away_g / lambda_a - 1.0
+
+        # dixon-coles correction derivatives
+        dc_dh = np.zeros(n_matches)
+        dc_da = np.zeros(n_matches)
+        dc_drho = np.zeros(n_matches)
+
+        mask_00 = (home_g == 0) & (away_g == 0)
+        mask_01 = (home_g == 0) & (away_g == 1)
+        mask_10 = (home_g == 1) & (away_g == 0)
+        mask_11 = (home_g == 1) & (away_g == 1)
+
+        # df gradient contributions
+        dc_dh[mask_00] = -lambda_a[mask_00] * rho / corr[mask_00]
+        dc_dh[mask_01] = rho / corr[mask_01]
+
+        dc_da[mask_00] = -lambda_h[mask_00] * rho / corr[mask_00]
+        dc_da[mask_10] = rho / corr[mask_10]
+
+        dc_drho[mask_00] = -lambda_h[mask_00] * lambda_a[mask_00] / corr[mask_00]
+        dc_drho[mask_01] = lambda_h[mask_01] / corr[mask_01]
+        dc_drho[mask_10] = lambda_a[mask_10] / corr[mask_10]
+        dc_drho[mask_11] = -1.0 / corr[mask_11]
+
+        # total score including dc correction
+        total_score_h = score_h + dc_dh * lambda_h
+        total_score_a = score_a + dc_da * lambda_a
+
+        # accumulate gradients for team parameters
+        for i in range(n_matches):
+            wt = weights[i]
+
+            # attack parameters
+            grad[home_idx[i]] -= wt * total_score_h[i] * lambda_h[i]
+            grad[away_idx[i]] -= wt * total_score_a[i] * lambda_a[i]
+
+            # defense parameters
+            grad[n_teams + away_idx[i]] -= wt * total_score_h[i] * lambda_h[i]
+            grad[n_teams + home_idx[i]] -= wt * total_score_a[i] * lambda_a[i]
+
+        # apply centering constraint via projection
+        grad[:n_teams] -= grad[:n_teams].mean()
+        grad[n_teams : 2 * n_teams] -= grad[n_teams : 2 * n_teams].mean()
+
+        # home advantage gradient
+        grad[2 * n_teams] = -np.sum(weights * total_score_h * lambda_h)
+
+        # rho gradient
+        grad[2 * n_teams + 1] = -np.sum(weights * dc_drho)
+
+        # squad value gradients
+        grad[2 * n_teams + 2] = -np.sum(
+            weights
+            * (
+                total_score_h * lambda_h * home_val
+                + total_score_a * lambda_a * away_val
+            )
+        )
+        grad[2 * n_teams + 3] = -np.sum(
+            weights
+            * (
+                total_score_h * lambda_h * away_val
+                + total_score_a * lambda_a * home_val
+            )
+        )
+
+        # time decay gradient
+        grad[2 * n_teams + 4] = np.sum(days_ago * weighted_log_p)
+
+        return nll, grad
+
+    # optimize with gradients
+    res = minimize(
+        _nll_with_grad,
+        x0,
+        method="L-BFGS-B",
+        jac=True,
+        bounds=bounds,
+        options={"maxiter": 500, "disp": True, "ftol": 1e-8},
+    )
+
+    # extract final parameters
+    attack_raw = res.x[:n_teams]
+    defense_raw = res.x[n_teams : 2 * n_teams]
+    attack = attack_raw - attack_raw.mean()
+    defense = defense_raw - defense_raw.mean()
+
+    # rescale attack and defense
+    def rescale_to_range(values, reverse=False):
+        """Rescale values to [-1, 1] range.
+        If reverse=True, flip so higher original values → lower scaled values."""
+        min_val, max_val = values.min(), values.max()
+        if max_val - min_val < 1e-10:  # all values similar
+            return np.zeros_like(values)
+
+        scaled = 2 * (values - min_val) / (max_val - min_val) - 1
+        return -scaled if reverse else scaled
+
+    # attack: higher is better -> scale normally
+    attack_scaled = rescale_to_range(attack, reverse=False)
+
+    # defense: lower (more negative) is better -> reverse scale
+    defense_scaled = rescale_to_range(defense, reverse=True)
+
+    # overall rating: weighted average
+    attack_weight = 0.5
+    defense_weight = 0.5
+    overall_scaled = attack_weight * attack_scaled + defense_weight * defense_scaled
+
+    params = {
+        "teams": teams,
+        "attack_scaled": dict(zip(teams, attack_scaled)),
+        "defense_scaled": dict(zip(teams, defense_scaled)),
+        "overall": dict(zip(teams, overall_scaled)),
+        "attack": dict(zip(teams, attack)),
+        "defense": dict(zip(teams, defense)),
+        "home_advantage": res.x[2 * n_teams],
+        "rho": res.x[2 * n_teams + 1],
+        "beta_attack": res.x[2 * n_teams + 2],
+        "beta_defense": res.x[2 * n_teams + 3],
+        "time_decay": res.x[2 * n_teams + 4],
+        "success": res.success,
+        "log_likelihood": -res.fun,
+        "n_iterations": res.nit,
+    }
+
+    return params
+```
+
+## Simulate Seasons
+
+```{python}
+def simulate_season(fixtures, params, n_simulations=1000, seed=None):
+    """Vectorized season simulation."""
+    if seed is not None:
+        np.random.seed(seed)
+
+    teams = fixtures["home_team"].unique()
+    n_teams = len(teams)
+    team_to_idx = {t: i for i, t in enumerate(teams)}
+
+    home_teams = fixtures["home_team"].values
+    away_teams = fixtures["away_team"].values
+    home_vals = fixtures["home_value_log"].values
+    away_vals = fixtures["away_value_log"].values
+
+    home_idx = np.array([team_to_idx[t] for t in home_teams], dtype=int)
+    away_idx = np.array([team_to_idx[t] for t in away_teams], dtype=int)
+
+    attack_arr = np.array([params["attack"][t] for t in teams])
+    defense_arr = np.array([params["defense"][t] for t in teams])
+    home_adv = params["home_advantage"]
+    beta_att = params["beta_attack"]
+    beta_def = params["beta_defense"]
+
+    home_strength = (
+        attack_arr[home_idx]
+        + defense_arr[away_idx]
+        + home_adv
+        + beta_att * home_vals
+        + beta_def * away_vals
+    )
+    away_strength = (
+        attack_arr[away_idx]
+        + defense_arr[home_idx]
+        + beta_att * away_vals
+        + beta_def * home_vals
+    )
+
+    lambda_home = np.clip(np.exp(home_strength), 1e-3, 12.0)
+    lambda_away = np.clip(np.exp(away_strength), 1e-3, 12.0)
+
+    n_matches = len(fixtures)
+
+    results = {
+        "points": np.zeros((n_simulations, n_teams), dtype=float),
+        "positions": np.zeros((n_simulations, n_teams), dtype=int),
+        "goals_for": np.zeros((n_simulations, n_teams), dtype=int),
+        "goals_against": np.zeros((n_simulations, n_teams), dtype=int),
+        "games_played": np.zeros((n_simulations, n_teams), dtype=int)
+    }
+
+    for s in range(n_simulations):
+        # sample goals for all matches
+        hg = np.random.poisson(lam=lambda_home, size=n_matches)
+        ag = np.random.poisson(lam=lambda_away, size=n_matches)
+
+        # points per match
+        hp = np.where(hg > ag, 3, np.where(hg == ag, 1, 0))
+        ap = np.where(ag > hg, 3, np.where(ag == hg, 1, 0))
+
+        # aggregate with np.add.at
+        points_row = np.zeros(n_teams, dtype=float)
+        gf_row = np.zeros(n_teams, dtype=int)
+        ga_row = np.zeros(n_teams, dtype=int)
+        gp_row = np.zeros(n_teams, dtype=int)
+
+        np.add.at(points_row, home_idx, hp)
+        np.add.at(points_row, away_idx, ap)
+        np.add.at(gf_row, home_idx, hg)
+        np.add.at(gf_row, away_idx, ag)
+        np.add.at(ga_row, home_idx, ag)
+        np.add.at(ga_row, away_idx, hg)
+        np.add.at(gp_row, home_idx, 1)
+        np.add.at(gp_row, away_idx, 1)
+
+        results["points"][s] = points_row
+        results["goals_for"][s] = gf_row
+        results["goals_against"][s] = ga_row
+        results["games_played"][s] = gp_row
+
+        goal_diff = gf_row - ga_row
+        # sort by points desc then goal_diff desc
+        order = np.lexsort((-goal_diff, -points_row))
+        for pos, idx in enumerate(order):
+            results["positions"][s, idx] = pos
+
+    return results, teams
+```
+
+## Summarise Outcomes
+
+```{python}
+def summarise_results(results, teams, n_simulations):
+    n_teams = len(teams)
+    rows = []
+    for i, team in enumerate(teams):
+        pos_counts = np.bincount(results['positions'][:, i], minlength=n_teams)
+        rows.append({
+            'team': team,
+            'avg_points': results['points'][:, i].mean(),
+            'avg_goals_for': results['goals_for'][:, i].mean(),
+            'avg_goals_against': results['goals_against'][:, i].mean(),
+            'title_prob': pos_counts[0] / n_simulations,
+            'top4_prob': pos_counts[:4].sum() / n_simulations,
+            'relegation_prob': pos_counts[-2:].sum() / n_simulations,
+            'positions': pos_counts
+        })
+    return pd.DataFrame(rows).sort_values('avg_points', ascending=False)
+```
+
+```{python}
+
+def compute_expected_lambdas(fixtures, params, team):
+    """Return mean expected home/away lambdas for a given team using model params.
+    """
+    teams = params['teams']
+    team_to_idx = {t: i for i, t in enumerate(teams)}
+
+    home_vals = fixtures['home_value_log'].values
+    away_vals = fixtures['away_value_log'].values
+    home_idx = np.array([team_to_idx[t] for t in fixtures['home_team'].values], dtype=int)
+    away_idx = np.array([team_to_idx[t] for t in fixtures['away_team'].values], dtype=int)
+
+    attack_arr = np.array([params['attack'][t] for t in teams])
+    defense_arr = np.array([params['defense'][t] for t in teams])
+    home_adv = params['home_advantage']
+    beta_att = params['beta_attack']
+    beta_def = params['beta_defense']
+
+    home_strength = (
+        attack_arr[home_idx]
+        + defense_arr[away_idx]
+        + home_adv
+        + beta_att * home_vals
+        + beta_def * away_vals
+    )
+    away_strength = (
+        attack_arr[away_idx]
+        + defense_arr[home_idx]
+        + beta_att * away_vals
+        + beta_def * home_vals
+    )
+
+    lambda_home = np.clip(np.exp(home_strength), 1e-3, 12.0)
+    lambda_away = np.clip(np.exp(away_strength), 1e-3, 12.0)
+
+    mask_home = fixtures['home_team'] == team
+    mask_away = fixtures['away_team'] == team
+
+    mean_home = lambda_home[mask_home].mean() if mask_home.any() else np.nan
+    mean_away = lambda_away[mask_away].mean() if mask_away.any() else np.nan
+
+    overall = np.concatenate([lambda_home[mask_home], lambda_away[mask_away]])
+    overall_mean = overall.mean() if overall.size > 0 else np.nan
+
+    return {
+        'team': team,
+        'mean_lambda_home': mean_home,
+        'mean_lambda_away': mean_away,
+        'overall_mean_lambda': overall_mean,
+        'n_home': int(mask_home.sum()),
+        'n_away': int(mask_away.sum()),
+    }
+```
+
+```{python}
+
+def build_fixtures_from_teams(source_df, season=None, teams=None):
+    """Build fixtures list from a list of teams.
+    """
+
+    if season is not None:
+        src = source_df[source_df['season'] == season].copy()
+        if src.empty:
+            src = source_df.copy()
+    else:
+        src = source_df.copy()
+
+    if teams is None:
+        teams = sorted(pd.unique(np.concatenate([src['home_team'].values, src['away_team'].values])))
+
+    if 'date' in src.columns:
+        src = src.sort_values('date')
+
+    home_last = src.groupby('home_team')['home_value_log'].last()
+    away_last = src.groupby('away_team')['away_value_log'].last()
+
+    value_map = {}
+    for t in teams:
+        v = np.nan
+        if t in home_last.index:
+            v = home_last.loc[t]
+        if t in away_last.index:
+
+            if pd.isna(v):
+                v = away_last.loc[t]
+            else:
+                v = away_last.loc[t]
+        if pd.isna(v):
+            v = 0.0
+        value_map[t] = v
+
+    rows = []
+    for h in teams:
+        for a in teams:
+            if h == a:
+                continue
+            rows.append(
+                {
+                    'home_team': h,
+                    'away_team': a,
+                    'home_value_log': value_map[h],
+                    'away_value_log': value_map[a],
+                }
+            )
+
+    return pd.DataFrame(rows)
+```
+
+## Run Pipeline
+
+```{python}
+
+df = prepare_bundesliga_data()
+params = fit_dixon_coles(df)
+
+fixtures_2024 = build_fixtures_from_teams(df, season=2024)
+
+results, teams = simulate_season(fixtures_2024, params, n_simulations=100000, seed=123)
+```
+
+```{python}
+
+def summarise_outcomes_from_results(results, params, n_simulations, teams=None):
+
+    if teams is None:
+        teams = list(params.get("teams", []))
+    n_teams = len(teams)
+
+    # validate shapes early and give actionable message
+    if results["points"].ndim != 2:
+        raise ValueError("results['points'] must be a 2D array (n_sims x n_teams).")
+    if results["points"].shape[1] != n_teams:
+        raise ValueError(
+            f"Number of teams in results ({results['points'].shape[1]}) "
+            f"does not match provided teams ({n_teams}). "
+            "Pass the `teams` returned by simulate_season to this function."
+        )
+
+    # mean aggregates across simulations
+    mean_points = results["points"].mean(axis=0)
+    mean_gf = results["goals_for"].mean(axis=0)
+    mean_ga = results["goals_against"].mean(axis=0)
+    mean_gd = mean_gf - mean_ga
+
+    # position counts per team (rows = team, cols = position)
+    pos_counts = np.vstack(
+        [
+            np.bincount(results["positions"][:, i], minlength=n_teams)
+            for i in range(n_teams)
+        ]
+    )  # shape (n_teams, n_teams)
+
+    # probabilities (positions are zero-indexed: 0 = champion)
+    title_probs = pos_counts[:, 0] / n_simulations
+    ucl_probs = pos_counts[:, :4].sum(axis=1) / n_simulations
+    relegation_probs = pos_counts[:, -2:].sum(axis=1) / n_simulations
+
+    # ratings from params
+    overall_ratings = np.array([params["overall"].get(t, np.nan) for t in teams])
+    attack_ratings = np.array([params["attack_scaled"].get(t, np.nan) for t in teams])
+    defense_ratings = np.array([params["defense_scaled"].get(t, np.nan) for t in teams])
+
+    rows = []
+    for i, t in enumerate(teams):
+        rows.append(
+            {
+                "team": t,
+                "points": mean_points[i],
+                "goal_diff": mean_gd[i],
+                "overall_rating": overall_ratings[i],
+                "attack_rating": attack_ratings[i],
+                "defense_rating": defense_ratings[i],
+                "title_probs": title_probs[i],
+                "ucl_probs": ucl_probs[i],
+                "relegation_probs": relegation_probs[i],
+            }
+        )
+
+    df = (
+        pd.DataFrame(rows).sort_values("points", ascending=False).reset_index(drop=True)
+    )
+    return df
+
+
+summary = summarise_outcomes_from_results(
+    results, params, n_simulations=len(results["points"]), teams=teams
+)
+```
+
+#### Generate Prediction Outputs
+
+```{python}
+#| label: predictions-table
+
+from great_tables import GT, style, loc
+
+
+def display_league_predictions(df):
+    tbl = (
+        GT(df, rowname_col="team")
+        .cols_label(
+            points="Points",
+            goal_diff="Goal Difference",
+            overall_rating="Overall",
+            attack_rating="Attack",
+            defense_rating="Defense",
+            title_probs="Meisterschale",
+            ucl_probs="Champions League",
+            relegation_probs="Relegation",
+        )
+        .cols_move(
+            columns=["overall_rating", "attack_rating", "defense_rating"],
+            after="goal_diff"
+            )
+        .tab_spanner(
+            label="Team Ratings",
+            columns=["overall_rating", "attack_rating", "defense_rating"],
+        )
+        .tab_spanner(
+            label="Simulated Probabilities",
+            columns=["title_probs", "ucl_probs", "relegation_probs"],
+        )
+        .fmt_integer(columns=["points", "goal_diff"])
+        .fmt_number(
+            columns=["overall_rating", "attack_rating", "defense_rating"],
+            decimals=2
+            )
+        .fmt_percent(
+            columns=["title_probs", "ucl_probs", "relegation_probs"],
+            decimals=1,
+            drop_trailing_zeros=True,
+        )
+        .cols_align(align="center")
+        .tab_style(
+            style=[style.text(weight="bold")],
+            locations=loc.stub(),
+        )
+        .tab_header(
+            title="Simulated Bundesliga Table 2024/25",
+            subtitle=(
+                "100,000 simulations generated using a Dixon-Coles model to "
+                "estimate team ratings from goals, xG, and squad values."
+            ),
+        )
+        .tab_options(table_width="1100px")
+        .save("outputs/buli_sims")
+    )
+
+    return tbl
+
+
+display_league_predictions(summary)
+```
