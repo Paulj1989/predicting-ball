@@ -6,22 +6,20 @@ format: html
 ## Import & Wrangle Data
 
 ```{python}
-#| label: import-data
+# | label: import-data
 
+import duckdb
 import pandas as pd
-import soccerdata as sd
 
-fbref = sd.FBref(leagues="GER-Bundesliga", seasons=["2425", "2324", "2223"])
-results_raw = fbref.read_schedule().reset_index()
+# query data
+with duckdb.connect("data/club_football.duckdb") as con:
+    df = con.execute("SELECT * FROM club_seasons").df()
+
+df.head()
 ```
 
 ```{python}
-#| label: transform-data
-
-
-def split_score(df, col="score"):
-    goals = df[col].str.split("–", expand=True).astype(int)
-    return df.assign(home_goals=goals[0], away_goals=goals[1])
+# | label: transform-data
 
 
 def calculate_weighted_goals(df, goal_weight=0.3, xg_weight=0.7):
@@ -31,19 +29,23 @@ def calculate_weighted_goals(df, goal_weight=0.3, xg_weight=0.7):
     )
 
 
-df = (
-    results_raw.dropna(subset=["week"]).pipe(split_score).pipe(calculate_weighted_goals)
-)
+df = df.dropna(subset=["home_xg", "away_xg"]).pipe(calculate_weighted_goals)
+
+df["home_value"] = df["home_value"] / 100000000
+df["away_value"] = df["away_value"] / 100000000
+# df["home_value"] = np.log(df["home_value"])
+# df["away_value"] = np.log(df["away_value"])
 ```
 
 ## Compute Team Strengths
 
 ```{python}
-#| label: model-functions
+# | label: model-functions
 
 import numpy as np
 from scipy.stats import poisson
 from scipy.optimize import minimize
+
 
 # log likelihood estimation
 def log_likelihood(
@@ -51,10 +53,21 @@ def log_likelihood(
     away_goals_observed,
     home_attack,
     home_defense,
+    home_value,
     away_attack,
     away_defense,
+    away_value,
     home_advantage,
+    beta_attack,
+    beta_defense,
 ):
+
+    # squad value effects
+    home_attack += beta_attack * home_value
+    home_defense += beta_defense * home_value
+    away_attack += beta_attack * away_value
+    away_defense += beta_defense * away_value
+
     home_goals_predicted = np.exp(home_attack + away_defense + home_advantage)
     away_goals_predicted = np.exp(away_attack + home_defense)
 
@@ -64,9 +77,15 @@ def log_likelihood(
     home_llk = poisson.pmf(home_goals_observed, home_goals_predicted)
     away_llk = poisson.pmf(away_goals_observed, away_goals_predicted)
 
+    # prevent invalid log values
+    eps = 1e-100
+    home_llk = max(home_llk, eps)
+    away_llk = max(away_llk, eps)
+
     log_llk = np.log(home_llk) + np.log(away_llk)
 
     return -log_llk
+
 
 # poisson model
 def fit_poisson_model(df):
@@ -78,13 +97,17 @@ def fit_poisson_model(df):
             np.random.uniform(0.5, 1.5, (n_teams)),  # attack strength
             np.random.uniform(0, -1, (n_teams)),  # defense strength
             [0.25],  # home advantage
+            [0.0],  # beta_attack
+            [0.0],  # beta_defense
         )
     )
 
     def _fit(params, df, teams):
         attack_params = dict(zip(teams, params[:n_teams]))
         defense_params = dict(zip(teams, params[n_teams : (2 * n_teams)]))
-        home_advantage = params[-1]
+        home_advantage = params[-3]
+        beta_attack = params[-2]
+        beta_defense = params[-1]
 
         llk = list()
         for idx, row in df.iterrows():
@@ -93,9 +116,13 @@ def fit_poisson_model(df):
                 int(row["away_weighted"]),
                 attack_params[row["home_team"]],
                 defense_params[row["home_team"]],
+                row["home_value"],
                 attack_params[row["away_team"]],
                 defense_params[row["away_team"]],
+                row["away_value"],
                 home_advantage,
+                beta_attack,
+                beta_defense,
             )
             llk.append(tmp)
 
@@ -106,7 +133,13 @@ def fit_poisson_model(df):
         "disp": False,
     }
 
-    constraints = [{"type": "eq", "fun": lambda x: sum(x[:n_teams]) - n_teams}]
+    constraints = [
+        # attack sum constraint
+        {"type": "eq", "fun": lambda x: sum(x[:n_teams]) - n_teams},
+        {"type": "ineq", "fun": lambda x: x[-3]},  # home_adv >= 0
+        {"type": "ineq", "fun": lambda x: x[-2]},  # beta_attack >= 0
+        {"type": "ineq", "fun": lambda x: -x[-1]},  # beta_defense <= 0
+    ]
 
     res = minimize(
         _fit,
@@ -120,10 +153,12 @@ def fit_poisson_model(df):
         zip(
             ["attack_" + team for team in teams]
             + ["defense_" + team for team in teams]
-            + ["home_adv"],
+            + ["home_adv", "beta_attack", "beta_defense"],
             res["x"],
         )
     )
+
+    print("Log Likelihood: ", res["fun"])
 
     return params
 ```
@@ -134,32 +169,64 @@ I am fitting the poisson model to the entire dataset because otherwise it can't 
 #| label: estimate-parameters
 
 params = fit_poisson_model(df)
+params
 ```
 
 ## Simulate Bundesliga Season
 
 ```{python}
-#| label: match-functions
+# | label: match-functions
+
+# from scipy.stats import poisson
+
+
+# # generate probability matrix
+# def generate_prob_matrix(home_team, away_team, params, max_goals=10):
+#     home_attack = params["attack_" + home_team]
+#     home_defense = params["defense_" + home_team]
+#     away_attack = params["attack_" + away_team]
+#     away_defense = params["defense_" + away_team]
+#     home_advantage = params["home_adv"]
+
+#     home_goal_expectation = np.exp(home_attack + away_defense + home_advantage)
+#     away_goal_expectation = np.exp(away_attack + home_defense)
+
+#     home_probs = poisson.pmf(range(max_goals + 1), home_goal_expectation)
+#     away_probs = poisson.pmf(range(max_goals + 1), away_goal_expectation)
+
+#     prob_matrix = np.outer(home_probs, away_probs)
+#     return prob_matrix
+
 
 from scipy.stats import poisson
 
 
 # generate probability matrix
-def generate_prob_matrix(home_team, away_team, params, max_goals=10):
+def generate_prob_matrix(
+    home_team, away_team, home_value, away_value, params, max_goals=10
+):
     home_attack = params["attack_" + home_team]
     home_defense = params["defense_" + home_team]
     away_attack = params["attack_" + away_team]
     away_defense = params["defense_" + away_team]
     home_advantage = params["home_adv"]
 
-    home_goal_expectation = np.exp(home_attack + away_defense + home_advantage)
-    away_goal_expectation = np.exp(away_attack + home_defense)
+    beta_attack = params["beta_attack"]
+    beta_defense = params["beta_defense"]
 
-    home_probs = poisson.pmf(range(max_goals + 1), home_goal_expectation)
-    away_probs = poisson.pmf(range(max_goals + 1), away_goal_expectation)
+    # apply squad value adjustments
+    home_attack += beta_attack * home_value
+    home_defense += beta_defense * home_value
+    away_attack += beta_attack * away_value
+    away_defense += beta_defense * away_value
 
-    prob_matrix = np.outer(home_probs, away_probs)
-    return prob_matrix
+    home_expectation = np.exp(home_attack + away_defense + home_advantage)
+    away_expectation = np.exp(away_attack + home_defense)
+
+    home_probs = poisson.pmf(range(max_goals + 1), home_expectation)
+    away_probs = poisson.pmf(range(max_goals + 1), away_expectation)
+
+    return np.outer(home_probs, away_probs)
 
 
 # compute expected goals from the probability matrix
@@ -171,8 +238,10 @@ def predict_goals(prob_matrix):
 
 
 # simulate match score and points
-def simulate_match_score(home_team, away_team, params):
-    prob_matrix = generate_prob_matrix(home_team, away_team, params)
+def simulate_match_score(home_team, away_team, home_value, away_value, params):
+    prob_matrix = generate_prob_matrix(
+        home_team, away_team, home_value, away_value, params
+    )
     pred_home_goals, pred_away_goals = predict_goals(prob_matrix)
 
     home_goals = np.random.poisson(pred_home_goals)
@@ -189,7 +258,8 @@ def simulate_match_score(home_team, away_team, params):
 ```
 
 ```{python}
-#| label: season-functions
+# | label: season-functions
+
 
 # simulate full season and return league table with points and goal difference
 def simulate_season(fixtures_df, params):
@@ -198,7 +268,14 @@ def simulate_season(fixtures_df, params):
     goal_diff = {team: 0 for team in teams}
 
     for _, row in fixtures_df.iterrows():
-        result = simulate_match_score(row["home_team"], row["away_team"], params)
+        # Pass squad values here
+        result = simulate_match_score(
+            row["home_team"],
+            row["away_team"],
+            row["home_value"],
+            row["away_value"],
+            params,
+        )
         points[row["home_team"]] += result[row["home_team"]]
         points[row["away_team"]] += result[row["away_team"]]
         goal_diff[row["home_team"]] += result["gd_home"]
@@ -231,7 +308,7 @@ def run_sims(fixtures_df, params, sims=10000):
 ```{python}
 #| label: simulate-season
 
-test_data = df.loc[df["season"] == "2425"]
+test_data = df.loc[df["season"] == 2024]
 sim_results = run_sims(test_data, params, sims=10000)
 ```
 
