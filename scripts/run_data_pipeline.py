@@ -550,16 +550,17 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Run Bundesliga data pipeline",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Run incremental update for current season
-  python scripts/run_data_pipeline.py
+        epilog=
+        """
+        Examples:
+        # Run incremental update for current season
+        python scripts/run_data_pipeline.py
 
-  # Scrape specific seasons
-  python scripts/run_data_pipeline.py --start-year 2020 --end-year 2024
+        # Scrape specific seasons
+        python scripts/run_data_pipeline.py --start-year 2020 --end-year 2024
 
-  # Force rescrape all data
-  python scripts/run_data_pipeline.py --force-rescrape
+        # Force rescrape all data
+        python scripts/run_data_pipeline.py --force-rescrape
         """,
     )
 
