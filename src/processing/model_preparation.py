@@ -18,8 +18,8 @@ def prepare_bundesliga_data(
     - Match outcome features (points, totals)
     - Squad value features (ratios, logs, percentiles)
     - Odds features (ratios, margins)
-    - Rolling npxG statistics
-    - Home vs away performance metrics
+    - Rolling npxGD statistics (5 and 10 game windows)
+    - Venue-specific npxGD
     - Red card indicators
     """
     logger = logging.getLogger(__name__)
@@ -68,7 +68,7 @@ def prepare_bundesliga_data(
 
 
 def add_all_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Add derived features for modeling"""
+    """Add all derived features for modeling"""
     logger = logging.getLogger(__name__)
 
     logger.info("  Adding basic match features")
@@ -83,11 +83,11 @@ def add_all_features(df: pd.DataFrame) -> pd.DataFrame:
     logger.info("  Adding card features")
     df = add_card_features(df)
 
-    logger.info("  Adding rolling npxG features")
-    df = add_rolling_npxg_features(df, windows=[5, 10])
+    logger.info("  Adding rolling npxGD features")
+    df = add_rolling_npxgd_features(df, windows=[5, 10])
 
-    logger.info("  Adding home vs away features")
-    df = add_home_vs_away_features(df)
+    logger.info("  Adding venue-specific npxGD features")
+    df = add_venue_npxgd_features(df)
 
     return df
 
@@ -96,8 +96,10 @@ def _verify_features(df: pd.DataFrame):
     """Verify that key features were created successfully"""
     feature_checks = [
         ("home_points", "Points"),
-        ("home_npxg_w10_mean", "npxG (10 games)"),
-        ("home_npxg_per_game", "Home npxG"),
+        ("home_npxgd_w5", "npxGD (5 games)"),
+        ("home_npxgd_w10", "npxGD (10 games)"),
+        ("home_venue_npxgd_per_game", "Home venue npxGD"),
+        ("away_venue_npxgd_per_game", "Away venue npxGD"),
         ("odds_home_away_ratio", "Odds ratio"),
         ("value_ratio", "Value ratio"),
     ]
@@ -106,7 +108,7 @@ def _verify_features(df: pd.DataFrame):
     for col_name, description in feature_checks:
         if col_name in df.columns:
             non_null = df[col_name].notna().sum()
-            non_zero = (df[col_name] > 0).sum()
+            non_zero = (df[col_name] != 0).sum()
             mean_val = df[col_name].mean()
             print(
                 f"    {description:20s}: {non_null:5d} non-null, {non_zero:5d} non-zero, mean={mean_val:.3f}"
@@ -116,7 +118,7 @@ def _verify_features(df: pd.DataFrame):
 
 
 def add_basic_match_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Add basic match outcome features"""
+    """ Add basic match outcome features"""
     mask_played = df["is_played"]
 
     if mask_played.any():
@@ -219,179 +221,167 @@ def add_card_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def add_rolling_npxg_features(
+def add_rolling_npxgd_features(
     df: pd.DataFrame, windows: List[int] = [5, 10]
 ) -> pd.DataFrame:
-    """Add rolling npxG statistics"""
+    """
+    Add rolling npxGD statistics.
+
+    Creates features:
+    - home_npxgd_w5: home team's avg npxGD over last 5 matches
+    - home_npxgd_w10: home team's avg npxGD over last 10 matches
+    - away_npxgd_w5: away team's avg npxGD over last 5 matches
+    - away_npxgd_w10: away team's avg npxGD over last 10 matches
+    """
     df = df.sort_values("date").copy()
 
     # initialise columns
     for window in windows:
         for prefix in ["home", "away"]:
-            df[f"{prefix}_npxg_w{window}_mean"] = 0.0
-            df[f"{prefix}_npxg_w{window}_std"] = 0.0
-            df[f"{prefix}_npxga_w{window}_mean"] = 0.0
-            df[f"{prefix}_npxga_w{window}_std"] = 0.0
+            df[f"{prefix}_npxgd_w{window}"] = np.nan
 
     # only use matches with npxg data
-    played_df = df[df["is_played"] & df["home_npxg"].notna()].copy()
+    played_df = df[
+        df["is_played"] & df["home_npxg"].notna() & df["away_npxg"].notna()
+    ].copy()
     if len(played_df) == 0:
         return df
 
     teams = pd.unique(df[["home_team", "away_team"]].values.ravel())
 
-    # calculate npxg stats for each team
+    # calculate npxgd stats for each team
     for team in teams:
-        team_data = _calculate_team_npxg(played_df, team, windows)
-        df = _merge_team_npxg(df, team_data, team, windows)
+        df = _calculate_and_merge_team_npxgd(df, played_df, team, windows)
 
     return df
 
 
-def _calculate_team_npxg(
-    played_df: pd.DataFrame, team: str, windows: List[int]
+def _calculate_and_merge_team_npxgd(
+    df: pd.DataFrame, played_df: pd.DataFrame, team: str, windows: List[int]
 ) -> pd.DataFrame:
-    """Calculate rolling npxG statistics for a single team"""
-    # get all matches with npxg data
+    """Calculate and merge rolling npxGD statistics for a single team"""
+    # get all matches with npxg data for this team
     team_home = played_df[played_df["home_team"] == team].copy()
     team_away = played_df[played_df["away_team"] == team].copy()
 
-    team_home["is_home"] = True
-    team_away["is_home"] = False
-
-    team_matches = pd.concat([team_home, team_away]).sort_values("date")
-
-    if len(team_matches) == 0:
-        return pd.DataFrame()
-
-    # extract npxg for/against
-    team_matches["npxg"] = np.where(
-        team_matches["is_home"], team_matches["home_npxg"], team_matches["away_npxg"]
-    )
-    team_matches["npxga"] = np.where(
-        team_matches["is_home"], team_matches["away_npxg"], team_matches["home_npxg"]
-    )
-
-    # calculate rolling statistics
-    for window in windows:
-        team_matches[f"npxg_w{window}_mean"] = (
-            team_matches["npxg"].rolling(window, min_periods=1).mean()
-        )
-        team_matches[f"npxg_w{window}_std"] = (
-            team_matches["npxg"].rolling(window, min_periods=1).std()
-        )
-        team_matches[f"npxga_w{window}_mean"] = (
-            team_matches["npxga"].rolling(window, min_periods=1).mean()
-        )
-        team_matches[f"npxga_w{window}_std"] = (
-            team_matches["npxga"].rolling(window, min_periods=1).std()
-        )
-
-        # shift to exclude current match
-        for col in [
-            f"npxg_w{window}_mean",
-            f"npxg_w{window}_std",
-            f"npxga_w{window}_mean",
-            f"npxga_w{window}_std",
-        ]:
-            team_matches[col] = team_matches[col].shift(1).fillna(0)
-
-    return team_matches
-
-
-def _merge_team_npxg(
-    df: pd.DataFrame, team_data: pd.DataFrame, team: str, windows: List[int]
-) -> pd.DataFrame:
-    """Merge team npxG data back to main dataframe"""
-    if team_data.empty:
+    if len(team_home) == 0 and len(team_away) == 0:
         return df
 
-    for is_home, prefix in [(True, "home"), (False, "away")]:
-        mask = team_data["is_home"] == is_home
-        if not mask.any():
-            continue
+    # add venue indicator and keep original index
+    team_home["is_home"] = True
+    team_home["orig_idx"] = team_home.index
+    team_away["is_home"] = False
+    team_away["orig_idx"] = team_away.index
 
-        team_subset = team_data[mask]
-        indices = df[
-            (df[f"{prefix}_team"] == team) & df[f"{prefix}_team"].notna()
-        ].index
+    # combine and sort by date
+    team_matches = (
+        pd.concat([team_home, team_away]).sort_values("date").reset_index(drop=True)
+    )
 
-        if len(team_subset) != len(indices):
-            continue
+    # calculate npxGD (npxG for - npxG against)
+    team_matches["npxgd"] = np.where(
+        team_matches["is_home"],
+        team_matches["home_npxg"]
+        - team_matches["away_npxg"],  # home: home_npxg - away_npxg
+        team_matches["away_npxg"]
+        - team_matches["home_npxg"],  # away: away_npxg - home_npxg
+    )
+
+    # calculate rolling mean for each window
+    for window in windows:
+        team_matches[f"npxgd_w{window}"] = (
+            team_matches["npxgd"].rolling(window, min_periods=1).mean()
+        )
+
+        # shift to exclude current match (we want form going INTO the match)
+        team_matches[f"npxgd_w{window}"] = team_matches[
+            f"npxgd_w{window}"
+        ].shift(1)
+
+    # merge back to main dataframe using original indices
+    for _, row in team_matches.iterrows():
+        idx = row["orig_idx"]
+        is_home = row["is_home"]
+        prefix = "home" if is_home else "away"
 
         for window in windows:
-            df.loc[indices, f"{prefix}_npxg_w{window}_mean"] = team_subset[
-                f"npxg_w{window}_mean"
-            ].values
-            df.loc[indices, f"{prefix}_npxg_w{window}_std"] = team_subset[
-                f"npxg_w{window}_std"
-            ].values
-            df.loc[indices, f"{prefix}_npxga_w{window}_mean"] = team_subset[
-                f"npxga_w{window}_mean"
-            ].values
-            df.loc[indices, f"{prefix}_npxga_w{window}_std"] = team_subset[
-                f"npxga_w{window}_std"
-            ].values
+            df.at[idx, f"{prefix}_npxgd_w{window}"] = row[f"npxgd_w{window}"]
 
     return df
 
 
-def add_home_vs_away_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Calculate home vs away performance"""
+def add_venue_npxgd_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate venue-specific npxGD performance.
+
+    Creates:
+    - home_venue_npxgd_per_game: home team's avg npxGD when playing at home
+    - away_venue_npxgd_per_game: away team's avg npxGD when playing away
+    """
     df = df.sort_values("date").copy()
 
     # initialise columns
-    for team_type in ["home", "away"]:
-        df[f"{team_type}_npxg_per_game"] = 0.0
-        df[f"{team_type}_npxga_per_game"] = 0.0
+    df["home_venue_npxgd_per_game"] = np.nan
+    df["away_venue_npxgd_per_game"] = np.nan
 
-    played_df = df[df["is_played"]].copy()
+    played_df = df[
+        df["is_played"] & df["home_npxg"].notna() & df["away_npxg"].notna()
+    ].copy()
     if len(played_df) == 0:
         return df
 
     # calculate by season and team
     for season in df["season_end_year"].unique():
-        season_mask = (df["season_end_year"] == season) & df["is_played"]
+        season_mask = (
+            (df["season_end_year"] == season)
+            & df["is_played"]
+            & df["home_npxg"].notna()
+            & df["away_npxg"].notna()
+        )
         season_df = df[season_mask].copy()
+
+        if len(season_df) == 0:
+            continue
 
         teams = pd.unique(season_df[["home_team", "away_team"]].values.ravel())
 
         for team in teams:
-            df = _calculate_home_vs_away_stats(df, season_df, team)
+            df = _calculate_venue_npxgd_stats(df, season_df, team)
 
     return df
 
 
-def _calculate_home_vs_away_stats(
+def _calculate_venue_npxgd_stats(
     df: pd.DataFrame, season_df: pd.DataFrame, team: str
 ) -> pd.DataFrame:
-    """Calculate home vs away statistics for a single team"""
-    # home performance
+    """Calculate venue-specific npxGD statistics for a single team"""
+    # home venue performance (team playing at home)
     team_home_matches = season_df[season_df["home_team"] == team].sort_values("date")
 
     for i, (idx, match) in enumerate(team_home_matches.iterrows()):
-        if i > 0:  # need at least one previous match
+        if i > 0:  # need at least one previous home match
             prev_matches = team_home_matches.iloc[:i]
 
-            # calculate cumulative stats
-            npxg_pg = prev_matches["home_npxg"].mean()
-            npxga_pg = prev_matches["away_npxg"].mean()
+            # calculate npxGD when playing at home: home_npxg - away_npxg
+            npxgd_per_game = (
+                prev_matches["home_npxg"] - prev_matches["away_npxg"]
+            ).mean()
 
-            df.at[idx, "home_npxg_per_game"] = npxg_pg
-            df.at[idx, "home_npxga_per_game"] = npxga_pg
+            df.at[idx, "home_venue_npxgd_per_game"] = npxgd_per_game
 
-    # away performance
+    # away venue performance (team playing away)
     team_away_matches = season_df[season_df["away_team"] == team].sort_values("date")
 
     for i, (idx, match) in enumerate(team_away_matches.iterrows()):
-        if i > 0:
+        if i > 0:  # need at least one previous away match
             prev_matches = team_away_matches.iloc[:i]
 
-            npxg_pg = prev_matches["away_npxg"].mean()
-            npxga_pg = prev_matches["home_npxg"].mean()
+            # calculate npxGD when playing away: away_npxg - home_npxg
+            npxgd_per_game = (
+                prev_matches["away_npxg"] - prev_matches["home_npxg"]
+            ).mean()
 
-            df.at[idx, "away_npxg_per_game"] = npxg_pg
-            df.at[idx, "away_npxga_per_game"] = npxga_pg
+            df.at[idx, "away_venue_npxgd_per_game"] = npxgd_per_game
 
     return df
 
@@ -412,10 +402,12 @@ def test_data_preparation():
     # check key features
     key_features = [
         "home_points",
-        "home_npxg_w10_mean",
-        "away_npxg_w10_mean",
-        "home_npxg_per_game",
-        "away_npxg_per_game",
+        "home_npxgd_w5",
+        "home_npxgd_w10",
+        "away_npxgd_w5",
+        "away_npxgd_w10",
+        "home_venue_npxgd_per_game",
+        "away_venue_npxgd_per_game",
         "value_ratio",
         "odds_home_away_ratio",
     ]
@@ -424,10 +416,13 @@ def test_data_preparation():
     for feat in key_features:
         if feat in historic_df.columns:
             non_null = historic_df[feat].notna().sum()
-            non_zero = (historic_df[feat] > 0).sum()
+            non_zero = (historic_df[feat] != 0).sum()
             mean_val = historic_df[feat].mean()
+            min_val = historic_df[feat].min()
+            max_val = historic_df[feat].max()
             print(
-                f"  {feat}: {non_null} non-null, {non_zero} non-zero, mean={mean_val:.3f}"
+                f"  {feat}: {non_null} non-null, {non_zero} non-zero, "
+                f"mean={mean_val:.3f}, min={min_val:.3f}, max={max_val:.3f}"
             )
         else:
             print(f"  {feat}: MISSING")

@@ -377,10 +377,6 @@ class FBRefScraper(BaseScraper):
                         "touches_att_3rd": self._safe_float(
                             match_data.get("touches_att_3rd")
                         ),
-                        "passes_completed": self._safe_float(
-                            match_data.get("passes_completed")
-                        ),
-                        "passes": self._safe_float(match_data.get("passes")),
                     }
 
                     possession_data.append(possession_row)
@@ -522,8 +518,6 @@ class FBRefScraper(BaseScraper):
             "touches",
             "touches_att_pen_area",
             "touches_att_3rd",
-            "passes_completed",
-            "passes",
             "cards_yellow",
             "cards_red",
             "fouls",
