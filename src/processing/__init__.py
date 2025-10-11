@@ -2,3 +2,8 @@
 
 from .data_processor import DataProcessor
 from .model_preparation import prepare_bundesliga_data
+
+__all__ = [
+    "DataProcessor",
+    "prepare_bundesliga_data"
+]
