@@ -143,7 +143,7 @@ def validate_features(
     if all_present and len(columns_with_nulls) == 0:
         summary = "✓ All required features present and complete"
     elif all_present:
-        summary = f"⚠ All columns present but {len(columns_with_nulls)} have nulls"
+        summary = f" All columns present but {len(columns_with_nulls)} have nulls"
     else:
         summary = f"✗ Missing {len(missing)} required columns"
 
