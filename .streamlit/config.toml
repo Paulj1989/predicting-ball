@@ -1,0 +1,28 @@
+# .streamlit/config.toml
+
+[theme]
+# primaryColor = "#43494D"
+# backgroundColor = "#FFFFFF"
+# secondaryBackgroundColor = "#F7F9FA"
+# textColor = "#2C3033"
+font = "sans serif"
+
+[server]
+headless = true
+port = 8501
+
+# Security settings
+# For read-only prediction app, disable XSRF to allow CORS=false
+enableCORS = false
+enableXsrfProtection = false
+maxUploadSize = 1
+
+[browser]
+gatherUsageStats = false
+
+[client]
+# Don't show detailed error messages to users (security)
+showErrorDetails = "none"
+
+# Toolbar mode (minimal for production)
+toolbarMode = "minimal"
