@@ -54,41 +54,101 @@ def _render_standings_table(projections):
     """Render interactive standings table"""
     st.subheader("Projected League Standings")
 
-    # prepare data for display - now including ratings
-    display_df = projections[
-        [
-            "team",
-            "projected_points",
-            "projected_gd",
-            "overall_rating",
-            "attack_rating",
-            "defense_rating",
-            "title_prob",
-            "ucl_prob",
-            "relegation_prob",
+    # automatic mobile detection
+    try:
+        from streamlit_js_eval import streamlit_js_eval
+
+        # Get screen width using JavaScript
+        screen_width = streamlit_js_eval(
+            js_expressions="window.innerWidth", key="screen_width_check"
+        )
+
+        # default to desktop if none (first load)
+        if screen_width is None:
+            is_mobile = False
+        else:
+            is_mobile = screen_width < 768
+
+    except ImportError:
+        # if streamlit-js-eval not installed, use session state with css
+        st.markdown(
+            """
+        <style>
+            @media (max-width: 768px) {
+                /* Hide ratings columns on mobile */
+                [data-testid="column"]:nth-child(n+4):nth-child(-n+6) {
+                    display: none !important;
+                }
+            }
+        </style>
+        """,
+            unsafe_allow_html=True,
+        )
+        is_mobile = False
+
+    # select columns based on view mode
+    if is_mobile:
+        # mobile: essential columns only
+        display_df = projections[
+            [
+                "team",
+                "projected_points",
+                "title_prob",
+                "ucl_prob",
+                "relegation_prob",
+            ]
+        ].copy()
+
+        display_df.columns = [
+            "Team",
+            "Pts",
+            "Title %",
+            "UCL %",
+            "Rel %",
         ]
-    ].copy()
+    else:
+        display_df = projections[
+            [
+                "team",
+                "projected_points",
+                "projected_gd",
+                "overall_rating",
+                "attack_rating",
+                "defense_rating",
+                "title_prob",
+                "ucl_prob",
+                "relegation_prob",
+            ]
+        ].copy()
 
-    display_df.columns = [
-        "Team",
-        "Points",
-        "Goal Difference",
-        "Overall",
-        "Attack",
-        "Defense",
-        "Title %",
-        "UCL %",
-        "Relegation %",
-    ]
+        display_df.columns = [
+            "Team",
+            "Points",
+            "GD",
+            "Overall",
+            "Attack",
+            "Defense",
+            "Title %",
+            "UCL %",
+            "Relegation %",
+        ]
 
-    display_df["Points"] = display_df["Points"].round(0).astype(int)
-    display_df["Goal Difference"] = display_df["Goal Difference"].round(0).astype(int)
-    display_df["Overall"] = display_df["Overall"].round(2)
-    display_df["Attack"] = display_df["Attack"].round(2)
-    display_df["Defense"] = display_df["Defense"].round(2)
+    if is_mobile:
+        display_df["Pts"] = display_df["Pts"].round(0).astype(int)
+    else:
+        display_df["Points"] = display_df["Points"].round(0).astype(int)
+        display_df["GD"] = (
+            display_df["GD"].round(0).astype(int)
+        )
+        display_df["Overall"] = display_df["Overall"].round(2)
+        display_df["Attack"] = display_df["Attack"].round(2)
+        display_df["Defense"] = display_df["Defense"].round(2)
+
     display_df["Title %"] = (display_df["Title %"] * 100).round(1)
     display_df["UCL %"] = (display_df["UCL %"] * 100).round(1)
-    display_df["Relegation %"] = (display_df["Relegation %"] * 100).round(1)
+    display_df[display_df.columns[-1]] = (
+        display_df[display_df.columns[-1]] * 100
+    ).round(1)
 
     # create aggrid with custom styling
     gb = GridOptionsBuilder.from_dataframe(display_df)
@@ -104,18 +164,25 @@ def _render_standings_table(projections):
     # disable pagination
     gb.configure_pagination(enabled=False)
 
-    # configure columns with flex sizing
-    gb.configure_column("Team", pinned="left", flex=2)
-    gb.configure_column("Points", flex=1, type=["numericColumn"])
-    gb.configure_column("Goal Difference", flex=1.2, type=["numericColumn"])
-    gb.configure_column("Overall", flex=1, type=["numericColumn"])
-    gb.configure_column("Attack", flex=1, type=["numericColumn"])
-    gb.configure_column("Defense", flex=1, type=["numericColumn"])
-    gb.configure_column("Title %", flex=1, type=["numericColumn"])
-    gb.configure_column("UCL %", flex=1, type=["numericColumn"])
-    gb.configure_column("Relegation %", flex=1.2, type=["numericColumn"])
+    # configure columns based on view mode
+    if is_mobile:
+        gb.configure_column("Team", pinned="left", flex=2, maxWidth=120)
+        gb.configure_column("Pts", flex=1, maxWidth=60)
+        gb.configure_column("Title %", flex=1, maxWidth=70)
+        gb.configure_column("UCL %", flex=1, maxWidth=70)
+        gb.configure_column("Rel %", flex=1, maxWidth=70)
+    else:
+        gb.configure_column("Team", pinned="left", flex=3, minWidth=165)
+        gb.configure_column("Points", flex=1, type=["numericColumn"])
+        gb.configure_column("GD", flex=0.8, type=["numericColumn"])
+        gb.configure_column("Overall", flex=1, type=["numericColumn"])
+        gb.configure_column("Attack", flex=1, type=["numericColumn"])
+        gb.configure_column("Defense", flex=1, type=["numericColumn"])
+        gb.configure_column("Title %", flex=1, type=["numericColumn"])
+        gb.configure_column("UCL %", flex=1, type=["numericColumn"])
+        gb.configure_column("Relegation %", flex=1.5, minWidth=100, type=["numericColumn"])
 
-    # Enhanced cell styling for probabilities with white text on dark backgrounds
+    # enhanced cell styling for probabilities with white text on dark backgrounds
     cell_style_jscode = JsCode("""
     function(params) {
         const value = params.value;
@@ -154,7 +221,7 @@ def _render_standings_table(projections):
             colors = interpolateColor(value, '#026E99', 1);  // Shade if >1%
         } else if (column === 'UCL %') {
             colors = interpolateColor(value, '#FFA600', 1);  // Shade if >1%
-        } else if (column === 'Relegation %') {
+        } else if (column === 'Relegation %' || column === 'Rel %') {
             colors = interpolateColor(value, '#D93649', 1);  // Shade if >1%
         }
 
@@ -169,42 +236,48 @@ def _render_standings_table(projections):
     }
     """)
 
-    # Apply the cell style to probability columns
+    # apply the cell style to probability columns
     gb.configure_column("Title %", cellStyle=cell_style_jscode)
     gb.configure_column("UCL %", cellStyle=cell_style_jscode)
-    gb.configure_column("Relegation %", cellStyle=cell_style_jscode)
+    if is_mobile:
+        gb.configure_column("Rel %", cellStyle=cell_style_jscode)
+    else:
+        gb.configure_column("Relegation %", cellStyle=cell_style_jscode)
 
-    # Add header styling for visual grouping (since AgGrid doesn't support spanners)
-    # We can at least style the headers to show grouping
-    header_style = {
-        "Overall": {"backgroundColor": "#f0f0f0"},
-        "Attack": {"backgroundColor": "#f0f0f0"},
-        "Defense": {"backgroundColor": "#f0f0f0"},
-        "Title %": {"backgroundColor": "#e6f3f7"},
-        "UCL %": {"backgroundColor": "#fff4e6"},
-        "Relegation %": {"backgroundColor": "#fde8eb"},
-    }
+        # add header styling for visual grouping on desktop
+        header_style = {
+            "Overall": {"backgroundColor": "#f0f0f0"},
+            "Attack": {"backgroundColor": "#f0f0f0"},
+            "Defense": {"backgroundColor": "#f0f0f0"},
+            "Title %": {"backgroundColor": "#e6f3f7"},
+            "UCL %": {"backgroundColor": "#fff4e6"},
+            "Relegation %": {"backgroundColor": "#fde8eb"},
+        }
 
-    for col, style in header_style.items():
-        gb.configure_column(col, headerStyle=style)
+        for col, style in header_style.items():
+            if col in display_df.columns:
+                gb.configure_column(col, headerStyle=style)
 
     gridOptions = gb.build()
     gridOptions["domLayout"] = "autoHeight"
     gridOptions["suppressRowHoverHighlight"] = True
 
-    st.caption(
-        "Columns: **Projections** (Points, Goal Difference) | **Ratings** (Overall, Attack, Defense) | **Probabilities** (Title, UCL, Relegation)"
-    )
+    # add note about column groupings for desktop view only
+    if not is_mobile:
+        st.caption(
+            "Columns: **Projections** (Points, Goal Difference) | **Ratings** (Overall, Attack, Defense) | **Probabilities** (Title, UCL, Relegation)"
+        )
 
     AgGrid(
         display_df,
         gridOptions=gridOptions,
-        height=668,
+        height=668 if not is_mobile else 600,
         theme="streamlit",
         update_on=["SELECTION_CHANGED"],
         allow_unsafe_jscode=True,
         fit_columns_on_grid_load=True,
     )
+
 
 
 def _render_charts(projections):
