@@ -29,4 +29,5 @@ dependencies = [
     "altair>=5.5.0",
     "streamlit-aggrid>=1.1.9",
     "watchdog>=6.0.0",
+    "streamlit-js-eval>=0.1.7",
 ]
