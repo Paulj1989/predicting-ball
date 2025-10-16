@@ -101,7 +101,12 @@ def predict_single_match(
 def predict_next_fixtures(
     fixtures: pd.DataFrame, params: Dict[str, Any], calibrators: Optional[Any] = None
 ) -> Optional[pd.DataFrame]:
-    """Generate predictions for multiple fixtures"""
+    """
+    Generate predictions for multiple fixtures.
+
+    Applies temperature scaling if calibrators are provided and contain
+    a temperature parameter.
+    """
     if fixtures is None or len(fixtures) == 0:
         return None
 
@@ -134,12 +139,13 @@ def predict_next_fixtures(
             away_pens_att=away_pens_att,
         )
 
-        # apply calibration if available
-        if calibrators is not None and "isotonic_calibrators" in calibrators:
-            from ..models.calibration import apply_calibration
+        # apply temperature scaling if available
+        if calibrators is not None and "temperature" in calibrators:
+            from ..models.calibration import apply_temperature_scaling
 
+            temperature = calibrators["temperature"]
             probs = np.array([[pred["home_win"], pred["draw"], pred["away_win"]]])
-            calibrated = apply_calibration(probs, calibrators["isotonic_calibrators"])
+            calibrated = apply_temperature_scaling(probs, temperature)
 
             pred["home_win"] = calibrated[0, 0]
             pred["draw"] = calibrated[0, 1]

@@ -12,8 +12,8 @@ from .priors import (
 )
 
 from .calibration import (
-    fit_isotonic_calibrator,
-    apply_calibration,
+    fit_temperature_scaler,
+    apply_temperature_scaling,
     calibrate_dispersion_for_coverage,
     calibrate_model_comprehensively,
 )
@@ -31,9 +31,9 @@ __all__ = [
     "calculate_home_advantage_prior",
     "calculate_promoted_team_priors",
     "identify_promoted_teams",
-    # calibration
-    "fit_isotonic_calibrator",
-    "apply_calibration",
+    # calibration (temperature scaling)
+    "fit_temperature_scaler",
+    "apply_temperature_scaling",
     "calibrate_dispersion_for_coverage",
     "calibrate_model_comprehensively",
     # hyperparameters

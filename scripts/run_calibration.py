@@ -5,6 +5,9 @@ Run Calibration
 
 Fit post-hoc calibrators for improved probability estimates.
 
+Uses temperature scaling for probability calibration - a single-parameter
+method that adjusts confidence without changing outcome rankings.
+
 Usage:
     python scripts/run_calibration.py --model-path outputs/models/production_model.pkl
 """
@@ -19,7 +22,8 @@ import pandas as pd
 import numpy as np
 
 from src.models.calibration import (
-    fit_isotonic_calibrator,
+    fit_temperature_scaler,
+    apply_temperature_scaling,
     calibrate_dispersion_for_coverage,
     calibrate_model_comprehensively,
 )
@@ -83,7 +87,7 @@ def main():
     args = parse_args()
 
     print("=" * 70)
-    print("POST-HOC CALIBRATION")
+    print("POST-HOC CALIBRATION (TEMPERATURE SCALING)")
     print("=" * 70)
 
     # ========================================================================
@@ -104,7 +108,6 @@ def main():
     # ========================================================================
     print("\n2. Loading calibration data...")
 
-    # data already includes all features (weighted performance, npxGD, etc.)
     historic_data, current_season = prepare_bundesliga_data(
         windows=windows, verbose=False
     )
@@ -135,30 +138,35 @@ def main():
     print(f"   Calibration set: {len(calibration_data)} matches")
 
     # ========================================================================
-    # FIT ISOTONIC CALIBRATORS
+    # FIT TEMPERATURE SCALING
     # ========================================================================
-    print("\n3. Fitting isotonic regression calibrators...")
+    print("\n3. Fitting temperature scaling...")
 
     # get predictions on calibration set
     metrics_uncal, cal_predictions, cal_actuals = evaluate_model_comprehensive(
         model["params"], calibration_data
     )
 
-    print(f"   Uncalibrated Brier: {metrics_uncal['brier_score']:.4f}")
-    print(f"   Uncalibrated RPS:   {metrics_uncal.get('rps', 'N/A')}")
+    print(f"\n   Uncalibrated metrics:")
+    print(f"     Brier: {metrics_uncal['brier_score']:.4f}")
+    print(f"     RPS:   {metrics_uncal.get('rps', 'N/A')}")
+    print(f"     Log Loss: {metrics_uncal.get('log_loss', 'N/A')}")
 
-    # fit calibrators
-    calibrators = fit_isotonic_calibrator(cal_predictions, cal_actuals)
+    # fit temperature scaler
+    temperature = fit_temperature_scaler(cal_predictions, cal_actuals, verbose=True)
 
     # test improvement
-    from src.models.calibration import apply_calibration
-    from src.evaluation.metrics import calculate_brier_score
+    from src.evaluation.metrics import calculate_brier_score, calculate_log_loss
 
-    cal_preds_calibrated = apply_calibration(cal_predictions, calibrators)
+    cal_preds_calibrated = apply_temperature_scaling(cal_predictions, temperature)
     brier_cal = calculate_brier_score(cal_preds_calibrated, cal_actuals)
+    log_loss_cal = calculate_log_loss(cal_preds_calibrated, cal_actuals)
 
-    print(f"   Calibrated Brier:   {brier_cal:.4f}")
-    print(f"   Improvement:        {metrics_uncal['brier_score'] - brier_cal:.4f}")
+    print(f"\n   Calibrated metrics:")
+    print(
+        f"     Brier: {brier_cal:.4f} (Δ = {brier_cal - metrics_uncal['brier_score']:+.4f})"
+    )
+    print(f"     Log Loss: {log_loss_cal:.4f}")
 
     # ========================================================================
     # DISPERSION CALIBRATION (Optional)
@@ -190,9 +198,12 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     calibrator_package = {
-        "isotonic_calibrators": calibrators,
+        "temperature": temperature,
+        "calibration_method": "temperature_scaling",
         "dispersion_calibrated": dispersion_calibrated,
         "calibration_data_size": len(calibration_data),
+        "brier_uncalibrated": metrics_uncal["brier_score"],
+        "brier_calibrated": brier_cal,
         "calibration_improvement": metrics_uncal["brier_score"] - brier_cal,
         "windows": windows,
         "calibration_date": pd.Timestamp.now(),
@@ -214,7 +225,7 @@ def main():
     report = create_calibration_report(
         cal_preds_calibrated,
         cal_actuals,
-        model_name="Calibrated Model",
+        model_name="Temperature Scaled Model",
         save_path=figures_dir / "calibration_report.png",
     )
 
@@ -226,9 +237,10 @@ def main():
     print("\n" + "=" * 70)
     print("CALIBRATION COMPLETE")
     print("=" * 70)
-    print(f"Calibrators saved to: {calibrator_path}")
+    print(f"Method: Temperature Scaling")
+    print(f"Optimal temperature: {temperature:.3f}")
     print(f"Calibration set size: {len(calibration_data)} matches")
-    print(f"Brier improvement: {metrics_uncal['brier_score'] - brier_cal:.4f}")
+    print(f"Brier improvement: {metrics_uncal['brier_score'] - brier_cal:+.4f}")
 
     if dispersion_calibrated:
         print("Dispersion calibration: ✓ Enabled")
