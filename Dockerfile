@@ -1,5 +1,3 @@
-# Dockerfile
-
 FROM python:3.12-slim AS builder
 
 WORKDIR /app
@@ -32,7 +30,7 @@ COPY --chown=streamlit:streamlit src/ ./src/
 COPY --chown=streamlit:streamlit outputs/models/ ./outputs/models/
 COPY --chown=streamlit:streamlit outputs/predictions/ ./outputs/predictions/
 COPY --chown=streamlit:streamlit outputs/tables/ ./outputs/tables/
-COPY --chown=streamlit:streamlit data/ ./data/
+# COPY --chown=streamlit:streamlit data/ ./data/
 COPY --chown=streamlit:streamlit .streamlit/ ./.streamlit/
 
 # Switch to non-root user
