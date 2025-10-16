@@ -9,7 +9,7 @@ from app.components.probability_bar import create_probability_bar
 def render(fixtures):
     """Display fixture predictions page"""
     st.markdown(
-        '<div class="main-header">Upcoming Fixture Predictions</div>',
+        '<h2 style="font-size: 1.8rem; text-align: center;">Upcoming Fixture Predictions</h2>',
         unsafe_allow_html=True,
     )
 

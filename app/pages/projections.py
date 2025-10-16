@@ -11,7 +11,7 @@ import matplotlib.colors as mcolors
 def render(projections):
     """Display the season projections page"""
     st.markdown(
-        '<div class="main-header">Bundesliga 2025/26 Season Projections</div>',
+        '<h2 style="font-size: 1.8rem; text-align: center;">Bundesliga 2025/26 Season Projections</h2>',
         unsafe_allow_html=True,
     )
     st.markdown(
@@ -54,12 +54,15 @@ def _render_standings_table(projections):
     """Render interactive standings table"""
     st.subheader("Projected League Standings")
 
-    # prepare data for display
+    # prepare data for display - now including ratings
     display_df = projections[
         [
             "team",
             "projected_points",
             "projected_gd",
+            "overall_rating",
+            "attack_rating",
+            "defense_rating",
             "title_prob",
             "ucl_prob",
             "relegation_prob",
@@ -70,12 +73,19 @@ def _render_standings_table(projections):
         "Team",
         "Points",
         "Goal Difference",
+        "Overall",
+        "Attack",
+        "Defense",
         "Title %",
         "UCL %",
         "Relegation %",
     ]
+
     display_df["Points"] = display_df["Points"].round(0).astype(int)
     display_df["Goal Difference"] = display_df["Goal Difference"].round(0).astype(int)
+    display_df["Overall"] = display_df["Overall"].round(2)
+    display_df["Attack"] = display_df["Attack"].round(2)
+    display_df["Defense"] = display_df["Defense"].round(2)
     display_df["Title %"] = (display_df["Title %"] * 100).round(1)
     display_df["UCL %"] = (display_df["UCL %"] * 100).round(1)
     display_df["Relegation %"] = (display_df["Relegation %"] * 100).round(1)
@@ -97,58 +107,94 @@ def _render_standings_table(projections):
     # configure columns with flex sizing
     gb.configure_column("Team", pinned="left", flex=2)
     gb.configure_column("Points", flex=1, type=["numericColumn"])
-    gb.configure_column(
-        "Goal Difference", flex=1, type=["numericColumn"]
-    )
-    gb.configure_column(
-        "Title %", flex=1, type=["numericColumn"]
-    )
-    gb.configure_column(
-        "UCL %", flex=1, type=["numericColumn"]
-    )
-    gb.configure_column(
-        "Relegation %", flex=1, type=["numericColumn"]
-    )
+    gb.configure_column("Goal Difference", flex=1.2, type=["numericColumn"])
+    gb.configure_column("Overall", flex=1, type=["numericColumn"])
+    gb.configure_column("Attack", flex=1, type=["numericColumn"])
+    gb.configure_column("Defense", flex=1, type=["numericColumn"])
+    gb.configure_column("Title %", flex=1, type=["numericColumn"])
+    gb.configure_column("UCL %", flex=1, type=["numericColumn"])
+    gb.configure_column("Relegation %", flex=1.2, type=["numericColumn"])
 
-    # cell styling for probabilities
+    # Enhanced cell styling for probabilities with white text on dark backgrounds
     cell_style_jscode = JsCode("""
     function(params) {
         const value = params.value;
         const column = params.colDef.field;
 
         // Helper to interpolate between white and target color
-        function interpolateColor(value, targetColor) {
-            const intensity = value / 100;  // 0 to 1
+        function interpolateColor(value, targetColor, threshold) {
+            // Apply shading only if value is above threshold
+            if (value <= threshold) {
+                return {bg: 'rgb(255, 255, 255)', text: '#000000'};
+            }
+
+            // Scale the intensity based on the threshold
+            const intensity = Math.min((value - threshold) / (100 - threshold), 1);
+
             const rgb = {
                 r: parseInt(targetColor.slice(1,3), 16),
                 g: parseInt(targetColor.slice(3,5), 16),
                 b: parseInt(targetColor.slice(5,7), 16)
             };
+
             const finalR = Math.round(255 + (rgb.r - 255) * intensity);
             const finalG = Math.round(255 + (rgb.g - 255) * intensity);
             const finalB = Math.round(255 + (rgb.b - 255) * intensity);
-            return `rgb(${finalR}, ${finalG}, ${finalB})`;
+
+            // Calculate luminance to determine text color
+            const luminance = (0.299 * finalR + 0.587 * finalG + 0.114 * finalB) / 255;
+            const textColor = luminance > 0.5 ? '#000000' : '#FFFFFF';
+
+            return {bg: `rgb(${finalR}, ${finalG}, ${finalB})`, text: textColor};
         }
 
+        let colors = null;
+
         if (column === 'Title %') {
-            return {'backgroundColor': interpolateColor(value, '#026E99')};
+            colors = interpolateColor(value, '#026E99', 1);  // Shade if >1%
         } else if (column === 'UCL %') {
-            return {'backgroundColor': interpolateColor(value, '#FFA600')};
+            colors = interpolateColor(value, '#FFA600', 1);  // Shade if >1%
         } else if (column === 'Relegation %') {
-            return {'backgroundColor': interpolateColor(value, '#D93649')};
+            colors = interpolateColor(value, '#D93649', 1);  // Shade if >1%
+        }
+
+        if (colors) {
+            return {
+                'backgroundColor': colors.bg,
+                'color': colors.text
+            };
         }
 
         return {};
     }
     """)
 
-    gb.configure_column("Title %", cellStyle=cell_style_jscode, flex=1)
-    gb.configure_column("UCL %", cellStyle=cell_style_jscode, flex=1)
-    gb.configure_column("Relegation %", cellStyle=cell_style_jscode, flex=1)
+    # Apply the cell style to probability columns
+    gb.configure_column("Title %", cellStyle=cell_style_jscode)
+    gb.configure_column("UCL %", cellStyle=cell_style_jscode)
+    gb.configure_column("Relegation %", cellStyle=cell_style_jscode)
+
+    # Add header styling for visual grouping (since AgGrid doesn't support spanners)
+    # We can at least style the headers to show grouping
+    header_style = {
+        "Overall": {"backgroundColor": "#f0f0f0"},
+        "Attack": {"backgroundColor": "#f0f0f0"},
+        "Defense": {"backgroundColor": "#f0f0f0"},
+        "Title %": {"backgroundColor": "#e6f3f7"},
+        "UCL %": {"backgroundColor": "#fff4e6"},
+        "Relegation %": {"backgroundColor": "#fde8eb"},
+    }
+
+    for col, style in header_style.items():
+        gb.configure_column(col, headerStyle=style)
 
     gridOptions = gb.build()
     gridOptions["domLayout"] = "autoHeight"
     gridOptions["suppressRowHoverHighlight"] = True
+
+    st.caption(
+        "Columns: **Projections** (Points, Goal Difference) | **Ratings** (Overall, Attack, Defense) | **Probabilities** (Title, UCL, Relegation)"
+    )
 
     AgGrid(
         display_df,
@@ -176,7 +222,7 @@ def _render_charts(projections):
             .encode(
                 x=alt.X(
                     "title_prob:Q",
-                    title="Meisterschale Race",
+                    title="Probability",
                     axis=alt.Axis(format="%"),
                 ),
                 y=alt.Y("team:N", title=None, sort="-x"),
@@ -212,7 +258,7 @@ def _render_charts(projections):
             .encode(
                 x=alt.X(
                     "relegation_prob:Q",
-                    title="Relegation Probability",
+                    title="Probability",
                     axis=alt.Axis(format="%"),
                 ),
                 y=alt.Y("team:N", title=None, sort="-x"),

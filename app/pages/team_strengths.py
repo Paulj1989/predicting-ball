@@ -8,7 +8,8 @@ import altair as alt
 def render(model, projections):
     """Display team analysis page with rating visualisations"""
     st.markdown(
-        '<div class="main-header">Team Strength Ratings</div>', unsafe_allow_html=True
+        '<h2 style="font-size: 1.8rem; text-align: center;">Team Strength Ratings</h2>',
+        unsafe_allow_html=True,
     )
 
     if model is None:

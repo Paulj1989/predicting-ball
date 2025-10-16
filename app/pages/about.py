@@ -6,14 +6,15 @@ import streamlit as st
 def render():
     """Display information about the model"""
     st.markdown(
-        '<div class="main-header">About the Model</div>', unsafe_allow_html=True
+        '<h2 style="font-size: 1.8rem; text-align: center;">About the Model</h2>',
+        unsafe_allow_html=True,
     )
 
     st.markdown("""
-    ## Methodology
+    ### Methodology
     This Bundesliga prediction model uses a hybrid Poisson regression approach combined with Monte Carlo simulation to generate probabilistic forecasts for the 2025/26 season.
 
-    ### Model Components
+    #### Model Components
     The prediction system consists of several integrated components that work together to produce reliable forecasts:
 
     **Team Strength Estimation**: We fit a Poisson regression model that estimates each team's attacking and defensive capabilities based on their weighted performance metrics. The model incorporates non-penalty expected goals (npxG), non-penalty goals, shots, and touches in the attacking penalty area. This weighted approach provides a more stable signal for team quality that is less susceptible to short-term variance.
@@ -24,7 +25,7 @@ def render():
 
     **Monte Carlo Simulation**: Season projections come from 100,000 simulations of all remaining fixtures. Each simulation samples team parameters from the bootstrap distribution and generates match outcomes using calibrated Poisson distributions. Final league positions account for the full uncertainty in both team strengths and match outcomes, producing realistic probability distributions for the Meisterschale, European qualification, and relegation.
 
-    ### Performance
+    #### Performance
 
     The model has been validated on historical Bundesliga seasons using proper time-series cross-validation:
 
@@ -32,14 +33,14 @@ def render():
     - **Brier Score**: Quantifies calibration of probabilistic forecasts
     - **Accuracy**: Percentage of correct outcome predictions
 
-    ### Data Sources
+    #### Data Sources
 
     - **FBRef**: Match results, expected goals, shots, possession, and advanced statistics
     - **Transfermarkt**: Squad market values and team rosters
     - **Football-Data.co.uk**: Historical betting odds from multiple bookmakers
     - **The Odds API**: Current betting odds for upcoming fixtures
 
-    ### Technical Details
+    #### Technical Details
     The codebase uses Python with scientific computing libraries including NumPy, pandas, and SciPy. The Poisson regression incorporates home advantage, betting market information, and non-penalty expected goals. Time-weighted maximum likelihood estimation gives recent matches more influence on parameter estimates. Temperature scaling provides post-hoc calibration of predicted probabilities through a single-parameter transformation that adjusts confidence levels while preserving outcome rankings. The simulation engine uses NumPy's optimised random number generation for efficient Monte Carlo sampling.
 
     ---

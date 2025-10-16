@@ -8,18 +8,18 @@ import sys
 # add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.styles.custom_css import apply_custom_styles
-from app.pages import projections, team_strengths, fixtures, about
-from app.components import footer
-from src.io.model_io import load_model
-
-
 # page configuration
 st.set_page_config(
-    page_title="Bundesliga Predictions 2025/26",
+    page_title="Predicting Ball",
     page_icon="⚽",
     layout="wide",
 )
+
+# noqa: E402 (module level import not at top of file)
+from app.styles.custom_css import apply_custom_styles  # noqa: E402
+from app.pages import projections, team_strengths, fixtures, about  # noqa: E402
+from app.components import footer  # noqa: E402
+from src.io.model_io import load_model  # noqa: E402
 
 
 @st.cache_data
@@ -58,6 +58,8 @@ def main():
 
     if proj_data is None:
         st.stop()
+
+    st.title("predicting-ball")
 
     # create tabs for navigation
     tab1, tab2, tab3, tab4 = st.tabs(
