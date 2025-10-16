@@ -1,0 +1,46 @@
+# .do/app.yaml
+
+name: predicting-ball
+region: lon
+
+services:
+  - name: web
+    github:
+      repo: paulj1989/predicting-ball
+      branch: main
+      deploy_on_push: true
+
+    dockerfile_path: Dockerfile
+
+    http_port: 8501
+
+    instance_count: 2
+    instance_size_slug: basic-xs
+
+    routes:
+      - path: /
+
+    health_check:
+      http_path: /_stcore/health
+      initial_delay_seconds: 90
+      period_seconds: 10
+      timeout_seconds: 5
+      success_threshold: 1
+      failure_threshold: 3
+
+    envs:
+      - key: STREAMLIT_SERVER_PORT
+        value: "8501"
+        scope: RUN_TIME
+
+      - key: STREAMLIT_SERVER_ADDRESS
+        value: "0.0.0.0"
+        scope: RUN_TIME
+
+      - key: STREAMLIT_SERVER_ENABLE_CORS
+        value: "false"
+        scope: RUN_TIME
+
+alerts:
+  - rule: DEPLOYMENT_FAILED
+  - rule: DOMAIN_FAILED

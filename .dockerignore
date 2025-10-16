@@ -1,0 +1,78 @@
+# .dockerignore
+
+# Version control
+.git
+.gitignore
+.github
+
+# Environment files (CRITICAL - DO NOT COPY TO IMAGE)
+.env
+.env.*
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Training and development
+scripts/train_model.py
+scripts/run_calibration.py
+scripts/validate_model.py
+scripts/run_complete_pipeline.py
+notebooks/
+*.ipynb
+tests/
+
+# Outputs (keep only what's needed)
+outputs/validation/
+outputs/figures/
+outputs/models/*.log
+outputs/models/experimental_*
+
+# Data (if not needed for inference)
+data/raw/
+data/processed/fbref/
+data/processed/transfermarkt/
+
+# Documentation
+README.md
+LICENSE
+CONTRIBUTING.md
+docs/
+*.md
+
+# CI/CD (already in repo)
+.gitlab-ci.yml
+.travis.yml
+Jenkinsfile
+
+# Other
+*.log
+*.sqlite
+*.db
+.coverage
+.hypothesis/

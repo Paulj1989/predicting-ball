@@ -2,51 +2,93 @@
 
 import numpy as np
 import pandas as pd
-from sklearn.isotonic import IsotonicRegression
-from typing import List, Dict, Callable, Tuple, Any
+from scipy.optimize import minimize_scalar
+from typing import Dict, Callable, Tuple, Any
 
 
-def fit_isotonic_calibrator(
-    predictions: np.ndarray, actuals: np.ndarray
-) -> List[IsotonicRegression]:
+def fit_temperature_scaler(
+    predictions: np.ndarray, actuals: np.ndarray, verbose: bool = True
+) -> float:
     """
-    Fit isotonic regression calibrators for each outcome class.
+    Fit temperature scaling parameter via NLL minimisation.
 
-    Isotonic regression learns a monotonic transformation that maps
-    predicted probabilities to calibrated probabilities, ensuring that
-    when the model predicts X%, the outcome actually happens X% of the time.
+    Temperature scaling adjusts prediction confidence without changing
+    the relative ordering of outcomes.
     """
-    calibrators = []
+    # clip predictions to avoid log(0)
+    predictions = np.clip(predictions, 1e-10, 1 - 1e-10)
 
-    for outcome in range(3):  # home/draw/away
-        iso = IsotonicRegression(out_of_bounds="clip", y_min=0.0, y_max=1.0)
+    # convert to logits
+    logits = np.log(predictions)
 
-        # fit on predicted probabilities vs actual binary outcomes
-        iso.fit(predictions[:, outcome], (actuals == outcome).astype(float))
+    def negative_log_likelihood(temperature: float) -> float:
+        """Compute NLL with given temperature"""
+        # scale logits by temperature
+        scaled_logits = logits / temperature
 
-        calibrators.append(iso)
+        # apply softmax to get calibrated probabilities
+        # subtract max for numerical stability
+        scaled_logits_stable = scaled_logits - scaled_logits.max(axis=1, keepdims=True)
+        exp_logits = np.exp(scaled_logits_stable)
+        calibrated_probs = exp_logits / exp_logits.sum(axis=1, keepdims=True)
 
-    return calibrators
+        # compute negative log-likelihood
+        # NLL = -Σ log(p_i[y_i]) where y_i is the true class
+        nll = -np.log(calibrated_probs[np.arange(len(actuals)), actuals] + 1e-10).sum()
 
+        return nll
 
-def apply_calibration(
-    predictions: np.ndarray, calibrators: List[IsotonicRegression]
-) -> np.ndarray:
-    """
-    Apply fitted calibrators to predictions.
-
-    Transforms predicted probabilities using the fitted isotonic regression
-    models, then re-normalises to ensure probabilities sum to 1.
-    """
-    # apply each calibrator
-    calibrated_probs = np.column_stack(
-        [calibrators[i].predict(predictions[:, i]) for i in range(3)]
+    # optimise temperature (search range: 0.1 to 5.0)
+    result = minimize_scalar(
+        negative_log_likelihood, bounds=(0.1, 5.0), method="bounded"
     )
 
-    # re-normalise to ensure probabilities sum to 1
-    row_sums = calibrated_probs.sum(axis=1, keepdims=True)
-    row_sums = np.maximum(row_sums, 1e-10)  # avoid division by zero
-    calibrated_probs = calibrated_probs / row_sums
+    optimal_temperature = result.x
+
+    if verbose:
+        uncalibrated_nll = negative_log_likelihood(1.0)
+        calibrated_nll = result.fun
+
+        print("   Temperature optimisation:")
+        print(f"     Optimal T: {optimal_temperature:.3f}")
+        print(f"     Uncalibrated NLL: {uncalibrated_nll:.2f}")
+        print(f"     Calibrated NLL: {calibrated_nll:.2f}")
+        print(f"     Improvement: {uncalibrated_nll - calibrated_nll:.2f}")
+
+        if optimal_temperature > 1.5:
+            print("     → Model is overconfident (T > 1.5)")
+        elif optimal_temperature < 0.8:
+            print("     → Model is underconfident (T < 0.8)")
+        else:
+            print("     → Model confidence is reasonable")
+
+    return optimal_temperature
+
+
+def apply_temperature_scaling(
+    predictions: np.ndarray, temperature: float
+) -> np.ndarray:
+    """
+    Apply temperature scaling to predictions.
+
+    Transforms predicted probabilities by:
+    1. Converting to logits
+    2. Scaling by temperature
+    3. Applying softmax to renormalise
+    """
+    # clip predictions to avoid log(0)
+    predictions = np.clip(predictions, 1e-10, 1 - 1e-10)
+
+    # convert to logits
+    logits = np.log(predictions)
+
+    # scale by temperature
+    scaled_logits = logits / temperature
+
+    # apply softmax (with numerical stability)
+    scaled_logits_stable = scaled_logits - scaled_logits.max(axis=1, keepdims=True)
+    exp_logits = np.exp(scaled_logits_stable)
+    calibrated_probs = exp_logits / exp_logits.sum(axis=1, keepdims=True)
 
     return calibrated_probs
 
@@ -134,10 +176,10 @@ def calibrate_dispersion_for_coverage(
 
         # adjust search bounds
         if coverage < target_coverage:
-            # need wider intervals → increase dispersion
+            # need wider intervals -> increase dispersion
             dispersion_low = dispersion_mid
         else:
-            # intervals too wide → decrease dispersion
+            # intervals too wide -> decrease dispersion
             dispersion_high = dispersion_mid
 
         best_dispersion = dispersion_mid
@@ -145,7 +187,7 @@ def calibrate_dispersion_for_coverage(
         # didn't converge, use best found
         coverage = test_coverage_with_dispersion(best_dispersion)
         if verbose:
-            print(f"\n Did not fully converge after {max_iterations} iterations")
+            print(f"\n⚠ Did not fully converge after {max_iterations} iterations")
             print(f"  Best dispersion: {best_dispersion:.3f}")
             print(f"  Final coverage: {coverage:.1%}")
 

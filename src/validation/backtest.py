@@ -38,26 +38,25 @@ def backtest_single_season(
     params = fitted_model["params"]
 
     if calibrators is not None:
-        # extract isotonic calibrators if calibrators is a dict package
+        # check for temperature scaling
+        temperature = None
         if isinstance(calibrators, dict):
-            isotonic_calibrators = calibrators.get("isotonic_calibrators")
-            if isotonic_calibrators is None:
+            temperature = calibrators.get("temperature")
+            if temperature is None:
                 if verbose:
-                    print("⚠ No isotonic calibrators found, using uncalibrated")
-                isotonic_calibrators = None
-        else:
-            # assume it's already a list
-            isotonic_calibrators = calibrators
+                    print("⚠ No temperature calibrator found, using uncalibrated")
+        elif isinstance(calibrators, (int, float)):
+            temperature = calibrators
 
-        if isotonic_calibrators is not None:
-            # use calibrated predictions
-            from ..models.calibration import apply_calibration
+        if temperature is not None:
+            # use temperature-scaled predictions
+            from ..models.calibration import apply_temperature_scaling
 
             metrics_uncal, predictions_uncal, actuals = evaluate_model_comprehensive(
                 params, test_data
             )
 
-            predictions_cal = apply_calibration(predictions_uncal, isotonic_calibrators)
+            predictions_cal = apply_temperature_scaling(predictions_uncal, temperature)
 
             # recalculate metrics with calibrated predictions
             from ..evaluation.metrics import (
@@ -78,7 +77,7 @@ def backtest_single_season(
             metrics = metrics_cal
 
             if verbose:
-                print("\nCalibrated Results:")
+                print(f"\nCalibrated Results (T={temperature:.3f}):")
                 print(f"  RPS: {metrics['rps']:.4f}")
                 print(f"  Brier: {metrics['brier_score']:.4f}")
                 print(f"  Accuracy: {metrics['accuracy']:.1%}")
