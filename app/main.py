@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.styles.custom_css import apply_custom_styles  # noqa: E402
 from app.pages import projections, team_strengths, fixtures, about  # noqa: E402
-from app.components import footer  # noqa: E402
+from app.components import render_footer, umami_tracker  # noqa: E402
 from src.io.model_io import load_model  # noqa: E402
 
 
@@ -50,6 +50,10 @@ def load_trained_model():
 
 def main():
     """Main application entry point"""
+
+    # inject analytics tracker
+    umami_tracker()
+
     # apply custom styling
     apply_custom_styles()
 
@@ -86,7 +90,7 @@ def main():
         about.render()
 
     # add footer
-    footer.render()
+    render_footer()
 
 
 if __name__ == "__main__":
