@@ -8,10 +8,11 @@ def apply_custom_styles():
     st.markdown(
         """
     <style>
-    /* Import fonts from Google Fonts with all needed weights */
+
+    /* Import fonts */
     @import url('https://fonts.googleapis.com/css2?family=Lora:wght@400;500;600;700&family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Fira+Code:wght@300..700&display=swap');
 
-    /* Root variables matching your website palette */
+    /* Set root variables */
     :root {
         --primary-color: #43494D;
         --secondary-color: #2C3033;
@@ -21,13 +22,35 @@ def apply_custom_styles():
         --gray-light: #F7F9FA;
         --border-color: #dee2e6;
 
-        /* Font family variables for consistency */
+        /* Set font families */
         --font-sans: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         --font-serif: 'Lora', serif;
         --font-mono: 'Fira Code', 'Consolas', 'Monaco', monospace;
     }
 
-    /* Aggressive base font application - targets multiple Streamlit containers */
+    .stMain {
+        background-color: #FFFFFF
+    }
+
+    /* Force wide layout */
+    .stApp > header {
+        background-color: transparent;
+    }
+
+    .main > div {
+        max-width: none;
+        padding-left: 3rem;
+        padding-right: 3rem;
+    }
+
+    .block-container {
+        max-width: none;
+        padding-left: 3rem;
+        padding-right: 3rem;
+        padding-top: 0.5rem;
+    }
+
+    /* Apply fonts */
     html, body, [class*="css"],
     .stApp, .main, .block-container,
     [data-testid="stAppViewContainer"],
@@ -38,7 +61,7 @@ def apply_custom_styles():
         color: var(--primary-color);
     }
 
-    /* Headers - using Lora serif with stronger specificity */
+    /* Headers */
     h1, h2, h3, h4, h5, h6,
     .main h1, .main h2, .main h3, .main h4, .main h5, .main h6,
     [data-testid="stMarkdownContainer"] h1,
@@ -106,7 +129,7 @@ def apply_custom_styles():
         text-decoration: none;
     }
 
-    /* Buttons - target multiple levels */
+    /* Buttons */
     .stButton > button,
     button[kind="primary"],
     button[kind="secondary"] {
@@ -128,7 +151,7 @@ def apply_custom_styles():
         color: white !important;
     }
 
-    /* Metrics - cleaner cards */
+    /* Metrics */
     [data-testid="stMetric"],
     [data-testid="stMetric"] * {
         font-family: var(--font-sans) !important;
@@ -160,7 +183,7 @@ def apply_custom_styles():
         color: var(--dark-gray);
     }
 
-    /* Select boxes and inputs - target labels and values */
+    /* Select boxes and inputs */
     .stSelectbox, .stTextInput, .stNumberInput,
     .stSelectbox *, .stTextInput *, .stNumberInput * {
         font-family: var(--font-sans) !important;
@@ -181,7 +204,7 @@ def apply_custom_styles():
         font-family: var(--font-sans) !important;
     }
 
-    /* Code blocks - using Fira Code */
+    /* Code blocks */
     code, pre, .stCodeBlock,
     [data-testid="stCodeBlock"],
     code *, pre * {
@@ -222,7 +245,7 @@ def apply_custom_styles():
         color: var(--dark-gray);
     }
 
-    /* Radio buttons in sidebar */
+    /* Sidebar radio buttons */
     [data-testid="stSidebar"] .stRadio > label,
     [data-testid="stSidebar"] [role="radiogroup"] label {
         font-family: var(--font-sans) !important;
@@ -252,7 +275,12 @@ def apply_custom_styles():
         font-family: var(--font-sans) !important;
     }
 
-    /* Tabs */
+    /* Ensure AgGrid uses full width */
+    .ag-root-wrapper {
+        width: 100% !important;
+    }
+
+     /* Tabs */
     .stTabs [data-baseweb="tab-list"],
     .stTabs [data-baseweb="tab"],
     .stTabs [data-baseweb="tab-list"] *,
@@ -262,13 +290,18 @@ def apply_custom_styles():
 
     .stTabs [data-baseweb="tab"] {
         font-weight: 500;
-        color: var(--medium-gray);
-        border-bottom: 2px solid transparent;
+        color: var(--primary-color);
+        border-bottom: 1.5px solid transparent;
     }
 
     .stTabs [aria-selected="true"] {
         color: var(--primary-color);
-        border-bottom-color: var(--primary-color);
+        border-bottom-color: var(--primary-color) !important;
+    }
+
+    /* Override Streamlit's default red indicator */
+    .stTabs [data-baseweb="tab-highlight"] {
+        background-color: var(--primary-color) !important;
     }
 
     /* Dividers */
@@ -326,6 +359,26 @@ def apply_custom_styles():
     /* Add padding to main content so footer doesn't overlap */
     .main .block-container {
         padding-bottom: 4rem;
+    }
+
+    @media screen and (max-width: 991.98px) {
+        .stApp > header {
+            background-color: transparent;
+        }
+
+        .main > div {
+            max-width: none;
+            padding-left: 1.5rem;
+            padding-right: 1.5rem;
+        }
+
+        .block-container {
+            max-width: none;
+            padding-left: 1.5rem;
+            padding-right: 1.5rem;
+            padding-top: 0.5rem;
+        }
+
     }
     </style>
 """,
