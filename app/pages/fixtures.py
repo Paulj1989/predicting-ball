@@ -127,7 +127,7 @@ def _render_matchday_chart(fixtures):
                 alt.Tooltip("probability:Q", title="Probability", format=".1%"),
             ],
         )
-        .properties(height=300)
+        .properties(height=400)
     )
 
     st.altair_chart(chart, use_container_width=True)
