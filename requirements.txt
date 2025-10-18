@@ -24,6 +24,12 @@ beautifulsoup4==4.13.5
     # via bs4
 blinker==1.9.0
     # via streamlit
+boto3==1.40.55
+    # via predicting-ball (pyproject.toml)
+botocore==1.40.55
+    # via
+    #   boto3
+    #   s3transfer
 bs4==0.0.2
     # via predicting-ball (pyproject.toml)
 cachetools==6.2.0
@@ -83,6 +89,10 @@ jinja2==3.1.6
     # via
     #   altair
     #   pydeck
+jmespath==1.0.1
+    # via
+    #   boto3
+    #   botocore
 joblib==1.5.2
     # via scikit-learn
 jsonschema==4.25.1
@@ -157,6 +167,7 @@ pysocks==1.7.1
 python-dateutil==2.9.0.post0
     # via
     #   predicting-ball (pyproject.toml)
+    #   botocore
     #   matplotlib
     #   pandas
 python-decouple==3.8
@@ -188,6 +199,8 @@ rpds-py==0.27.1
     # via
     #   jsonschema
     #   referencing
+s3transfer==0.14.0
+    # via boto3
 scikit-learn==1.7.2
     # via predicting-ball (pyproject.toml)
 scipy==1.16.2
@@ -264,6 +277,7 @@ tzdata==2025.2
     # via pandas
 urllib3==2.5.0
     # via
+    #   botocore
     #   requests
     #   selenium
 uvicorn==0.37.0
