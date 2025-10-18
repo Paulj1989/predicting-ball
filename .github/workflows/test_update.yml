@@ -1,0 +1,77 @@
+name: Test Model Update (Dry Run)
+
+on:
+  workflow_dispatch:
+    inputs:
+      tune_hyperparameters:
+        description: 'Run hyperparameter tuning'
+        type: boolean
+        default: false
+
+jobs:
+  test-update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install dependencies
+        run: |
+          uv pip install --system -r requirements.txt
+          uv pip install --system boto3
+
+      - name: Download DuckDB
+        env:
+          DO_SPACES_KEY: ${{ secrets.DO_SPACES_KEY }}
+          DO_SPACES_SECRET: ${{ secrets.DO_SPACES_SECRET }}
+          DO_SPACE_NAME: ${{ secrets.DO_SPACE_NAME }}
+          DO_SPACE_REGION: ${{ secrets.DO_SPACE_REGION }}
+        run: python scripts/automation/download_db.py
+
+      - name: Test fetch (dry run)
+        run: python scripts/automation/fetch_and_update_db.py --dry-run
+
+      - name: Test train (dry run)
+        run: |
+          if [ "${{ inputs.tune_hyperparameters }}" = "true" ]; then
+            python scripts/modeling/train_model.py --tune --dry-run
+          else
+            python scripts/modeling/train_model.py --dry-run
+          fi
+
+      - name: Test calibration (dry run)
+        run: |
+          if [ -f outputs/test/production_model.pkl ]; then
+            python scripts/modeling/run_calibration.py \
+              --model-path outputs/test/production_model.pkl \
+              --output-dir outputs/test
+          fi
+
+      - name: Test predictions (dry run)
+        run: |
+          if [ -f outputs/test/production_model.pkl ]; then
+            python scripts/modeling/generate_predictions.py \
+              --model-path outputs/test/production_model.pkl \
+              --calibrator-path outputs/test/calibrators.pkl \
+              --output-dir outputs/test \
+              --n-simulations 1000
+          fi
+
+      - name: Create test summary
+        if: always()
+        run: |
+          echo "## Test Run Summary" >> $GITHUB_STEP_SUMMARY
+          echo "**Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          [ -f outputs/test/production_model.pkl ] && echo "- Model trained" >> $GITHUB_STEP_SUMMARY || echo "- Model: FAILED" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "These are test outputs - production not affected" >> $GITHUB_STEP_SUMMARY
