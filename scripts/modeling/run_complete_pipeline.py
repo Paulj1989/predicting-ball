@@ -10,7 +10,7 @@ Execute the full modelling pipeline:
 4. Generate predictions
 
 Usage:
-    python scripts/run_complete_pipeline.py [--optimise-hyperparams]
+    python scripts/modeling/run_complete_pipeline.py [--optimise-hyperparams]
 """
 
 import sys
@@ -18,7 +18,7 @@ import argparse
 import subprocess
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 
 def parse_args():
@@ -62,17 +62,18 @@ def run_command(cmd, description):
     result = subprocess.run(cmd)
 
     if result.returncode != 0:
-        print(f"\n✗ {description} failed")
+        print(f"\n{description} failed")
         sys.exit(1)
 
-    print(f"\n✓ {description} completed successfully")
+    print(f"\n{description} completed successfully")
 
 
 def main():
-    """Run complete pipeline."""
+    """Run complete pipeline"""
     args = parse_args()
 
-    scripts_dir = Path(__file__).parent
+    # get the modeling directory
+    modeling_dir = Path(__file__).parent
 
     print("=" * 70)
     print("RUNNING COMPLETE PIPELINE")
@@ -81,7 +82,7 @@ def main():
     # step 1: train model
     train_cmd = [
         "python",
-        str(scripts_dir / "train_model.py"),
+        str(modeling_dir / "train_model.py"),
     ]
 
     if args.optimise_hyperparams:
@@ -92,7 +93,7 @@ def main():
     # step 2: calibrate
     calibrate_cmd = [
         "python",
-        str(scripts_dir / "run_calibration.py"),
+        str(modeling_dir / "run_calibration.py"),
         "--model-path",
         "outputs/models/production_model.pkl",
         "--comprehensive",
@@ -104,7 +105,7 @@ def main():
     if not args.skip_validation:
         validate_cmd = [
             "python",
-            str(scripts_dir / "validate_model.py"),
+            str(modeling_dir / "validate_model.py"),
             "--model-path",
             "outputs/models/production_model.pkl",
             "--calibrator-path",
@@ -116,7 +117,7 @@ def main():
     # step 4: generate predictions
     predict_cmd = [
         "python",
-        str(scripts_dir / "generate_predictions.py"),
+        str(modeling_dir / "generate_predictions.py"),
         "--model-path",
         "outputs/models/production_model.pkl",
         "--calibrator-path",
