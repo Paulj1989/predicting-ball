@@ -1,26 +1,17 @@
 # app/main.py
 
 import streamlit as st
-
-# page configuration
-st.set_page_config(
-    page_title="Predicting Ball",
-    page_icon="⚽",
-    layout="wide",
-)
-
-# noqa: E402 (module level import not at top of file)
-import pandas as pd  # noqa: E402
-from pathlib import Path  # noqa: E402
-import sys  # noqa: E402
+import pandas as pd
+from pathlib import Path
+import sys
 
 # add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.styles.custom_css import apply_custom_styles  # noqa: E402
-from app.pages import projections, team_strengths, fixtures, about  # noqa: E402
-from app.components import render_footer, umami_tracker  # noqa: E402
-from src.io.model_io import load_model  # noqa: E402
+from app.styles.custom_css import apply_custom_styles
+from app.pages import projections, team_strengths, fixtures, about
+from app.components import render_footer, umami_tracker
+from src.io.model_io import load_model
 
 
 @st.cache_data
