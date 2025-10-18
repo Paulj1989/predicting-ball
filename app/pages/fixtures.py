@@ -119,7 +119,7 @@ def _render_matchday_chart(fixtures):
                     domain=["Home Win", "Draw", "Away Win"],
                     range=["#026E99", "#FFA600", "#D93649"],
                 ),
-                legend=alt.Legend(title="Outcome"),
+                legend=alt.Legend(title=None, orient="top"),
             ),
             tooltip=[
                 alt.Tooltip("match:N", title="Match"),
