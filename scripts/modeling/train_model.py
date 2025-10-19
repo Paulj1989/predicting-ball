@@ -6,8 +6,8 @@ Train Final Model
 Fit the production model on all available data.
 
 Usage:
-    python scripts/train_model.py [--tune] [--dry-run]
-    python scripts/train_model.py --tune --n-trials 50
+    python scripts/modeling/train_model.py [--tune] [--dry-run]
+    python scripts/modeling/train_model.py --tune --n-trials 50
 """
 
 import sys
@@ -120,11 +120,11 @@ def main():
     """Main training pipeline"""
     args = parse_args()
 
-    # Handle alias
+    # handle alias
     if args.optimise_hyperparams:
         args.tune = True
 
-    # Determine output directory
+    # determine output directory
     if args.output_dir:
         output_dir = Path(args.output_dir)
     elif args.dry_run:
@@ -180,7 +180,6 @@ def main():
     # ========================================================================
     if args.tune:
         print("\n3. Running full hyperparameter optimisation...")
-        print(f"   This may take 30-60 minutes with {args.n_trials} trials...")
 
         hyperparams = optimise_hyperparameters(
             all_train_data, n_trials=args.n_trials, metric="rps", verbose=True
@@ -191,7 +190,7 @@ def main():
     else:
         print("\n3. Loading hyperparameters...")
 
-        # Always check production directory for best params
+        # always check production directory for best params
         prod_dir = Path("outputs/models")
         previous_params = load_previous_hyperparameters(prod_dir)
 
