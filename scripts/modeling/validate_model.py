@@ -6,7 +6,7 @@ Validate Model
 Run backtesting and validation on trained model.
 
 Usage:
-    python scripts/validate_model.py --model-path outputs/models/production_model.pkl
+    python scripts/modeling/validate_model.py --model-path outputs/models/production_model.pkl
 """
 
 import sys
@@ -183,7 +183,7 @@ def main():
     report = create_validation_report(
         results, save_path=output_dir / "validation_report.csv"
     )
-    print(f"   ✓ Validation report saved")
+    print("   ✓ Validation report saved")
 
     # analyse errors for most recent season
     most_recent_result = results[-1]
@@ -209,7 +209,7 @@ def main():
     team_analysis.to_csv(
         output_dir / f"team_analysis_{most_recent_result['season']}.csv", index=False
     )
-    print(f"   ✓ Team analysis saved")
+    print("   ✓ Team analysis saved")
 
     # ========================================================================
     # SUMMARY
@@ -219,8 +219,7 @@ def main():
     print("=" * 70)
     print(f"Outputs saved to: {output_dir}")
     print("\nFiles created:")
-    print(f"  - validation_report.csv")
-    print(f"  - validation_over_time.png")
+    print("  - validation_report.csv")
     print(f"  - team_analysis_{most_recent_result['season']}.csv")
 
     # print summary stats

@@ -13,7 +13,7 @@ def fit_poisson_model(
     promoted_priors: Optional[Dict[str, Dict[str, float]]] = None,
     home_adv_prior: Optional[float] = None,
     home_adv_std: Optional[float] = None,
-    n_random_starts: int = 3,
+    n_random_starts: int = 5,
     verbose: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """
@@ -342,14 +342,14 @@ def fit_poisson_model(
         print(f"\n{'=' * 60}")
         print("MODEL FITTED SUCCESSFULLY")
         print(f"{'=' * 60}")
-        print(f"Parameters:")
+        print("Parameters:")
         print(f"  Home advantage: {result_dict['home_adv']:.3f}")
         if use_home_prior:
             deviation = result_dict["home_adv"] - home_adv_prior
             print(f"    Prior: {home_adv_prior:.3f}, Deviation: {deviation:+.3f}")
         print(f"  Odds weight: {result_dict['beta_odds']:.3f}")
         print(f"  Penalty weight: {result_dict['beta_penalty']:.3f}")
-        print(f"Calibration:")
+        print("Calibration:")
         print(f"  Dispersion factor: {result_dict['dispersion_factor']:.3f}")
         print(f"  Log-likelihood: {result_dict['log_likelihood']:.2f}")
 

@@ -6,7 +6,7 @@ import optuna
 from optuna.pruners import MedianPruner
 from optuna.samplers import TPESampler
 from sklearn.model_selection import TimeSeriesSplit
-from typing import Dict, Optional
+from typing import Dict
 
 
 def get_default_hyperparameters() -> Dict[str, float]:
@@ -34,12 +34,12 @@ def optimise_hyperparameters(
 
     Search space:
         - time_decay: [0.0003, 0.001] (log scale)
-        - lambda_reg: [0.05, 0.5] (linear scale)
-        - prior_decay_rate: [10.0, 25.0] (linear scale)
+        - lambda_reg: [0.05, 0.8] (linear scale)
+        - prior_decay_rate: [5.0, 25.0] (linear scale)
     """
     # import here to avoid circular dependency
     from .poisson import fit_poisson_model
-    from ..evaluation.metrics import calculate_rps
+    # from ..evaluation.metrics import calculate_rps
 
     if verbose:
         print("\n" + "=" * 60)
@@ -57,8 +57,8 @@ def optimise_hyperparameters(
         # suggest hyperparameters
         hyperparams = {
             "time_decay": trial.suggest_float("time_decay", 0.0003, 0.001, log=True),
-            "lambda_reg": trial.suggest_float("lambda_reg", 0.05, 0.5),
-            "prior_decay_rate": trial.suggest_float("prior_decay_rate", 10.0, 25.0),
+            "lambda_reg": trial.suggest_float("lambda_reg", 0.05, 0.8),
+            "prior_decay_rate": trial.suggest_float("prior_decay_rate", 5.0, 25.0),
         }
 
         # prepare data
@@ -101,7 +101,7 @@ def optimise_hyperparameters(
     study = optuna.create_study(
         direction="minimize",
         sampler=TPESampler(seed=42, n_startup_trials=5),
-        pruner=MedianPruner(n_startup_trials=10),
+        pruner=MedianPruner(n_startup_trials=15),
     )
 
     # optimise
@@ -111,7 +111,7 @@ def optimise_hyperparameters(
 
     if verbose:
         print("\n" + "=" * 60)
-        print("OPTIMIsATION COMPLETE")
+        print("OPTIMISATION COMPLETE")
         print("=" * 60)
         print(f"Best trial: {study.best_trial.number}")
         print(f"Best CV {metric.upper()}: {study.best_value:.4f}")

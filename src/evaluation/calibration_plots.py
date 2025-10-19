@@ -4,16 +4,16 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from typing import Dict, Optional, Tuple, List
+from typing import Dict, Optional, Tuple, List, Union
 
 from .metrics import calculate_accuracy
 
 
-# define colour palette
+# color palette
 COLORS = {
-    "primary": "#026E99",  # blue
-    "secondary": "#D93649",  # red
-    "accent": "#FFA600",  # yellow
+    "primary": "#026E99",
+    "secondary": "#D93649",
+    "accent": "#FFA600",
 }
 
 # set seaborn style
@@ -21,8 +21,42 @@ sns.set_style("whitegrid")
 sns.set_context("notebook", font_scale=1.1)
 
 
+def _convert_inputs(
+    predictions: Union[pd.DataFrame, np.ndarray], actuals: Union[pd.Series, np.ndarray]
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Convert inputs to numpy arrays with proper format"""
+    # convert predictions
+    if isinstance(predictions, pd.DataFrame):
+        required_cols = ["home_win", "draw", "away_win"]
+        if not all(col in predictions.columns for col in required_cols):
+            raise ValueError(f"DataFrame must have columns {required_cols}")
+        predictions = predictions[required_cols].values
+    elif not isinstance(predictions, np.ndarray):
+        predictions = np.array(predictions)
+
+    # convert actuals
+    if isinstance(actuals, pd.Series):
+        actuals = actuals.values
+    elif not isinstance(actuals, np.ndarray):
+        actuals = np.array(actuals)
+
+    # handle string vs integer outcomes
+    if actuals.dtype.kind in ("U", "O"):
+        outcome_map = {"H": 0, "D": 1, "A": 2}
+        try:
+            actuals = np.array([outcome_map[a] for a in actuals])
+        except KeyError as e:
+            raise ValueError(f"Unknown outcome: {e}")
+    else:
+        actuals = actuals.astype(int)
+
+    return predictions, actuals
+
+
 def calculate_expected_calibration_error(
-    predictions: np.ndarray, actuals: np.ndarray, n_bins: int = 10
+    predictions: Union[pd.DataFrame, np.ndarray],
+    actuals: Union[pd.Series, np.ndarray],
+    n_bins: int = 10,
 ) -> float:
     """
     Calculate Expected Calibration Error (ECE).
@@ -30,6 +64,9 @@ def calculate_expected_calibration_error(
     ECE measures the average difference between predicted probabilities
     and empirical frequencies across binned predictions.
     """
+    # convert to numpy arrays
+    predictions, actuals = _convert_inputs(predictions, actuals)
+
     # for multi-class, use maximum predicted probability
     if predictions.ndim > 1:
         max_probs = predictions.max(axis=1)
@@ -63,19 +100,17 @@ def calculate_expected_calibration_error(
 
 
 def plot_calibration_curve(
-    predictions: np.ndarray,
-    actuals: np.ndarray,
+    predictions: Union[pd.DataFrame, np.ndarray],
+    actuals: Union[pd.Series, np.ndarray],
     n_bins: int = 10,
     title: str = "Calibration Curve",
     save_path: Optional[str] = None,
     figsize: Tuple[int, int] = (18, 5),
 ) -> None:
-    """
-    Plot calibration curve (reliability diagram).
+    """Plot calibration curve (reliability diagram)"""
+    # convert to numpy arrays
+    predictions, actuals = _convert_inputs(predictions, actuals)
 
-    Shows predicted probability vs. observed frequency.
-    Perfect calibration follows the diagonal line.
-    """
     # for multi-class, analyse each class separately
     if predictions.ndim > 1:
         fig, axes = plt.subplots(1, 3, figsize=figsize)
@@ -125,6 +160,10 @@ def _plot_single_calibration(
     color: str = "#026E99",
 ) -> None:
     """Helper function to plot single calibration curve"""
+    # ensure inputs are numpy arrays
+    pred_probs = np.asarray(pred_probs)
+    actual_binary = np.asarray(actual_binary)
+
     # create bins
     bin_boundaries = np.linspace(0, 1, n_bins + 1)
     bin_centers = (bin_boundaries[:-1] + bin_boundaries[1:]) / 2
@@ -147,7 +186,7 @@ def _plot_single_calibration(
         if in_bin.sum() > 0:
             bin_pred_means.append(pred_probs[in_bin].mean())
             bin_true_freqs.append(actual_binary[in_bin].mean())
-            bin_counts.append(in_bin.sum())
+            bin_counts.append(int(in_bin.sum()))
         else:
             bin_pred_means.append(np.nan)
             bin_true_freqs.append(np.nan)
@@ -164,26 +203,28 @@ def _plot_single_calibration(
         zorder=1,
     )
 
-    # plot bars
+    # plot bars with enhanced visibility
     bin_width = 1.0 / n_bins
     for i, (pred_mean, true_freq, count) in enumerate(
         zip(bin_pred_means, bin_true_freqs, bin_counts)
     ):
-        if not np.isnan(pred_mean):
-            # use primary color with varying alpha based on calibration quality
+        if not np.isnan(pred_mean) and count > 0:
+            # varying alpha based on calibration quality
             calibration_gap = abs(pred_mean - true_freq)
-            alpha = 0.9 if calibration_gap < 0.1 else 0.6
+            alpha = 0.8 if calibration_gap < 0.1 else 0.6
 
+            # plot bar from 0 to true_freq
             ax.bar(
                 bin_centers[i],
                 true_freq,
-                width=bin_width * 0.8,
+                width=bin_width * 0.9,
                 alpha=alpha,
                 color=color,
                 edgecolor="black",
-                linewidth=1,
+                linewidth=1.5,
                 zorder=2,
             )
+
             # add count labels
             ax.text(
                 bin_centers[i],
@@ -195,15 +236,18 @@ def _plot_single_calibration(
                 fontweight="bold",
             )
 
-    # add gap visualisation
-    for pred_mean, true_freq in zip(bin_pred_means, bin_true_freqs):
-        if not np.isnan(pred_mean):
+    # add gap visualisation (only for bins with data)
+    for i, (pred_mean, true_freq, count) in enumerate(
+        zip(bin_pred_means, bin_true_freqs, bin_counts)
+    ):
+        if not np.isnan(pred_mean) and count > 0:
+            # draw line from predicted to actual
             ax.plot(
-                [pred_mean, pred_mean],
+                [bin_centers[i], bin_centers[i]],
                 [pred_mean, true_freq],
                 color=COLORS["secondary"],
-                alpha=0.5,
-                linewidth=2,
+                alpha=0.6,
+                linewidth=2.5,
                 zorder=3,
             )
 
@@ -211,7 +255,7 @@ def _plot_single_calibration(
     ax.set_ylabel("Observed Frequency", fontsize=12, fontweight="bold")
     ax.set_title(title, fontsize=14, fontweight="bold", pad=15)
     ax.set_xlim([0, 1])
-    ax.set_ylim([0, 1])
+    ax.set_ylim([0, 1.05])  # slightly higher to accommodate labels
     ax.grid(alpha=0.3, linestyle="--", linewidth=0.5)
     ax.legend(loc="upper left", frameon=True, fancybox=True, shadow=True)
 
@@ -237,8 +281,8 @@ def _plot_single_calibration(
 
 
 def plot_calibration_comparison(
-    predictions_dict: Dict[str, np.ndarray],
-    actuals: np.ndarray,
+    predictions_dict: Dict[str, Union[pd.DataFrame, np.ndarray]],
+    actuals: Union[pd.Series, np.ndarray],
     n_bins: int = 10,
     save_path: Optional[str] = None,
     figsize: Optional[Tuple[int, int]] = None,
@@ -250,7 +294,6 @@ def plot_calibration_comparison(
     if figsize is None:
         figsize = (6 * n_models, 5)
 
-    # create colour cycle
     color_cycle = [COLORS["primary"], COLORS["secondary"], COLORS["accent"]]
     if n_models > 3:
         # extend with seaborn palette if needed
@@ -260,6 +303,9 @@ def plot_calibration_comparison(
             for rgb in extended_palette[3:]
         ]
 
+    # convert actuals once
+    _, actuals_array = _convert_inputs(np.zeros((len(actuals), 3)), actuals)
+
     # for multi-class, show home win probability only (for simplicity)
     fig, axes = plt.subplots(1, n_models, figsize=figsize)
     if n_models == 1:
@@ -268,13 +314,16 @@ def plot_calibration_comparison(
     for ax, (model_name, preds), color in zip(
         axes, predictions_dict.items(), color_cycle
     ):
-        if preds.ndim > 1:
+        # convert predictions
+        preds_array, _ = _convert_inputs(preds, actuals)
+
+        if preds_array.ndim > 1:
             # use home win probability
-            pred_probs = preds[:, 0]
-            actual_binary = (actuals == 0).astype(float)
+            pred_probs = preds_array[:, 0]
+            actual_binary = (actuals_array == 0).astype(float)
         else:
-            pred_probs = preds
-            actual_binary = actuals
+            pred_probs = preds_array
+            actual_binary = actuals_array
 
         _plot_single_calibration(
             pred_probs, actual_binary, n_bins, ax, f"{model_name}", color=color
@@ -294,12 +343,15 @@ def plot_calibration_comparison(
 
 
 def create_calibration_report(
-    predictions: np.ndarray,
-    actuals: np.ndarray,
+    predictions: Union[pd.DataFrame, np.ndarray],
+    actuals: Union[pd.Series, np.ndarray],
     model_name: str = "Model",
     save_path: Optional[str] = None,
 ) -> Dict[str, float]:
     """Create comprehensive calibration report"""
+    # convert to numpy arrays
+    predictions, actuals = _convert_inputs(predictions, actuals)
+
     # calculate metrics
     from .metrics import calculate_brier_score, calculate_rps
 
@@ -337,8 +389,8 @@ def create_calibration_report(
 
 
 def plot_confidence_histogram(
-    predictions: np.ndarray,
-    actuals: np.ndarray,
+    predictions: Union[pd.DataFrame, np.ndarray],
+    actuals: Union[pd.Series, np.ndarray],
     save_path: Optional[str] = None,
     figsize: Tuple[int, int] = (10, 6),
 ) -> None:
@@ -348,6 +400,9 @@ def plot_confidence_histogram(
     Shows distribution of predicted probabilities and whether
     predictions were correct or incorrect.
     """
+    # convert to numpy arrays
+    predictions, actuals = _convert_inputs(predictions, actuals)
+
     fig, ax = plt.subplots(figsize=figsize)
 
     # get maximum predicted probabilities

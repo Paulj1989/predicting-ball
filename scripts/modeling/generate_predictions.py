@@ -6,7 +6,7 @@ Generate Predictions
 Generate season projections and next match predictions.
 
 Usage:
-    python scripts/generate_predictions.py --model-path outputs/models/production_model.pkl
+    python scripts/modeling/generate_predictions.py --model-path outputs/models/production_model.pkl
 """
 
 import sys

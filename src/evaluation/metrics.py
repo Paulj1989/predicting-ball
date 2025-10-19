@@ -2,178 +2,273 @@
 
 import numpy as np
 import pandas as pd
-from scipy.stats import poisson
-from typing import Dict, Tuple, Any
+from typing import Union, Dict
 
 
-def calculate_rps(predictions: np.ndarray, actuals: np.ndarray) -> float:
+def calculate_rps(
+    predictions: Union[pd.DataFrame, np.ndarray], actuals: Union[pd.Series, np.ndarray]
+) -> float:
     """
     Calculate Ranked Probability Score (RPS).
 
-    RPS evaluates ordered outcome predictions (home/draw/away).
-    It measures the mean squared error of cumulative probability distributions.
+    Normalised for 3 outcomes by dividing by (K-1) = 2.
     """
-    n_samples = len(actuals)
-    n_outcomes = predictions.shape[1]
+    # convert inputs to standard format
+    if isinstance(predictions, pd.DataFrame):
+        required_cols = ["home_win", "draw", "away_win"]
+        if not all(col in predictions.columns for col in required_cols):
+            raise ValueError(f"DataFrame predictions must have columns {required_cols}")
+        predictions = predictions.reset_index(drop=True)
+        ordered_predictions = predictions[required_cols].values
+    elif isinstance(predictions, np.ndarray):
+        if predictions.ndim != 2 or predictions.shape[1] != 3:
+            raise ValueError(
+                f"Array predictions must be shape (n, 3), got {predictions.shape}"
+            )
+        ordered_predictions = predictions
+    else:
+        raise TypeError(
+            f"predictions must be DataFrame or ndarray, got {type(predictions)}"
+        )
 
-    rps_sum = 0.0
+    # convert actuals to standard format
+    if isinstance(actuals, pd.Series):
+        actuals = actuals.reset_index(drop=True).values
+    elif not isinstance(actuals, np.ndarray):
+        actuals = np.array(actuals)
 
-    for i in range(n_samples):
+    # verify lengths match
+    if len(ordered_predictions) != len(actuals):
+        raise ValueError(
+            f"Length mismatch: {len(ordered_predictions)} predictions vs {len(actuals)} actuals"
+        )
+
+    # handle both string outcomes ('H', 'D', 'A') and integer outcomes (0, 1, 2)
+    if actuals.dtype.kind in ("U", "O"):
+        outcome_map = {"H": 0, "D": 1, "A": 2}
+        try:
+            actuals_idx = np.array([outcome_map[a] for a in actuals])
+        except KeyError as e:
+            raise ValueError(f"Unknown outcome in actuals: {e}")
+    else:
+        actuals_idx = actuals.astype(int)
+        if not all(a in [0, 1, 2] for a in actuals_idx):
+            raise ValueError("Integer actuals must be 0 (H), 1 (D), or 2 (A)")
+
+    n_outcomes = ordered_predictions.shape[1]
+    rps_scores = []
+
+    for i in range(len(ordered_predictions)):
         # cumulative predicted probabilities
-        cum_pred = np.cumsum(predictions[i])
+        pred_probs = ordered_predictions[i]
+        cum_pred = np.cumsum(pred_probs)
 
-        # cumulative actual probabilities (one-hot encoded)
+        # cumulative actual probabilities (one-hot encoded then cumulative)
+        actual_idx = actuals_idx[i]
         actual_one_hot = np.zeros(n_outcomes)
-        actual_one_hot[actuals[i]] = 1
+        actual_one_hot[actual_idx] = 1.0
         cum_actual = np.cumsum(actual_one_hot)
 
-        # squared differences of cumulative distributions
-        rps_sum += np.sum((cum_pred - cum_actual) ** 2)
+        # rps: sum of squared differences, normalised by (K-1)
+        rps = np.sum((cum_pred - cum_actual) ** 2) / (n_outcomes - 1)
+        rps_scores.append(rps)
 
-    return rps_sum / n_samples
+    return float(np.mean(rps_scores))
 
 
-def calculate_brier_score(predictions: np.ndarray, actuals: np.ndarray) -> float:
-    """
-    Calculate Brier Score.
+def calculate_brier_score(
+    predictions: Union[pd.DataFrame, np.ndarray], actuals: Union[pd.Series, np.ndarray]
+) -> float:
+    """Calculate Brier Score (mean squared error of probabilities)"""
+    # convert inputs to standard format
+    if isinstance(predictions, pd.DataFrame):
+        required_cols = ["home_win", "draw", "away_win"]
+        if not all(col in predictions.columns for col in required_cols):
+            raise ValueError(f"DataFrame predictions must have columns {required_cols}")
+        predictions = predictions.reset_index(drop=True)
+        pred_array = predictions[required_cols].values
+    elif isinstance(predictions, np.ndarray):
+        if predictions.ndim != 2 or predictions.shape[1] != 3:
+            raise ValueError(
+                f"Array predictions must be shape (n, 3), got {predictions.shape}"
+            )
+        pred_array = predictions
+    else:
+        raise TypeError(
+            f"predictions must be DataFrame or ndarray, got {type(predictions)}"
+        )
 
-    Brier score measures the mean squared error between predicted probabilities
-    and actual outcomes.
-    """
-    n_samples = len(actuals)
-    n_outcomes = predictions.shape[1]
+    # convert actuals to standard format
+    if isinstance(actuals, pd.Series):
+        actuals = actuals.reset_index(drop=True).values
+    elif not isinstance(actuals, np.ndarray):
+        actuals = np.array(actuals)
 
-    # one-hot encode actuals
-    one_hot_actuals = np.zeros_like(predictions)
-    for i, actual in enumerate(actuals):
-        one_hot_actuals[i, actual] = 1
+    # verify lengths match
+    if len(pred_array) != len(actuals):
+        raise ValueError(
+            f"Length mismatch: {len(pred_array)} predictions vs {len(actuals)} actuals"
+        )
 
-    # mean squared error
-    brier = np.mean((predictions - one_hot_actuals) ** 2)
+    # handle both string and integer outcomes
+    if actuals.dtype.kind in ("U", "O"):
+        outcome_map = {"H": 0, "D": 1, "A": 2}
+        try:
+            actuals_idx = np.array([outcome_map[a] for a in actuals])
+        except KeyError as e:
+            raise ValueError(f"Unknown outcome in actuals: {e}")
+    else:
+        actuals_idx = actuals.astype(int)
+        if not all(a in [0, 1, 2] for a in actuals_idx):
+            raise ValueError("Integer actuals must be 0 (H), 1 (D), or 2 (A)")
 
-    return brier
+    # calculate brier score
+    brier_scores = []
+
+    for i in range(len(pred_array)):
+        pred_probs = pred_array[i]
+        actual_idx = actuals_idx[i]
+        actual_one_hot = np.array([1.0 if j == actual_idx else 0.0 for j in range(3)])
+
+        # brier score is sum of squared errors, divided by two
+        # following Kruppa et al (2014))
+        brier = np.sum((pred_probs - actual_one_hot) ** 2) / 2
+        brier_scores.append(brier)
+
+    return float(np.mean(brier_scores))
 
 
 def calculate_log_loss(
-    predictions: np.ndarray, actuals: np.ndarray, epsilon: float = 1e-15
+    predictions: Union[pd.DataFrame, np.ndarray],
+    actuals: Union[pd.Series, np.ndarray],
+    eps: float = 1e-15,
 ) -> float:
-    """
-    Calculate Log Loss (cross-entropy loss).
-
-    Log loss heavily penalises confident wrong predictions.
-    """
-    # clip predictions to avoid log(0)
-    predictions_clipped = np.clip(predictions, epsilon, 1 - epsilon)
-
-    # extract probability of actual outcome
-    log_loss = -np.mean(
-        [np.log(predictions_clipped[i, actuals[i]]) for i in range(len(actuals))]
-    )
-
-    return log_loss
-
-
-def calculate_accuracy(predictions: np.ndarray, actuals: np.ndarray) -> float:
-    """
-    Calculate classification accuracy.
-
-    Predicts the most likely outcome and calculates % correct.
-    """
-    predicted_outcomes = np.argmax(predictions, axis=1)
-    accuracy = np.mean(predicted_outcomes == actuals)
-    return accuracy
-
-
-def evaluate_model_comprehensive(
-    params: Dict[str, Any], test_data: pd.DataFrame
-) -> Tuple[Dict[str, float], np.ndarray, np.ndarray]:
-    """
-    Comprehensive model evaluation.
-
-    Calculates all standard metrics on a test set.
-    """
-    # import here to avoid circular dependency
-    from ..models.poisson import calculate_lambdas
-
-    home_teams = test_data["home_team"].values
-    away_teams = test_data["away_team"].values
-    home_goals = test_data["home_goals"].astype(int).values
-    away_goals = test_data["away_goals"].astype(int).values
-
-    # get features
-    home_log_odds = (
-        test_data["home_log_odds"].fillna(0).values
-        if "home_log_odds" in test_data
-        else np.zeros(len(test_data))
-    )
-
-    home_pens_att = (
-        test_data["home_pens_att"].fillna(0).values
-        if "home_pens_att" in test_data
-        else np.zeros(len(test_data))
-    )
-    away_pens_att = (
-        test_data["away_pens_att"].fillna(0).values
-        if "away_pens_att" in test_data
-        else np.zeros(len(test_data))
-    )
-
-    predictions = []
-    actuals = []
-
-    for i in range(len(test_data)):
-        # get team parameters
-        att_h = params["attack"].get(home_teams[i], 0)
-        def_h = params["defense"].get(home_teams[i], 0)
-        att_a = params["attack"].get(away_teams[i], 0)
-        def_a = params["defense"].get(away_teams[i], 0)
-
-        # calculate expected goals
-        lambda_h = np.exp(
-            att_h
-            + def_a
-            + params["home_adv"]
-            + params["beta_odds"] * home_log_odds[i]
-            + params.get("beta_penalty", 0.0) * home_pens_att[i]
-        )
-        lambda_a = np.exp(
-            att_a
-            + def_h
-            - params["beta_odds"] * home_log_odds[i]
-            + params.get("beta_penalty", 0.0) * away_pens_att[i]
+    """Calculate logarithmic loss (cross-entropy)"""
+    # convert inputs to standard format
+    if isinstance(predictions, pd.DataFrame):
+        required_cols = ["home_win", "draw", "away_win"]
+        if not all(col in predictions.columns for col in required_cols):
+            raise ValueError(f"DataFrame predictions must have columns {required_cols}")
+        predictions = predictions.reset_index(drop=True)
+        pred_array = predictions[required_cols].values
+    elif isinstance(predictions, np.ndarray):
+        if predictions.ndim != 2 or predictions.shape[1] != 3:
+            raise ValueError(
+                f"Array predictions must be shape (n, 3), got {predictions.shape}"
+            )
+        pred_array = predictions
+    else:
+        raise TypeError(
+            f"predictions must be DataFrame or ndarray, got {type(predictions)}"
         )
 
-        lambda_h = np.clip(lambda_h, 0.1, 10.0)
-        lambda_a = np.clip(lambda_a, 0.1, 10.0)
+    # convert actuals to standard format
+    if isinstance(actuals, pd.Series):
+        actuals = actuals.reset_index(drop=True).values
+    elif not isinstance(actuals, np.ndarray):
+        actuals = np.array(actuals)
 
-        # calculate outcome probabilities
-        home_win_prob = draw_prob = away_win_prob = 0
-
-        for h in range(8):
-            for a in range(8):
-                p = poisson.pmf(h, lambda_h) * poisson.pmf(a, lambda_a)
-                if h > a:
-                    home_win_prob += p
-                elif h == a:
-                    draw_prob += p
-                else:
-                    away_win_prob += p
-
-        total = home_win_prob + draw_prob + away_win_prob
-        predictions.append(
-            [home_win_prob / total, draw_prob / total, away_win_prob / total]
+    # verify lengths match
+    if len(pred_array) != len(actuals):
+        raise ValueError(
+            f"Length mismatch: {len(pred_array)} predictions vs {len(actuals)} actuals"
         )
 
-        # actual outcome
-        if home_goals[i] > away_goals[i]:
-            actuals.append(0)
-        elif home_goals[i] == away_goals[i]:
-            actuals.append(1)
-        else:
-            actuals.append(2)
+    # clip probabilities to avoid log(0)
+    pred_array = np.clip(pred_array, eps, 1 - eps)
 
-    predictions = np.array(predictions)
-    actuals = np.array(actuals)
+    # handle both string and integer outcomes
+    if actuals.dtype.kind in ("U", "O"):
+        outcome_map = {"H": 0, "D": 1, "A": 2}
+        try:
+            actuals_idx = np.array([outcome_map[a] for a in actuals])
+        except KeyError as e:
+            raise ValueError(f"Unknown outcome in actuals: {e}")
+    else:
+        actuals_idx = actuals.astype(int)
+        if not all(a in [0, 1, 2] for a in actuals_idx):
+            raise ValueError("Integer actuals must be 0 (H), 1 (D), or 2 (A)")
+
+    # calculate log loss
+    log_losses = []
+
+    for i in range(len(pred_array)):
+        actual_idx = actuals_idx[i]
+        log_loss = -np.log(pred_array[i, actual_idx])
+        log_losses.append(log_loss)
+
+    return float(np.mean(log_losses))
+
+
+def calculate_accuracy(
+    predictions: Union[pd.DataFrame, np.ndarray], actuals: Union[pd.Series, np.ndarray]
+) -> float:
+    """Calculate classification accuracy"""
+    # convert inputs to standard format
+    if isinstance(predictions, pd.DataFrame):
+        required_cols = ["home_win", "draw", "away_win"]
+        if not all(col in predictions.columns for col in required_cols):
+            raise ValueError(f"DataFrame predictions must have columns {required_cols}")
+        predictions = predictions.reset_index(drop=True)
+        pred_array = predictions[required_cols].values
+    elif isinstance(predictions, np.ndarray):
+        if predictions.ndim != 2 or predictions.shape[1] != 3:
+            raise ValueError(
+                f"Array predictions must be shape (n, 3), got {predictions.shape}"
+            )
+        pred_array = predictions
+    else:
+        raise TypeError(
+            f"predictions must be DataFrame or ndarray, got {type(predictions)}"
+        )
+
+    # convert actuals to standard format
+    if isinstance(actuals, pd.Series):
+        actuals = actuals.reset_index(drop=True).values
+    elif not isinstance(actuals, np.ndarray):
+        actuals = np.array(actuals)
+
+    # verify lengths match
+    if len(pred_array) != len(actuals):
+        raise ValueError(
+            f"Length mismatch: {len(pred_array)} predictions vs {len(actuals)} actuals"
+        )
+
+    # get predicted class (highest probability)
+    pred_classes = pred_array.argmax(axis=1)
+
+    # handle both string and integer outcomes
+    if actuals.dtype.kind in ("U", "O"):
+        outcome_map = {"H": 0, "D": 1, "A": 2}
+        try:
+            actuals_idx = np.array([outcome_map[a] for a in actuals])
+        except KeyError as e:
+            raise ValueError(f"Unknown outcome in actuals: {e}")
+    else:
+        actuals_idx = actuals.astype(int)
+        if not all(a in [0, 1, 2] for a in actuals_idx):
+            raise ValueError("Integer actuals must be 0 (H), 1 (D), or 2 (A)")
+
+    # calculate accuracy
+    correct = (pred_classes == actuals_idx).sum()
+    accuracy = correct / len(actuals_idx)
+
+    return float(accuracy)
+
+
+def evaluate_model_comprehensive(params: Dict, test_data: pd.DataFrame) -> tuple:
+    """Comprehensive model evaluation"""
+    from ..simulation.predictions import predict_match_probabilities
+
+    # generate predictions for all test matches
+    predictions_list = []
+
+    for idx, row in test_data.iterrows():
+        probs = predict_match_probabilities(params, row)
+        predictions_list.append(probs)
+
+    predictions = pd.DataFrame(predictions_list)
+    actuals = test_data["result"].reset_index(drop=True)
 
     # calculate all metrics
     metrics = {
@@ -218,7 +313,7 @@ def calculate_metric_confidence_interval(
     metric_func: callable,
     n_bootstrap: int = 1000,
     confidence: float = 0.95,
-) -> Tuple[float, float, float]:
+) -> tuple[float, float, float]:
     """Calculate confidence interval for a metric via bootstrap"""
     point_estimate = metric_func(predictions, actuals)
 

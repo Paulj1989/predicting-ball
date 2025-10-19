@@ -9,7 +9,7 @@ Uses temperature scaling for probability calibration - a single-parameter
 method that adjusts confidence without changing outcome rankings.
 
 Usage:
-    python scripts/run_calibration.py --model-path outputs/models/production_model.pkl
+    python scripts/modeling/run_calibration.py --model-path outputs/models/production_model.pkl
 """
 
 import sys

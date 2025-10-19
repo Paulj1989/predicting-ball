@@ -6,7 +6,7 @@ Fetch and Update Database
 Fetch latest match data and update DuckDB database.
 
 Usage:
-    python scripts/fetch_and_update_db.py [--dry-run]
+    python scripts/automation/fetch_and_update_db.py [--dry-run]
 """
 
 import duckdb

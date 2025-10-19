@@ -3,11 +3,13 @@
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize_scalar
-from typing import Dict, Callable, Tuple, Any
+from typing import Dict, Callable, Tuple, Any, Union
 
 
 def fit_temperature_scaler(
-    predictions: np.ndarray, actuals: np.ndarray, verbose: bool = True
+    predictions: Union[pd.DataFrame, np.ndarray],
+    actuals: Union[pd.Series, np.ndarray],
+    verbose: bool = True,
 ) -> float:
     """
     Fit temperature scaling parameter via NLL minimisation.
@@ -15,6 +17,32 @@ def fit_temperature_scaler(
     Temperature scaling adjusts prediction confidence without changing
     the relative ordering of outcomes.
     """
+    # convert inputs to numpy arrays
+    if isinstance(predictions, pd.DataFrame):
+        required_cols = ["home_win", "draw", "away_win"]
+        if not all(col in predictions.columns for col in required_cols):
+            raise ValueError(f"DataFrame must have columns {required_cols}")
+        predictions = predictions[required_cols].values
+    elif not isinstance(predictions, np.ndarray):
+        predictions = np.array(predictions)
+
+    if isinstance(actuals, pd.Series):
+        actuals = actuals.values
+    elif not isinstance(actuals, np.ndarray):
+        actuals = np.array(actuals)
+
+    # handle string vs integer outcomes
+    if actuals.dtype.kind in ("U", "O"):
+        outcome_map = {"H": 0, "D": 1, "A": 2}
+        try:
+            actuals = np.array([outcome_map[a] for a in actuals])
+        except KeyError as e:
+            raise ValueError(f"Unknown outcome: {e}")
+    else:
+        actuals = actuals.astype(int)
+        if not all(a in [0, 1, 2] for a in actuals):
+            raise ValueError("Integer outcomes must be 0 (H), 1 (D), or 2 (A)")
+
     # clip predictions to avoid log(0)
     predictions = np.clip(predictions, 1e-10, 1 - 1e-10)
 
@@ -33,7 +61,6 @@ def fit_temperature_scaler(
         calibrated_probs = exp_logits / exp_logits.sum(axis=1, keepdims=True)
 
         # compute negative log-likelihood
-        # NLL = -Σ log(p_i[y_i]) where y_i is the true class
         nll = -np.log(calibrated_probs[np.arange(len(actuals)), actuals] + 1e-10).sum()
 
         return nll
@@ -66,7 +93,7 @@ def fit_temperature_scaler(
 
 
 def apply_temperature_scaling(
-    predictions: np.ndarray, temperature: float
+    predictions: Union[pd.DataFrame, np.ndarray], temperature: float
 ) -> np.ndarray:
     """
     Apply temperature scaling to predictions.
@@ -76,6 +103,15 @@ def apply_temperature_scaling(
     2. Scaling by temperature
     3. Applying softmax to renormalise
     """
+    # convert to numpy array
+    if isinstance(predictions, pd.DataFrame):
+        required_cols = ["home_win", "draw", "away_win"]
+        if not all(col in predictions.columns for col in required_cols):
+            raise ValueError(f"DataFrame must have columns {required_cols}")
+        predictions = predictions[required_cols].values
+    elif not isinstance(predictions, np.ndarray):
+        predictions = np.array(predictions)
+
     # clip predictions to avoid log(0)
     predictions = np.clip(predictions, 1e-10, 1 - 1e-10)
 
@@ -231,7 +267,7 @@ def create_dispersion_interpolator(calibrated_dispersions: Dict[float, float]):
     """
 
     def get_dispersion_for_confidence(confidence: float) -> float:
-        """Get interpolated dispersion for any confidence level."""
+        """Get interpolated dispersion for any confidence level"""
         if confidence <= 0.68:
             return calibrated_dispersions[0.68]
         elif confidence >= 0.95:

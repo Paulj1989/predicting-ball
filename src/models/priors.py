@@ -2,7 +2,7 @@
 
 import numpy as np
 import pandas as pd
-from typing import Dict, Tuple, Optional, Any
+from typing import Dict, Tuple, Any
 
 
 def calculate_home_advantage_prior(
@@ -36,7 +36,7 @@ def calculate_home_advantage_prior(
     home_adv_prior = np.log(ratio)
 
     if verbose:
-        print(f"\nHome Advantage Prior from Historical Data:")
+        print("\nHome Advantage Prior from Historical Data:")
         print(f"  Metric: {metric_name}")
         print(f"  Average home {metric_name}: {home_metric:.3f}")
         print(f"  Average away {metric_name}: {away_metric:.3f}")
@@ -83,7 +83,7 @@ def identify_promoted_teams(
     historic_data: pd.DataFrame, current_season: pd.DataFrame
 ) -> Dict[str, Dict[str, Any]]:
     """Identify teams in current season not in previous season"""
-    print(f"\n" + "=" * 60)
+    print("\n" + "=" * 60)
     print("PROMOTED TEAM IDENTIFICATION")
     print("=" * 60)
 
@@ -115,7 +115,7 @@ def identify_promoted_teams(
     promoted = current_teams - last_season_teams
     relegated = last_season_teams - current_teams
 
-    print(f"\n" + "=" * 60)
+    print("\n" + "=" * 60)
     if relegated:
         print(f"Relegated from {last_season_year}: {', '.join(sorted(relegated))}")
     print(f"Promoted to {current_season_year}: {len(promoted)} teams")
@@ -158,9 +158,9 @@ def identify_promoted_teams(
         if len(historic_appearances) > 0:
             seasons_played = sorted(historic_appearances["season_end_year"].unique())
             print(f"    Previous seasons: {', '.join(map(str, seasons_played))}")
-            print(f"    Status: RETURNING")
+            print("    Status: RETURNING")
         else:
-            print(f"    Status: NEW")
+            print("    Status: NEW")
 
     return promoted_info
 
@@ -178,7 +178,7 @@ def calculate_promoted_team_priors(
     2. Squad values relative to league average
     3. Early season performance (if 3+ matches played)
     """
-    print(f"\n" + "=" * 60)
+    print("\n" + "=" * 60)
     print("CALCULATING PROMOTED TEAM PRIORS")
     print("=" * 60)
 
@@ -247,7 +247,7 @@ def calculate_promoted_team_priors(
     defense_50 = np.percentile(all_defenses, 50)
     defense_75 = np.percentile(all_defenses, 75)
 
-    print(f"\nLeague parameter distributions:")
+    print("\nLeague parameter distributions:")
     print(f"  Attack: 25th={attack_25:.3f}, 50th={attack_50:.3f}, 75th={attack_75:.3f}")
     print(
         f"  Defense: 25th={defense_25:.3f}, 50th={defense_50:.3f}, 75th={defense_75:.3f}"
