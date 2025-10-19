@@ -8,53 +8,152 @@ from .metrics import (
     calculate_rps,
     calculate_brier_score,
     calculate_log_loss,
-    calculate_accuracy,
 )
 
 
-def evaluate_implied_odds_baseline(test_data: pd.DataFrame) -> Dict[str, float]:
+def evaluate_implied_odds_baseline(
+    data: pd.DataFrame, verbose: bool = False
+) -> Optional[Dict[str, float]]:
     """
-    Evaluate implied odds as baseline.
+    Evaluate implied odds as a baseline model.
 
-    Uses betting market probabilities (with margin removed) as predictions.
+    Converts bookmaker odds to probabilities (removing margin).
     """
-    if "odds_home_prob" not in test_data.columns:
-        print("Warning: No odds data available for baseline")
+    # check for required columns
+    required_cols = ["home_odds", "draw_odds", "away_odds", "result"]
+    missing_cols = [col for col in required_cols if col not in data.columns]
+
+    if missing_cols:
+        if verbose:
+            print(f"  ⚠ Missing columns for baseline: {missing_cols}")
         return None
 
-    # extract implied probabilities
-    predictions = test_data[
-        ["odds_home_prob", "odds_draw_prob", "odds_away_prob"]
-    ].values
-
-    # get actual outcomes
-    home_goals = test_data["home_goals"].astype(int).values
-    away_goals = test_data["away_goals"].astype(int).values
-
-    actuals = np.where(
-        home_goals > away_goals, 0, np.where(home_goals == away_goals, 1, 2)
+    # filter to matches with complete odds
+    valid_mask = (
+        data["home_odds"].notna()
+        & data["draw_odds"].notna()
+        & data["away_odds"].notna()
+        & data["result"].notna()
     )
 
-    # calculate metrics
-    metrics = {
-        "rps": calculate_rps(predictions, actuals),
-        "brier_score": calculate_brier_score(predictions, actuals),
-        "log_loss": calculate_log_loss(predictions, actuals),
-        "accuracy": calculate_accuracy(predictions, actuals),
-    }
+    n_valid = valid_mask.sum()
+    n_total = len(data)
 
-    return metrics
+    if verbose:
+        print(
+            f"  Matches with complete odds: {n_valid}/{n_total} ({n_valid / n_total * 100:.1f}%)"
+        )
+
+    # require at least 80% coverage
+    if n_valid < 0.8 * n_total:
+        if verbose:
+            print(f"  ⚠ Insufficient odds coverage: {n_valid / n_total * 100:.1f}%")
+        return None
+
+    if n_valid == 0:
+        if verbose:
+            print("  ⚠ No matches with complete odds")
+        return None
+
+    # get valid data - reset indices to avoid misalignment
+    valid_data = data[valid_mask].copy().reset_index(drop=True)
+
+    # calculate implied probabilities
+    home_implied = 1 / valid_data["home_odds"]
+    draw_implied = 1 / valid_data["draw_odds"]
+    away_implied = 1 / valid_data["away_odds"]
+
+    # check for any invalid values
+    if (
+        home_implied.isna().any()
+        or draw_implied.isna().any()
+        or away_implied.isna().any()
+    ):
+        if verbose:
+            print("  ⚠ NaN values in implied probabilities")
+        return None
+
+    if (
+        (home_implied <= 0).any()
+        or (draw_implied <= 0).any()
+        or (away_implied <= 0).any()
+    ):
+        if verbose:
+            print("  ⚠ Non-positive implied probabilities")
+        return None
+
+    # normalise to remove bookmaker margin
+    total_implied = home_implied + draw_implied + away_implied
+
+    if (total_implied == 0).any():
+        if verbose:
+            print("  ⚠ Zero total implied probability")
+        return None
+
+    baseline_probs = pd.DataFrame(
+        {
+            "home_win": home_implied / total_implied,
+            "draw": draw_implied / total_implied,
+            "away_win": away_implied / total_implied,
+        }
+    )
+
+    # verify probabilities sum to 1
+    prob_sums = baseline_probs.sum(axis=1)
+    if not np.allclose(prob_sums, 1.0, atol=1e-6):
+        if verbose:
+            print(f"  ⚠ Probabilities don't sum to 1: {prob_sums.describe()}")
+        return None
+
+    # get actual outcomes - reset index to match baseline_probs
+    actual_outcomes = valid_data["result"].reset_index(drop=True)
+
+    # verify alignment
+    if len(baseline_probs) != len(actual_outcomes):
+        if verbose:
+            print(
+                f"  ⚠ Length mismatch: {len(baseline_probs)} probs vs {len(actual_outcomes)} outcomes"
+            )
+        return None
+
+    # calculate metrics
+    try:
+        rps = calculate_rps(baseline_probs, actual_outcomes)
+        brier = calculate_brier_score(baseline_probs, actual_outcomes)
+        log_loss_val = calculate_log_loss(baseline_probs, actual_outcomes)
+
+        # validate metrics
+        if np.isnan(rps) or np.isnan(brier) or np.isnan(log_loss_val):
+            if verbose:
+                print("  ⚠ Baseline metrics contain NaN")
+                print(f"     RPS: {rps}, Brier: {brier}, LogLoss: {log_loss_val}")
+            return None
+
+        if verbose:
+            print(f"  ✓ Baseline RPS: {rps:.4f}")
+            print(f"  ✓ Baseline Brier: {brier:.4f}")
+
+        return {
+            "rps": float(rps),
+            "brier_score": float(brier),
+            "log_loss": float(log_loss_val),
+            "n_matches": int(n_valid),
+            "coverage": float(n_valid / n_total),
+        }
+
+    except Exception as e:
+        if verbose:
+            print(f"  ✗ Error calculating baseline metrics: {e}")
+            import traceback
+
+            traceback.print_exc()
+        return None
 
 
 def evaluate_odds_only_model(
     test_data: pd.DataFrame, params: Dict[str, any]
 ) -> Optional[Dict[str, float]]:
-    """
-    Evaluate model that uses only betting odds (no team strengths).
-
-    This baseline uses odds as the only feature, testing whether
-    team strength parameters add value beyond market information.
-    """
+    """Evaluate model that uses only betting odds (no team strengths)"""
     if params is None or not params.get("success", False):
         return None
 
@@ -66,43 +165,6 @@ def evaluate_odds_only_model(
     return metrics
 
 
-def evaluate_historical_average_baseline(test_data: pd.DataFrame) -> Dict[str, float]:
-    """
-    Evaluate historical average baseline.
-
-    Uses overall historical frequencies as predictions:
-    - Home win: ~45%
-    - Draw: ~25%
-    - Away win: ~30%
-
-    This is the simplest possible baseline.
-    """
-    # historical frequencies for buli
-    home_prob = 0.45
-    draw_prob = 0.25
-    away_prob = 0.30
-
-    # create predictions (same for all matches)
-    n_matches = len(test_data)
-    predictions = np.tile([home_prob, draw_prob, away_prob], (n_matches, 1))
-
-    # get actual outcomes
-    home_goals = test_data["home_goals"].astype(int).values
-    away_goals = test_data["away_goals"].astype(int).values
-
-    actuals = np.where(
-        home_goals > away_goals, 0, np.where(home_goals == away_goals, 1, 2)
-    )
-
-    # calculate metrics
-    metrics = {
-        "rps": calculate_rps(predictions, actuals),
-        "brier_score": calculate_brier_score(predictions, actuals),
-        "log_loss": calculate_log_loss(predictions, actuals),
-        "accuracy": calculate_accuracy(predictions, actuals),
-    }
-
-    return metrics
 
 
 def create_baseline_comparison_table(
@@ -110,9 +172,8 @@ def create_baseline_comparison_table(
 ) -> pd.DataFrame:
     """Create comprehensive baseline comparison table"""
     results = {
-        "Your Model": model_metrics,
+        "Fitted Model": model_metrics,
         "Implied Odds": evaluate_implied_odds_baseline(test_data),
-        "Historical Average": evaluate_historical_average_baseline(test_data),
     }
 
     # remove none results

@@ -98,14 +98,57 @@ def predict_single_match(
     }
 
 
+def predict_match_probabilities(
+    params: Dict[str, Any], match_data: pd.Series, max_goals: int = 8
+) -> Dict[str, float]:
+    """
+    Predict outcome probabilities for a single match.
+
+    Thin adapter for evaluation functions.
+    """
+    # extract match information
+    home_team = match_data["home_team"]
+    away_team = match_data["away_team"]
+
+    # get features (with safe defaults)
+    home_log_odds = match_data.get("home_log_odds", 0.0)
+    if pd.isna(home_log_odds):
+        home_log_odds = 0.0
+
+    home_pens_att = match_data.get("home_pens_att", 0.0)
+    if pd.isna(home_pens_att):
+        home_pens_att = 0.0
+
+    away_pens_att = match_data.get("away_pens_att", 0.0)
+    if pd.isna(away_pens_att):
+        away_pens_att = 0.0
+
+    # call the existing prediction function
+    prediction = predict_single_match(
+        home_team=home_team,
+        away_team=away_team,
+        params=params,
+        home_log_odds=home_log_odds,
+        home_pens_att=home_pens_att,
+        away_pens_att=away_pens_att,
+        max_goals=max_goals,
+    )
+
+    # return just the probability fields
+    return {
+        "home_win": prediction["home_win"],
+        "draw": prediction["draw"],
+        "away_win": prediction["away_win"],
+    }
+
+
 def predict_next_fixtures(
     fixtures: pd.DataFrame, params: Dict[str, Any], calibrators: Optional[Any] = None
 ) -> Optional[pd.DataFrame]:
     """
     Generate predictions for multiple fixtures.
 
-    Applies temperature scaling if calibrators are provided and contain
-    a temperature parameter.
+    Applies temperature scaling if calibrators are provided.
     """
     if fixtures is None or len(fixtures) == 0:
         return None

@@ -19,6 +19,7 @@ from .sampling import (
 from .predictions import (
     predict_next_fixtures,
     predict_single_match,
+    predict_match_probabilities,
     get_next_round_fixtures,
 )
 
@@ -36,5 +37,6 @@ __all__ = [
     # predictions
     "predict_next_fixtures",
     "predict_single_match",
+    "predict_match_probabilities",
     "get_next_round_fixtures",
 ]

@@ -4,14 +4,14 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union
 
 
-# define colour palette
+# color palette
 COLORS = {
-    "primary": "#026E99",  # blue
-    "secondary": "#D93649",  # red
-    "accent": "#FFA600",  # orange
+    "primary": "#026E99",
+    "secondary": "#D93649",
+    "accent": "#FFA600",
 }
 
 # set seaborn style
@@ -19,21 +19,64 @@ sns.set_style("whitegrid")
 sns.set_context("notebook", font_scale=1.1)
 
 
+def _convert_to_arrays(
+    predictions: Union[pd.DataFrame, np.ndarray], actuals: Union[pd.Series, np.ndarray]
+) -> tuple:
+    """Convert predictions and actuals to standard numpy array format"""
+    # convert predictions
+    if isinstance(predictions, pd.DataFrame):
+        required_cols = ["home_win", "draw", "away_win"]
+        if not all(col in predictions.columns for col in required_cols):
+            raise ValueError(f"DataFrame must have columns {required_cols}")
+        pred_array = predictions[required_cols].values
+    elif isinstance(predictions, np.ndarray):
+        if predictions.ndim != 2 or predictions.shape[1] != 3:
+            raise ValueError(f"Array must be shape (n, 3), got {predictions.shape}")
+        pred_array = predictions
+    else:
+        raise TypeError(
+            f"predictions must be DataFrame or ndarray, got {type(predictions)}"
+        )
+
+    # convert actuals
+    if isinstance(actuals, pd.Series):
+        actuals = actuals.values
+    elif not isinstance(actuals, np.ndarray):
+        actuals = np.array(actuals)
+
+    # handle string vs integer outcomes
+    if actuals.dtype.kind in ("U", "O"):  # string type
+        outcome_map = {"H": 0, "D": 1, "A": 2}
+        try:
+            actuals_array = np.array([outcome_map[a] for a in actuals])
+        except KeyError as e:
+            raise ValueError(f"Unknown outcome: {e}")
+    else:  # numeric type
+        actuals_array = actuals.astype(int)
+        if not all(a in [0, 1, 2] for a in actuals_array):
+            raise ValueError("Integer outcomes must be 0 (H), 1 (D), or 2 (A)")
+
+    return pred_array, actuals_array
+
+
 def analyse_prediction_errors(
-    predictions: np.ndarray,
-    actuals: np.ndarray,
+    predictions: Union[pd.DataFrame, np.ndarray],
+    actuals: Union[pd.Series, np.ndarray],
     test_data: pd.DataFrame,
     verbose: bool = True,
 ) -> Dict[str, Any]:
     """Analyse prediction errors by outcome type"""
+    # convert to standard format
+    pred_array, actuals_array = _convert_to_arrays(predictions, actuals)
+
     # get predicted outcomes
-    predicted_outcomes = np.argmax(predictions, axis=1)
+    predicted_outcomes = np.argmax(pred_array, axis=1)
 
     # calculate confusion matrix
     n_outcomes = 3
     confusion = np.zeros((n_outcomes, n_outcomes), dtype=int)
 
-    for actual, predicted in zip(actuals, predicted_outcomes):
+    for actual, predicted in zip(actuals_array, predicted_outcomes):
         confusion[actual, predicted] += 1
 
     # calculate accuracy by outcome
@@ -41,7 +84,7 @@ def analyse_prediction_errors(
     accuracies = {}
 
     for i, name in enumerate(outcome_names):
-        n_actual = (actuals == i).sum()
+        n_actual = (actuals_array == i).sum()
         n_correct = confusion[i, i]
         accuracy = n_correct / n_actual if n_actual > 0 else 0
         accuracies[name] = accuracy
@@ -49,9 +92,9 @@ def analyse_prediction_errors(
     # calculate average confidence by outcome
     avg_confidence = {}
     for i, name in enumerate(outcome_names):
-        mask = actuals == i
+        mask = actuals_array == i
         if mask.sum() > 0:
-            avg_confidence[name] = predictions[mask, i].mean()
+            avg_confidence[name] = pred_array[mask, i].mean()
         else:
             avg_confidence[name] = 0
 
@@ -85,13 +128,16 @@ def analyse_prediction_errors(
 
 
 def analyse_performance_by_team(
-    predictions: np.ndarray,
-    actuals: np.ndarray,
+    predictions: Union[pd.DataFrame, np.ndarray],
+    actuals: Union[pd.Series, np.ndarray],
     test_data: pd.DataFrame,
     verbose: bool = True,
 ) -> pd.DataFrame:
     """Analyse model performance by team"""
     from ..evaluation.metrics import calculate_rps, calculate_brier_score
+
+    # convert to standard format
+    pred_array, actuals_array = _convert_to_arrays(predictions, actuals)
 
     # get all teams
     all_teams = sorted(
@@ -107,8 +153,10 @@ def analyse_performance_by_team(
         if team_mask.sum() == 0:
             continue
 
-        team_preds = predictions[team_mask]
-        team_actuals = actuals[team_mask]
+        # use mask as numpy array for indexing
+        team_mask_array = team_mask.values
+        team_preds = pred_array[team_mask_array]
+        team_actuals = actuals_array[team_mask_array]
 
         # calculate metrics
         rps = calculate_rps(team_preds, team_actuals)
@@ -147,22 +195,21 @@ def analyse_performance_by_team(
 
 
 def analyse_performance_by_odds(
-    predictions: np.ndarray,
-    actuals: np.ndarray,
+    predictions: Union[pd.DataFrame, np.ndarray],
+    actuals: Union[pd.Series, np.ndarray],
     test_data: pd.DataFrame,
     n_bins: int = 5,
     verbose: bool = True,
-) -> pd.DataFrame:
-    """
-    Analyse performance by odds-implied probability.
-
-    Tests whether model performs differently on favourites vs. underdogs.
-    """
+) -> Optional[pd.DataFrame]:
+    """Analyse performance by odds-implied probability"""
     from ..evaluation.metrics import (
         calculate_rps,
         calculate_brier_score,
         calculate_accuracy,
     )
+
+    # convert to standard format
+    pred_array, actuals_array = _convert_to_arrays(predictions, actuals)
 
     if "odds_home_prob" not in test_data.columns:
         print("✗ No odds data available for analysis")
@@ -184,8 +231,10 @@ def analyse_performance_by_odds(
         if bin_mask.sum() == 0:
             continue
 
-        bin_preds = predictions[bin_mask]
-        bin_actuals = actuals[bin_mask]
+        # use mask as numpy array for indexing
+        bin_mask_array = bin_mask.values
+        bin_preds = pred_array[bin_mask_array]
+        bin_actuals = actuals_array[bin_mask_array]
 
         results.append(
             {
