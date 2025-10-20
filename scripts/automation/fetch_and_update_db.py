@@ -23,6 +23,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from src.scrapers.fbref_scraper import FBRefScraper
 from src.scrapers.transfermarkt_scraper import TransfermarktScraper
 from src.scrapers.odds_scraper import OddsScraper
+from src.utils import determine_current_season, format_season_string
+from src.processing.data_processor import DataProcessor
 
 try:
     from dotenv import load_dotenv
@@ -126,9 +128,14 @@ def update_database(dry_run=False):
         conn.execute("DETACH prod")
 
     try:
-        # fetch latest fbref match results
+        # determine current season automatically
+        current_season_year = determine_current_season()
+
+        # fetch latest FBRef match results
         print("\n1. Fetching latest Bundesliga matches...")
-        current_season_year = 2026  # update when season changes
+        print(
+            f"   Season: {format_season_string(current_season_year)} (season_end_year={current_season_year})"
+        )
 
         fbref_scraper = FBRefScraper(headless=True)
         latest_matches = fbref_scraper.scrape_multiple_seasons(
@@ -137,6 +144,11 @@ def update_database(dry_run=False):
 
         if not latest_matches.empty:
             print(f"   Found {len(latest_matches)} matches for current season")
+
+            # count played vs unplayed
+            played_count = latest_matches["home_goals"].notna().sum()
+            upcoming_count = latest_matches["home_goals"].isna().sum()
+            print(f"   Played: {played_count}, Upcoming: {upcoming_count}")
 
             # align columns with existing table
             latest_matches = align_dataframe_columns(
@@ -233,9 +245,35 @@ def update_database(dry_run=False):
                 match_count = conn.execute(
                     "SELECT COUNT(*) FROM raw.match_logs_fbref"
                 ).fetchone()[0]
-                print(f"\n   Total matches in database: {match_count}")
+                played_in_db = conn.execute("""
+                    SELECT COUNT(*) FROM raw.match_logs_fbref
+                    WHERE home_goals IS NOT NULL
+                """).fetchone()[0]
+                upcoming_in_db = conn.execute(
+                    """
+                    SELECT COUNT(*) FROM raw.match_logs_fbref
+                    WHERE home_goals IS NULL AND season_end_year = ?
+                """,
+                    [current_season_year],
+                ).fetchone()[0]
+
+                print("\n   Database summary:")
+                print(f"   Total matches: {match_count}")
+                print(f"   Played matches: {played_in_db}")
+                print(
+                    f"   Upcoming fixtures (season {current_season_year}): {upcoming_in_db}"
+                )
             except:
                 pass
+
+        conn.close()
+
+        # integrate data sources to update processed tables
+        if not dry_run:
+            print("\n4. Integrating data sources...")
+
+            processor = DataProcessor(db_path=db_path)
+            processor.integrate_all_data()
 
         print("\n" + "=" * 70)
         print("DATABASE UPDATE COMPLETE")
@@ -244,7 +282,6 @@ def update_database(dry_run=False):
         if dry_run:
             print("DRY RUN - no changes were saved")
 
-        conn.close()
         return True
 
     except Exception as e:
@@ -252,7 +289,8 @@ def update_database(dry_run=False):
         import traceback
 
         traceback.print_exc()
-        conn.close()
+        if "conn" in locals():
+            conn.close()
         sys.exit(1)
 
 
