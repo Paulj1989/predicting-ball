@@ -160,7 +160,7 @@ pydantic-core==2.41.1
     # via pydantic
 pydeck==0.9.1
     # via streamlit
-pyparsing==3.2.3
+pyparsing==3.2.5
     # via matplotlib
 pysocks==1.7.1
     # via urllib3
