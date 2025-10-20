@@ -280,7 +280,7 @@ urllib3==2.5.0
     #   botocore
     #   requests
     #   selenium
-uvicorn==0.37.0
+uvicorn==0.38.0
     # via predicting-ball (pyproject.toml)
 uvloop==0.21.0
     # via uvicorn
