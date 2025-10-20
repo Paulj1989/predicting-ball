@@ -45,6 +45,50 @@ def parse_args():
     return parser.parse_args()
 
 
+def align_dataframe_columns(new_df, table_name, conn):
+    """
+    Align new dataframe columns with existing table schema.
+    Adds missing columns with NULL, removes extra columns.
+    """
+    try:
+        # get existing table columns
+        existing_cols = conn.execute(f"""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'raw' AND table_name = '{table_name.split(".")[-1]}'
+            ORDER BY ordinal_position
+        """).fetchdf()
+
+        if existing_cols.empty:
+            # table doesn't exist yet, return as-is
+            return new_df
+
+        existing_col_list = existing_cols["column_name"].tolist()
+        new_col_list = new_df.columns.tolist()
+
+        # find differences
+        missing_in_new = set(existing_col_list) - set(new_col_list)
+        extra_in_new = set(new_col_list) - set(existing_col_list)
+
+        if missing_in_new:
+            print(f"   Adding {len(missing_in_new)} missing columns with NULL values")
+            for col in missing_in_new:
+                new_df[col] = pd.NA
+
+        if extra_in_new:
+            print(f"   Removing {len(extra_in_new)} extra columns not in table")
+            new_df = new_df.drop(columns=list(extra_in_new))
+
+        # reorder columns to match table schema
+        new_df = new_df[existing_col_list]
+
+        return new_df
+
+    except Exception as e:
+        print(f"   Warning: Could not align columns: {e}")
+        return new_df
+
+
 def update_database(dry_run=False):
     """Fetch latest data and update database"""
 
@@ -65,19 +109,26 @@ def update_database(dry_run=False):
     conn = duckdb.connect(db_path if not dry_run else ":memory:")
 
     if dry_run:
-        conn.execute(f"ATTACH '{db_path}' AS prod")
+        conn.execute(f"ATTACH '{db_path}' AS prod (READ_ONLY)")
         try:
-            conn.execute(
-                "CREATE TABLE match_logs_fbref AS SELECT * FROM prod.raw.match_logs_fbref LIMIT 0"
-            )
-        except:
-            print("   Could not create temp table structure")
+            # copy schema structure for dry run
+            tables_to_copy = ["match_logs_fbref", "squad_values_tm"]
+            for table in tables_to_copy:
+                try:
+                    conn.execute(f"""
+                        CREATE TABLE raw.{table} AS
+                        SELECT * FROM prod.raw.{table} LIMIT 0
+                    """)
+                except:
+                    pass
+        except Exception as e:
+            print(f"   Could not setup dry run: {e}")
         conn.execute("DETACH prod")
 
     try:
         # fetch latest fbref match results
         print("\n1. Fetching latest Bundesliga matches...")
-        current_season_year = 2025
+        current_season_year = 2026  # update when season changes
 
         fbref_scraper = FBRefScraper(headless=True)
         latest_matches = fbref_scraper.scrape_multiple_seasons(
@@ -87,8 +138,13 @@ def update_database(dry_run=False):
         if not latest_matches.empty:
             print(f"   Found {len(latest_matches)} matches for current season")
 
+            # align columns with existing table
+            latest_matches = align_dataframe_columns(
+                latest_matches, "raw.match_logs_fbref", conn
+            )
+
             if not dry_run:
-                # update database
+                # delete existing data for current season
                 conn.execute(
                     """
                     DELETE FROM raw.match_logs_fbref
@@ -97,6 +153,7 @@ def update_database(dry_run=False):
                     [current_season_year],
                 )
 
+                # insert new data
                 conn.register("new_matches", latest_matches)
                 conn.execute("""
                     INSERT INTO raw.match_logs_fbref
@@ -117,6 +174,12 @@ def update_database(dry_run=False):
 
         if not squad_values.empty:
             print(f"   Found values for {len(squad_values)} teams")
+
+            # align columns
+            squad_values = align_dataframe_columns(
+                squad_values, "raw.squad_values_tm", conn
+            )
+
             if not dry_run:
                 conn.execute(
                     """
@@ -160,13 +223,19 @@ def update_database(dry_run=False):
         except ValueError as e:
             print(f"   Could not fetch odds: {e}")
             print("   Continuing without odds data")
+        except Exception as e:
+            print(f"   Error fetching odds: {e}")
+            print("   Continuing without odds data")
 
         # show summary
         if not dry_run:
-            match_count = conn.execute(
-                "SELECT COUNT(*) FROM raw.match_logs_fbref"
-            ).fetchone()[0]
-            print(f"\n   Total matches in database: {match_count}")
+            try:
+                match_count = conn.execute(
+                    "SELECT COUNT(*) FROM raw.match_logs_fbref"
+                ).fetchone()[0]
+                print(f"\n   Total matches in database: {match_count}")
+            except:
+                pass
 
         print("\n" + "=" * 70)
         print("DATABASE UPDATE COMPLETE")

@@ -510,6 +510,119 @@ def _display_table_count(
         logger.info(f"  {description}: Not available")
 
 
+def ensure_schema_compatibility(conn: duckdb.DuckDBPyConnection):
+    """
+    Ensure all scrapers produce schemas compatible with existing tables.
+
+    Checks if table schemas match current scraper output and adds missing columns.
+    """
+    logger.info("\nEnsuring schema compatibility...")
+
+    # check fbref schema
+    try:
+        scraper = FBRefScraper(headless=True)
+        current_season = determine_current_season()
+
+        # get a small sample to check schema
+        logger.info("  Checking FBRef schema...")
+        sample_data = scraper.scrape_multiple_seasons(current_season, current_season)
+
+        if not sample_data.empty:
+            _ensure_table_schema(
+                conn, "raw.match_logs_fbref", sample_data.columns.tolist(), sample_data
+            )
+    except Exception as e:
+        logger.warning(f"  Could not verify FBRef schema: {e}")
+
+    # check transfermarkt schema
+    try:
+        scraper = TransfermarktScraper()
+        current_season = determine_current_season()
+
+        logger.info("  Checking Transfermarkt schema...")
+        sample_data = scraper.scrape_multiple_seasons(current_season, current_season)
+
+        if not sample_data.empty:
+            _ensure_table_schema(
+                conn, "raw.squad_values_tm", sample_data.columns.tolist(), sample_data
+            )
+    except Exception as e:
+        logger.warning(f"  Could not verify Transfermarkt schema: {e}")
+
+    logger.info("  Schema compatibility check complete")
+
+
+def _ensure_table_schema(
+    conn: duckdb.DuckDBPyConnection,
+    table_name: str,
+    expected_columns: List[str],
+    sample_data: pd.DataFrame,
+):
+    """Ensure table has all expected columns, adding missing ones"""
+    table_short_name = table_name.split(".")[-1]
+
+    # check if table exists
+    table_exists = (
+        conn.execute(f"""
+        SELECT COUNT(*) FROM information_schema.tables
+        WHERE table_schema = 'raw' AND table_name = '{table_short_name}'
+    """).fetchone()[0]
+        > 0
+    )
+
+    if not table_exists:
+        logger.info(
+            f"    Table {table_name} doesn't exist - will be created on first scrape"
+        )
+        return
+
+    # get existing columns
+    existing_cols = (
+        conn.execute(f"""
+        SELECT column_name FROM information_schema.columns
+        WHERE table_schema = 'raw' AND table_name = '{table_short_name}'
+        ORDER BY ordinal_position
+    """)
+        .df()["column_name"]
+        .tolist()
+    )
+
+    # find missing columns
+    missing_cols = set(expected_columns) - set(existing_cols)
+    extra_cols = set(existing_cols) - set(expected_columns)
+
+    if missing_cols:
+        logger.info(f"    Adding {len(missing_cols)} new columns to {table_name}")
+        for col in missing_cols:
+            # determine sql type from sample data
+            dtype = str(sample_data[col].dtype)
+            if dtype.startswith("int"):
+                sql_type = "BIGINT"
+            elif dtype.startswith("float"):
+                sql_type = "DOUBLE"
+            elif dtype == "bool":
+                sql_type = "BOOLEAN"
+            elif "datetime" in dtype:
+                sql_type = "TIMESTAMP"
+            else:
+                sql_type = "VARCHAR"
+
+            try:
+                conn.execute(f"""
+                    ALTER TABLE {table_name}
+                    ADD COLUMN "{col}" {sql_type}
+                """)
+                logger.info(f"      Added column: {col} ({sql_type})")
+            except Exception as e:
+                logger.warning(f"      Could not add column {col}: {e}")
+
+    if extra_cols:
+        logger.info(
+            f"    Note: {len(extra_cols)} columns in table not in current scraper output"
+        )
+        logger.info(f"      These will be preserved: {', '.join(list(extra_cols)[:5])}")
+
+
 def main(
     start_year: int = 2021, end_year: Optional[int] = None, force_rescrape: bool = False
 ):
@@ -524,6 +637,14 @@ def main(
         # step 1: database setup
         logger.info("\n[Step 1/3] Setting up database")
         setup_database()
+
+        # step 1.5: ensure schema compatibility
+        logger.info("\n[Step 1.5/3] Checking schema compatibility")
+        conn = duckdb.connect("data/club_football.duckdb")
+        try:
+            ensure_schema_compatibility(conn)
+        finally:
+            conn.close()
 
         # step 2: data collection
         logger.info("\n[Step 2/3] Running scrapers")
