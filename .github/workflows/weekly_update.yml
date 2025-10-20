@@ -2,7 +2,7 @@ name: Weekly Model Update
 
 on:
   schedule:
-    - cron: '0 9 * * 1'  # Every Monday at 12:00 UTC (midday)
+    - cron: '0 9 * * 1'  # Every Monday at 9:00 UTC
   workflow_dispatch:
     inputs:
       force_tune:
@@ -10,41 +10,48 @@ on:
         type: boolean
         default: false
 
+permissions:
+  contents: write
+  issues: write
+
 jobs:
   update-model:
     runs-on: ubuntu-latest
     timeout-minutes: 120
-
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-
+          persist-credentials: true
+      
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
+      
       - name: Install uv
         uses: astral-sh/setup-uv@v3
-
+      
       - name: Install dependencies
         run: |
           uv pip install --system -r requirements.txt
           uv pip install --system boto3
-
+      
       - name: Download DuckDB from DO Spaces
         env:
           DO_SPACES_KEY: ${{ secrets.DO_SPACES_KEY }}
           DO_SPACES_SECRET: ${{ secrets.DO_SPACES_SECRET }}
           DO_SPACE_NAME: ${{ secrets.DO_SPACE_NAME }}
           DO_SPACE_REGION: ${{ secrets.DO_SPACE_REGION }}
-        run: python scripts/automation/download_db.py
-
+        run: python scripts/automation/download_database.py
+      
       - name: Fetch latest data and update database
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
         run: python scripts/automation/fetch_and_update_db.py
-
+      
       - name: Determine if hyperparameter tuning needed
         id: check_tuning
         run: |
@@ -56,7 +63,7 @@ jobs:
             echo "tune=false" >> $GITHUB_OUTPUT
             echo "Regular week - fast training only"
           fi
-
+      
       - name: Train model
         run: |
           if [ "${{ steps.check_tuning.outputs.tune }}" = "true" ]; then
@@ -64,13 +71,13 @@ jobs:
           else
             python scripts/modeling/train_model.py
           fi
-
+      
       - name: Run calibration
         run: |
           python scripts/modeling/run_calibration.py \
             --model-path outputs/models/production_model.pkl \
             --comprehensive
-
+      
       - name: Generate predictions
         run: |
           python scripts/modeling/generate_predictions.py \
@@ -78,22 +85,22 @@ jobs:
             --calibrator-path outputs/models/calibrators.pkl \
             --n-bootstrap 500 \
             --n-simulations 100000
-
+      
       - name: Upload updated database to DO Spaces
         env:
           DO_SPACES_KEY: ${{ secrets.DO_SPACES_KEY }}
           DO_SPACES_SECRET: ${{ secrets.DO_SPACES_SECRET }}
           DO_SPACE_NAME: ${{ secrets.DO_SPACE_NAME }}
           DO_SPACE_REGION: ${{ secrets.DO_SPACE_REGION }}
-        run: python scripts/automation/upload_db.py
-
+        run: python scripts/automation/upload_database.py
+      
       - name: Commit and push updates
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add outputs/
           git diff --staged --quiet || (git commit -m "chore: weekly update $(date +%Y-%m-%d)" && git push)
-
+      
       - name: Create job summary
         if: always()
         run: |
@@ -103,7 +110,7 @@ jobs:
           [ -f outputs/models/production_model.pkl ] && echo "- Model trained" >> $GITHUB_STEP_SUMMARY
           [ -f outputs/predictions/next_fixtures.csv ] && echo "- Predictions generated" >> $GITHUB_STEP_SUMMARY
           [ -f outputs/predictions/season_projections.csv ] && echo "- Simulations complete" >> $GITHUB_STEP_SUMMARY
-
+      
       - name: Create issue on failure
         if: failure()
         uses: actions/github-script@v7
