@@ -248,7 +248,7 @@ tornado==6.5.2
     # via streamlit
 tqdm==4.67.1
     # via optuna
-trio==0.30.0
+trio==0.31.0
     # via
     #   selenium
     #   trio-websocket
