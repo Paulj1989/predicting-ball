@@ -16,6 +16,7 @@ from src.processing.data_processor import DataProcessor
 from src.scrapers.fbref_scraper import FBRefScraper
 from src.scrapers.transfermarkt_scraper import TransfermarktScraper
 from src.scrapers.odds_scraper import OddsScraper
+from src.utils import determine_current_season
 
 
 def setup_logging() -> logging.Logger:
@@ -61,13 +62,6 @@ def setup_database(db_path: str = "data/club_football.duckdb"):
         logger.info("Database schemas initialised")
     finally:
         conn.close()
-
-
-def determine_current_season() -> int:
-    """Determine current Bundesliga season"""
-    current_date = datetime.now()
-    current_month = current_date.month
-    return current_date.year + 1 if current_month >= 8 else current_date.year
 
 
 def get_seasons_to_scrape(
