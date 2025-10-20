@@ -209,7 +209,7 @@ scipy==1.16.2
     #   scikit-learn
 seaborn==0.13.2
     # via predicting-ball (pyproject.toml)
-selenium==4.36.0
+selenium==4.37.0
     # via predicting-ball (pyproject.toml)
 six==1.17.0
     # via python-dateutil
