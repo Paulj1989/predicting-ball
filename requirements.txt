@@ -282,7 +282,7 @@ urllib3==2.5.0
     #   selenium
 uvicorn==0.38.0
     # via predicting-ball (pyproject.toml)
-uvloop==0.21.0
+uvloop==0.22.1
     # via uvicorn
 watchdog==6.0.0
     # via predicting-ball (pyproject.toml)
