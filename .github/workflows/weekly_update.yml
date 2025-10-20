@@ -45,7 +45,7 @@ jobs:
           DO_SPACES_SECRET: ${{ secrets.DO_SPACES_SECRET }}
           DO_SPACE_NAME: ${{ secrets.DO_SPACE_NAME }}
           DO_SPACE_REGION: ${{ secrets.DO_SPACE_REGION }}
-        run: python scripts/automation/download_database.py
+        run: python scripts/automation/download_db.py
       
       - name: Fetch latest data and update database
         env:
@@ -92,7 +92,7 @@ jobs:
           DO_SPACES_SECRET: ${{ secrets.DO_SPACES_SECRET }}
           DO_SPACE_NAME: ${{ secrets.DO_SPACE_NAME }}
           DO_SPACE_REGION: ${{ secrets.DO_SPACE_REGION }}
-        run: python scripts/automation/upload_database.py
+        run: python scripts/automation/upload_db.py
       
       - name: Commit and push updates
         run: |
