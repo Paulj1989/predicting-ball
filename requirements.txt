@@ -290,7 +290,7 @@ watchfiles==1.1.0
     # via uvicorn
 webdriver-manager==4.0.2
     # via predicting-ball (pyproject.toml)
-websocket-client==1.8.0
+websocket-client==1.9.0
     # via selenium
 websockets==15.0.1
     # via uvicorn
