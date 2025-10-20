@@ -2,7 +2,7 @@ name: Weekly Model Update
 
 on:
   schedule:
-    - cron: '0 12 * * 1'  # Every Monday at 12:00 UTC (midday)
+    - cron: '0 9 * * 1'  # Every Monday at 12:00 UTC (midday)
   workflow_dispatch:
     inputs:
       force_tune:
