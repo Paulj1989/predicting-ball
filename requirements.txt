@@ -24,7 +24,7 @@ beautifulsoup4==4.13.5
     # via bs4
 blinker==1.9.0
     # via streamlit
-boto3==1.40.55
+boto3==1.40.59
     # via predicting-ball (pyproject.toml)
 botocore==1.40.55
     # via
