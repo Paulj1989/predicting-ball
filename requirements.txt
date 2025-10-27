@@ -113,7 +113,7 @@ matplotlib==3.10.7
     #   seaborn
 narwhals==2.8.0
     # via altair
-numpy==2.3.1
+numpy==2.3.4
     # via
     #   predicting-ball (pyproject.toml)
     #   contourpy
