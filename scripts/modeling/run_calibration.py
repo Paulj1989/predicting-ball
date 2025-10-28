@@ -5,11 +5,11 @@ Run Calibration
 
 Fit post-hoc calibrators for improved probability estimates.
 
-Uses temperature scaling for probability calibration - a single-parameter
-method that adjusts confidence without changing outcome rankings.
+Now includes outcome-specific temperature scaling for better draw calibration.
 
 Usage:
     python scripts/modeling/run_calibration.py --model-path outputs/models/production_model.pkl
+    python scripts/modeling/run_calibration.py --model-path outputs/models/production_model.pkl --outcome-specific
 """
 
 import sys
@@ -24,6 +24,9 @@ import numpy as np
 from src.models.calibration import (
     fit_temperature_scaler,
     apply_temperature_scaling,
+    fit_outcome_specific_temperatures,
+    apply_outcome_specific_scaling,
+    validate_calibration_on_holdout,
     calibrate_dispersion_for_coverage,
     calibrate_model_comprehensively,
 )
@@ -52,6 +55,13 @@ def parse_args():
     )
 
     parser.add_argument(
+        "--holdout-fraction",
+        type=float,
+        default=0.15,
+        help="Fraction of data to use for holdout validation (default: 0.15)",
+    )
+
+    parser.add_argument(
         "--output-dir",
         type=str,
         default="outputs/models",
@@ -63,6 +73,12 @@ def parse_args():
         type=str,
         default="calibrators",
         help="Name for saved calibrator file (default: calibrators)",
+    )
+
+    parser.add_argument(
+        "--outcome-specific",
+        action="store_true",
+        help="Use outcome-specific temperature scaling (recommended for draw issues)",
     )
 
     parser.add_argument(
@@ -87,7 +103,10 @@ def main():
     args = parse_args()
 
     print("=" * 70)
-    print("POST-HOC CALIBRATION (TEMPERATURE SCALING)")
+    if args.outcome_specific:
+        print("POST-HOC CALIBRATION (OUTCOME-SPECIFIC TEMPERATURE SCALING)")
+    else:
+        print("POST-HOC CALIBRATION (STANDARD TEMPERATURE SCALING)")
     print("=" * 70)
 
     # ========================================================================
@@ -98,6 +117,13 @@ def main():
 
     print(f"   ✓ Model loaded: {args.model_path}")
     print(f"   Teams: {len(model.get('teams', []))}")
+
+    # check dixon-coles
+    rho = model["params"].get("rho", None)
+    if rho is not None:
+        print(f"   Dixon-Coles rho: {rho:.4f}")
+    else:
+        print("   WARNING: Dixon-Coles not found in model")
 
     # get windows from model if not provided
     windows = args.windows if args.windows else model.get("windows", [5, 10])
@@ -112,11 +138,11 @@ def main():
         windows=windows, verbose=False
     )
 
-    # verify weighted performance exists
+    # verify weighted goals exists
     if "home_goals_weighted" not in historic_data.columns:
         print("\n   ✗ Error: home_goals_weighted not found in data")
         print(
-            "   Make sure prepare_bundesliga_data includes weighted performance calculation"
+            "   Make sure prepare_bundesliga_data includes weighted goals calculation"
         )
         sys.exit(1)
 
@@ -129,44 +155,141 @@ def main():
         f"   Date range: {all_data['date'].min().date()} to {all_data['date'].max().date()}"
     )
 
-    # split off calibration set
-    fit_data, calibration_data = create_calibration_split(
-        all_data, calibration_fraction=args.calibration_fraction
+    # three-way split: fit, calibration, holdout
+    total_test_fraction = args.calibration_fraction + args.holdout_fraction
+    fit_data, test_data = create_calibration_split(
+        all_data, calibration_fraction=total_test_fraction
     )
+
+    # split test_data into calibration and holdout
+    n_test = len(test_data)
+    n_cal = int(n_test * (args.calibration_fraction / total_test_fraction))
+
+    calibration_data = test_data.iloc[:n_cal]
+    holdout_data = test_data.iloc[n_cal:]
 
     print(f"   Fitting set: {len(fit_data)} matches")
     print(f"   Calibration set: {len(calibration_data)} matches")
+    print(f"   Holdout validation: {len(holdout_data)} matches")
+
+    # check draw rate
+    cal_draw_rate = (
+        calibration_data["home_goals"] == calibration_data["away_goals"]
+    ).mean()
+    holdout_draw_rate = (
+        holdout_data["home_goals"] == holdout_data["away_goals"]
+    ).mean()
+    print(f"   Draw rate (cal): {cal_draw_rate:.1%}")
+    print(f"   Draw rate (holdout): {holdout_draw_rate:.1%}")
 
     # ========================================================================
-    # FIT TEMPERATURE SCALING
+    # GET PREDICTIONS
     # ========================================================================
-    print("\n3. Fitting temperature scaling...")
+    print("\n3. Generating predictions...")
 
-    # get predictions on calibration set
-    metrics_uncal, cal_predictions, cal_actuals = evaluate_model_comprehensive(
-        model["params"], calibration_data
+    # calibration set predictions
+    metrics_uncal_cal, cal_predictions, cal_actuals = evaluate_model_comprehensive(
+        model["params"], calibration_data, use_dixon_coles=True
     )
 
-    print(f"\n   Uncalibrated metrics:")
-    print(f"     Brier: {metrics_uncal['brier_score']:.4f}")
-    print(f"     RPS:   {metrics_uncal.get('rps', 'N/A')}")
-    print(f"     Log Loss: {metrics_uncal.get('log_loss', 'N/A')}")
+    # holdout set predictions
+    metrics_uncal_holdout, holdout_predictions, holdout_actuals = (
+        evaluate_model_comprehensive(
+            model["params"], holdout_data, use_dixon_coles=True
+        )
+    )
 
-    # fit temperature scaler
-    temperature = fit_temperature_scaler(cal_predictions, cal_actuals, verbose=True)
+    print(f"\n   Uncalibrated metrics (calibration set):")
+    print(f"     Brier: {metrics_uncal_cal['brier_score']:.4f}")
+    print(f"     RPS:   {metrics_uncal_cal.get('rps', 'N/A')}")
 
-    # test improvement
-    from src.evaluation.metrics import calculate_brier_score, calculate_log_loss
-
-    cal_preds_calibrated = apply_temperature_scaling(cal_predictions, temperature)
-    brier_cal = calculate_brier_score(cal_preds_calibrated, cal_actuals)
-    log_loss_cal = calculate_log_loss(cal_preds_calibrated, cal_actuals)
-
-    print(f"\n   Calibrated metrics:")
+    # check draw prediction rate
+    pred_draws_cal = (np.argmax(cal_predictions, axis=1) == 1).sum()
+    actual_draws_cal = (cal_actuals == 1).sum()
     print(
-        f"     Brier: {brier_cal:.4f} (Δ = {brier_cal - metrics_uncal['brier_score']:+.4f})"
+        f"     Predicted draws: {pred_draws_cal}/{len(cal_actuals)} ({pred_draws_cal / len(cal_actuals):.1%})"
     )
-    print(f"     Log Loss: {log_loss_cal:.4f}")
+    print(
+        f"     Actual draws: {actual_draws_cal}/{len(cal_actuals)} ({actual_draws_cal / len(cal_actuals):.1%})"
+    )
+
+    # ========================================================================
+    # FIT CALIBRATION
+    # ========================================================================
+    if args.outcome_specific:
+        print("\n4. Fitting outcome-specific temperature scaling...")
+
+        temperatures = fit_outcome_specific_temperatures(
+            cal_predictions, cal_actuals, verbose=True
+        )
+
+        # apply to calibration set
+        cal_preds_calibrated = apply_outcome_specific_scaling(
+            cal_predictions, temperatures
+        )
+
+        # store in calibrator package
+        calibration_method = "outcome_specific"
+        temperature_value = temperatures
+
+    else:
+        print("\n4. Fitting standard temperature scaling...")
+
+        temperature = fit_temperature_scaler(cal_predictions, cal_actuals, verbose=True)
+
+        # apply to calibration set
+        cal_preds_calibrated = apply_temperature_scaling(cal_predictions, temperature)
+
+        # store in calibrator package
+        calibration_method = "temperature_scaling"
+        temperature_value = temperature
+
+        # convert to dict format for consistency
+        temperatures = {
+            "T_home": temperature,
+            "T_draw": temperature,
+            "T_away": temperature,
+            "method": "standard",
+        }
+
+    # calculate calibrated metrics on calibration set
+    from src.evaluation.metrics import calculate_brier_score, calculate_rps
+
+    brier_cal = calculate_brier_score(cal_preds_calibrated, cal_actuals)
+    rps_cal = calculate_rps(cal_preds_calibrated, cal_actuals)
+
+    # draw metrics on calibration set
+    pred_draws_cal_calibrated = (np.argmax(cal_preds_calibrated, axis=1) == 1).sum()
+    draw_acc_cal_before = (
+        (np.argmax(cal_predictions, axis=1) == 1) & (cal_actuals == 1)
+    ).sum() / max((cal_actuals == 1).sum(), 1)
+    draw_acc_cal_after = (
+        (np.argmax(cal_preds_calibrated, axis=1) == 1) & (cal_actuals == 1)
+    ).sum() / max((cal_actuals == 1).sum(), 1)
+
+    print("\n   Calibrated metrics (calibration set):")
+    print(
+        f"     Brier: {brier_cal:.4f} (Δ = {brier_cal - metrics_uncal_cal['brier_score']:+.4f})"
+    )
+    print(f"     RPS:   {rps_cal:.4f}")
+    print(
+        f"     Predicted draws: {pred_draws_cal_calibrated}/{len(cal_actuals)} ({pred_draws_cal_calibrated / len(cal_actuals):.1%})"
+    )
+    print(
+        f"     Draw accuracy: {draw_acc_cal_before:.1%} → {draw_acc_cal_after:.1%} ({(draw_acc_cal_after - draw_acc_cal_before) * 100:+.0f}pp)"
+    )
+
+    # ========================================================================
+    # VALIDATE ON HOLDOUT
+    # ========================================================================
+    print("\n5. Validating on holdout set...")
+
+    holdout_metrics = validate_calibration_on_holdout(
+        temperatures,
+        holdout_predictions,
+        holdout_actuals,
+        verbose=True,
+    )
 
     # ========================================================================
     # DISPERSION CALIBRATION (Optional)
@@ -174,7 +297,7 @@ def main():
     dispersion_calibrated = None
 
     if args.comprehensive:
-        print("\n4. Running comprehensive dispersion calibration...")
+        print("\n6. Running comprehensive dispersion calibration...")
 
         dispersion_dict, _ = calibrate_model_comprehensively(
             model["params"], calibration_data, verbose=True
@@ -182,29 +305,33 @@ def main():
 
         dispersion_calibrated = {
             "dispersion_dict": dispersion_dict,
-            # don't save the function - it will be recreated when needed
         }
 
         print("   ✓ Dispersion calibration complete")
     else:
-        print("\n4. Skipping comprehensive calibration (use --comprehensive to enable)")
+        print("\n6. Skipping comprehensive calibration (use --comprehensive to enable)")
 
     # ========================================================================
     # SAVE CALIBRATORS
     # ========================================================================
-    print("\n5. Saving calibrators...")
+    print("\n7. Saving calibrators...")
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     calibrator_package = {
-        "temperature": temperature,
-        "calibration_method": "temperature_scaling",
+        "temperature": temperature_value,
+        "calibration_method": calibration_method,
         "dispersion_calibrated": dispersion_calibrated,
         "calibration_data_size": len(calibration_data),
-        "brier_uncalibrated": metrics_uncal["brier_score"],
-        "brier_calibrated": brier_cal,
-        "calibration_improvement": metrics_uncal["brier_score"] - brier_cal,
+        "holdout_data_size": len(holdout_data),
+        "brier_uncalibrated_cal": metrics_uncal_cal["brier_score"],
+        "brier_calibrated_cal": brier_cal,
+        "brier_uncalibrated_holdout": holdout_metrics["brier_uncalibrated"],
+        "brier_calibrated_holdout": holdout_metrics["brier_calibrated"],
+        "rps_improvement_holdout": holdout_metrics["rps_improvement"],
+        "draw_accuracy_improvement_holdout": holdout_metrics["draw_accuracy_calibrated"]
+        - holdout_metrics["draw_accuracy_uncalibrated"],
         "windows": windows,
         "calibration_date": pd.Timestamp.now(),
     }
@@ -217,19 +344,26 @@ def main():
     # ========================================================================
     # CREATE CALIBRATION REPORT
     # ========================================================================
-    print("\n6. Creating calibration report...")
+    print("\n8. Creating calibration report...")
 
     figures_dir = Path("outputs/figures")
     figures_dir.mkdir(parents=True, exist_ok=True)
 
-    report = create_calibration_report(
-        cal_preds_calibrated,
-        cal_actuals,
-        model_name="Temperature Scaled Model",
-        save_path=figures_dir / "calibration_report.png",
+    # use holdout set for report (more honest assessment)
+    holdout_preds_calibrated = apply_outcome_specific_scaling(
+        holdout_predictions, temperatures
     )
 
-    print(f"   ✓ Report saved: {figures_dir / 'calibration_report.png'}")
+    try:
+        report = create_calibration_report(
+            holdout_preds_calibrated,
+            holdout_actuals,
+            model_name="Calibrated Model (Holdout Set)",
+            save_path=figures_dir / "calibration_report.png",
+        )
+        print(f"   ✓ Report saved: {figures_dir / 'calibration_report.png'}")
+    except Exception as e:
+        print(f"   Could not create calibration report: {e}")
 
     # ========================================================================
     # SUMMARY
@@ -237,26 +371,44 @@ def main():
     print("\n" + "=" * 70)
     print("CALIBRATION COMPLETE")
     print("=" * 70)
-    print(f"Method: Temperature Scaling")
-    print(f"Optimal temperature: {temperature:.3f}")
-    print(f"Calibration set size: {len(calibration_data)} matches")
-    print(f"Brier improvement: {metrics_uncal['brier_score'] - brier_cal:+.4f}")
+
+    if args.outcome_specific:
+        print("Method: Outcome-Specific Temperature Scaling")
+        print("Temperatures:")
+        print(f"  T_home = {temperatures['T_home']:.3f}")
+        print(f"  T_draw = {temperatures['T_draw']:.3f}")
+        print(f"  T_away = {temperatures['T_away']:.3f}")
+    else:
+        print("Method: Standard Temperature Scaling")
+        print(f"Optimal temperature: {temperature_value:.3f}")
+
+    print(f"\nCalibration set: {len(calibration_data)} matches")
+    print(f"Holdout set: {len(holdout_data)} matches")
+
+    print("\nHoldout validation (most honest assessment):")
+    print(f"  Brier improvement: {holdout_metrics['brier_improvement']:+.4f}")
+    print(f"  RPS improvement: {holdout_metrics['rps_improvement']:+.4f}")
+    print(
+        f"  Draw accuracy: {holdout_metrics['draw_accuracy_uncalibrated']:.1%} → {holdout_metrics['draw_accuracy_calibrated']:.1%}"
+    )
+    print(
+        f"    Improvement: {(holdout_metrics['draw_accuracy_calibrated'] - holdout_metrics['draw_accuracy_uncalibrated']) * 100:+.0f} percentage points"
+    )
 
     if dispersion_calibrated:
-        print("Dispersion calibration: ✓ Enabled")
+        print("\nDispersion calibration: ✓ Enabled")
     else:
-        print("Dispersion calibration: Not applied (use --comprehensive)")
+        print("\nDispersion calibration: Not applied (use --comprehensive)")
 
-    print("\nNext steps:")
-    print(f"  - Validate with calibration:")
-    print(f"    python scripts/validate_model.py --model-path {args.model_path} \\")
-    print(f"           --calibrator-path {calibrator_path}")
-    print(f"  - Generate predictions with calibration:")
+    # draw-specific assessment
+    draw_improvement = (
+        holdout_metrics["draw_accuracy_calibrated"]
+        - holdout_metrics["draw_accuracy_uncalibrated"]
+    ) * 100
+
     print(
-        f"    python scripts/generate_predictions.py --model-path {args.model_path} \\"
+        f"\n Draw accuracy improved by {draw_improvement:.0f}pp on holdout"
     )
-    print(f"           --calibrator-path {calibrator_path}")
-
 
 if __name__ == "__main__":
     main()

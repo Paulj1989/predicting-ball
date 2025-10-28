@@ -12,6 +12,7 @@ def parametric_bootstrap_with_residuals(
     hyperparams: Dict[str, float],
     promoted_priors: Optional[Dict[str, Dict[str, float]]] = None,
     n_bootstrap: int = 500,
+    use_two_stage: bool = True,
     verbose: bool = True,
 ) -> List[Dict[str, Any]]:
     """
@@ -27,12 +28,13 @@ def parametric_bootstrap_with_residuals(
     This captures uncertainty in estimated team strengths and other parameters.
     """
     # import here to avoid circular dependency
-    from ..models.poisson import fit_poisson_model, calculate_lambdas
+    from ..models.poisson import fit_poisson_model_two_stage, calculate_lambdas
 
     if verbose:
         print("\n" + "=" * 60)
         print(f"PARAMETRIC BOOTSTRAP WITH CALIBRATION ({n_bootstrap} iterations)")
         print("=" * 60)
+        print(f"Fitting method: {'two-stage' if use_two_stage else 'joint'}")
 
     bootstrap_params = [base_params]
 
@@ -66,9 +68,9 @@ def parametric_bootstrap_with_residuals(
         df_synthetic["home_goals_weighted"] = synthetic_home
         df_synthetic["away_goals_weighted"] = synthetic_away
 
-        # fit model on synthetic data
+        # use selected fitting function
         try:
-            bootstrap_fit = fit_poisson_model(
+            bootstrap_fit = fit_poisson_model_two_stage(
                 df_synthetic,
                 hyperparams,
                 promoted_priors=promoted_priors,
@@ -103,7 +105,7 @@ def parametric_bootstrap_with_residuals(
         # calculate parameter uncertainty
         home_advs = [p["home_adv"] for p in bootstrap_params]
         beta_odds = [p["beta_odds"] for p in bootstrap_params]
-        beta_pens = [p.get("beta_penalty", 0.0) for p in bootstrap_params]
+        beta_form = [p.get("beta_form", 0.0) for p in bootstrap_params]
 
         if verbose:
             print("\nParameter uncertainty (mean ± std):")
@@ -111,9 +113,7 @@ def parametric_bootstrap_with_residuals(
                 f"  Home advantage: {np.mean(home_advs):.3f} ± {np.std(home_advs):.3f}"
             )
             print(f"  Odds weight: {np.mean(beta_odds):.3f} ± {np.std(beta_odds):.3f}")
-            print(
-                f"  Penalty weight: {np.mean(beta_pens):.3f} ± {np.std(beta_pens):.3f}"
-            )
+            print(f"  Form weight: {np.mean(beta_form):.3f} ± {np.std(beta_form):.3f}")
             print(f"  Calibration: dispersion factor = {dispersion_factor:.3f}")
 
     return bootstrap_params
@@ -124,14 +124,7 @@ def plot_parameter_diagnostics(
     base_params: Dict[str, Any],
     save_path: Optional[str] = None,
 ) -> None:
-    """
-    Plot parameter distributions from bootstrap.
-
-    Creates diagnostic plots showing:
-    - Parameter histograms
-    - Base model values
-    - Parameter bounds
-    """
+    """Plot parameter distributions from bootstrap"""
     print("\n" + "=" * 60)
     print("PARAMETER DIAGNOSTICS")
     print("=" * 60)
@@ -140,7 +133,7 @@ def plot_parameter_diagnostics(
     param_dict = {
         "home_adv": [p["home_adv"] for p in bootstrap_params],
         "beta_odds": [p["beta_odds"] for p in bootstrap_params],
-        "beta_penalty": [p.get("beta_penalty", 0.0) for p in bootstrap_params],
+        "beta_form": [p.get("beta_form", 0.0) for p in bootstrap_params],
     }
 
     params_df = pd.DataFrame(param_dict)
@@ -153,7 +146,7 @@ def plot_parameter_diagnostics(
     bounds_dict = {
         "home_adv": (0.05, 0.5),
         "beta_odds": (0.0, 1.5),
-        "beta_penalty": (-1.0, 1.0),
+        "beta_form": (-0.5, 0.5),
     }
 
     for param, (lower, upper) in bounds_dict.items():

@@ -106,28 +106,12 @@ def simulate_remaining_season_calibrated(
 
     if len(future_fixtures) > 0:
         # extract match info
-        home_teams = future_fixtures["home_team"].values
-        away_teams = future_fixtures["away_team"].values
-
-        home_log_odds = (
-            future_fixtures["home_log_odds"].fillna(0).values
-            if "home_log_odds" in future_fixtures
-            else np.zeros(len(future_fixtures))
+        home_idx = np.array(
+            [team_to_idx[t] for t in future_fixtures["home_team"]], dtype=int
         )
-
-        home_pens_att = (
-            future_fixtures["home_pens_att"].fillna(0).values
-            if "home_pens_att" in future_fixtures
-            else np.zeros(len(future_fixtures))
+        away_idx = np.array(
+            [team_to_idx[t] for t in future_fixtures["away_team"]], dtype=int
         )
-        away_pens_att = (
-            future_fixtures["away_pens_att"].fillna(0).values
-            if "away_pens_att" in future_fixtures
-            else np.zeros(len(future_fixtures))
-        )
-
-        home_idx = np.array([team_to_idx[t] for t in home_teams], dtype=int)
-        away_idx = np.array([team_to_idx[t] for t in away_teams], dtype=int)
 
         n_matches = len(future_fixtures)
 
@@ -141,33 +125,20 @@ def simulate_remaining_season_calibrated(
 
         # simulation loop
         for s in range(n_simulations):
-            if s % 10000 == 0:
+            if s % 1000 == 0:
                 print(f"\rSimulation {s}/{n_simulations}", end="")
 
             # sample parameters from bootstrap
             params = bootstrap_params[np.random.randint(len(bootstrap_params))]
 
-            # get team strengths
-            attack_arr = np.array([params["attack"].get(t, 0) for t in all_teams])
-            defense_arr = np.array([params["defense"].get(t, 0) for t in all_teams])
+            # create temporary df for vectorised calculation
+            temp_df = future_fixtures[["home_team", "away_team"]].copy()
+            if "home_log_odds" in future_fixtures.columns:
+                temp_df["home_log_odds"] = future_fixtures["home_log_odds"].fillna(0)
+            else:
+                temp_df["home_log_odds"] = 0.0
 
-            # calculate expected goals
-            home_strength = (
-                attack_arr[home_idx]
-                + defense_arr[away_idx]
-                + params["home_adv"]
-                + params["beta_odds"] * home_log_odds
-                + params.get("beta_penalty", 0.0) * home_pens_att
-            )
-            away_strength = (
-                attack_arr[away_idx]
-                + defense_arr[home_idx]
-                - params["beta_odds"] * home_log_odds
-                + params.get("beta_penalty", 0.0) * away_pens_att
-            )
-
-            lambda_home = np.clip(np.exp(home_strength), 0.2, 10.0)
-            lambda_away = np.clip(np.exp(away_strength), 0.2, 10.0)
+            lambda_home, lambda_away = calculate_lambdas(temp_df, params)
 
             # sample goals with calibrated distribution
             hg = sample_goals_calibrated(lambda_home, dispersion_factor, size=1)
