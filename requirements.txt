@@ -6,6 +6,8 @@ altair==5.5.0
     # via
     #   predicting-ball (pyproject.toml)
     #   streamlit
+annotated-doc==0.0.3
+    # via fastapi
 annotated-types==0.7.0
     # via pydantic
 anyio==4.11.0
@@ -26,7 +28,7 @@ blinker==1.9.0
     # via streamlit
 boto3==1.40.59
     # via predicting-ball (pyproject.toml)
-botocore==1.40.55
+botocore==1.40.61
     # via
     #   boto3
     #   s3transfer
@@ -120,10 +122,12 @@ numpy==2.3.4
     #   matplotlib
     #   optuna
     #   pandas
+    #   patsy
     #   pydeck
     #   scikit-learn
     #   scipy
     #   seaborn
+    #   statsmodels
     #   streamlit
 optuna==4.5.0
     # via predicting-ball (pyproject.toml)
@@ -137,14 +141,18 @@ packaging==25.0
     #   htmltools
     #   matplotlib
     #   optuna
+    #   statsmodels
     #   streamlit
     #   webdriver-manager
 pandas==2.3.3
     # via
     #   predicting-ball (pyproject.toml)
     #   seaborn
+    #   statsmodels
     #   streamlit
     #   streamlit-aggrid
+patsy==1.0.2
+    # via statsmodels
 pillow==11.3.0
     # via
     #   predicting-ball (pyproject.toml)
@@ -207,6 +215,7 @@ scipy==1.16.2
     # via
     #   predicting-ball (pyproject.toml)
     #   scikit-learn
+    #   statsmodels
 seaborn==0.13.2
     # via predicting-ball (pyproject.toml)
 selenium==4.37.0
@@ -229,6 +238,8 @@ sqlalchemy==2.0.44
     #   optuna
 starlette==0.48.0
     # via fastapi
+statsmodels==0.14.5
+    # via predicting-ball (pyproject.toml)
 streamlit==1.50.0
     # via
     #   predicting-ball (pyproject.toml)
