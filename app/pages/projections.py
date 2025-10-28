@@ -15,7 +15,7 @@ def render(projections):
         unsafe_allow_html=True,
     )
     st.markdown(
-        '<div class="sub-header">Based on 100,000 Monte Carlo simulations</div>',
+        '<div class="sub-header">Based on 10,000 Monte Carlo simulations</div>',
         unsafe_allow_html=True,
     )
 
