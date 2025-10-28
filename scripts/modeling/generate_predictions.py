@@ -60,8 +60,8 @@ def parse_args():
     parser.add_argument(
         "--n-simulations",
         type=int,
-        default=100000,
-        help="Number of season simulations (default: 100000)",
+        default=10000,
+        help="Number of season simulations (default: 10000)",
     )
 
     parser.add_argument(
@@ -128,16 +128,15 @@ def main():
     # ========================================================================
     print("\n2. Loading data...")
 
-    # data already includes all features (weighted performance, npxGD, etc.)
     historic_data, current_season = prepare_bundesliga_data(
         windows=windows, verbose=False
     )
 
-    # verify weighted performance exists
+    # verify weighted goals exists
     if "home_goals_weighted" not in historic_data.columns:
         print("\n   ✗ Error: home_goals_weighted not found in data")
         print(
-            "   Make sure prepare_bundesliga_data includes weighted performance calculation"
+            "   Make sure prepare_bundesliga_data includes weighted goals calculation"
         )
         sys.exit(1)
 
@@ -151,7 +150,7 @@ def main():
     print(f"   Remaining matches: {len(current_future)}")
 
     if len(current_future) == 0:
-        print("\n   ⚠ Warning: No remaining matches found")
+        print("\n   WARNING: No remaining matches found")
         print("   Season may be complete or no future fixtures available")
 
     # ========================================================================
@@ -195,7 +194,7 @@ def main():
 
         print("   ✓ Simulation complete")
     else:
-        print("   ⚠ Skipping simulation (no remaining fixtures)")
+        print("   Skipping simulation (no remaining fixtures)")
         # create empty results structure
         teams = current_standings.index.tolist()
         results = {
@@ -245,26 +244,26 @@ def main():
 
     # save projections csv
     summary.to_csv(output_dir / "season_projections.csv", index=False)
-    print(f"   ✓ Saved: season_projections.csv")
+    print("   ✓ Saved: season_projections.csv")
 
     # save next fixtures csv
     if next_predictions is not None:
         next_predictions.to_csv(output_dir / "next_fixtures.csv", index=False)
-        print(f"   ✓ Saved: next_fixtures.csv")
+        print("   ✓ Saved: next_fixtures.csv")
 
     # ========================================================================
     # CREATE VISUALISATIONS
     # ========================================================================
     print("\n8. Creating visualisations...")
 
-    # standings table (great_tables)
+    # standings table
     try:
         create_standings_table(summary, save_path=str(tables_dir / "standings_table"))
         print("   ✓ Created: standings table")
     except Exception as e:
-        print(f"   ⚠ Could not create standings table: {e}")
+        print(f"   Could not create standings table: {e}")
 
-    # next fixtures table (great_tables)
+    # next fixtures table
     if next_predictions is not None:
         try:
             create_next_fixtures_table(
@@ -272,7 +271,7 @@ def main():
             )
             print("   ✓ Created: next fixtures table")
         except Exception as e:
-            print(f"   ⚠ Could not create next fixtures table: {e}")
+            print(f"   Could not create next fixtures table: {e}")
 
     # ========================================================================
     # DISPLAY RESULTS
@@ -347,7 +346,7 @@ def main():
     if calibrators:
         print("\n✓ Predictions were calibrated")
     else:
-        print("\n⚠ No calibrators applied (use --calibrator-path to enable)")
+        print("\n No calibrators applied (use --calibrator-path to enable)")
 
     print("\nGenerated visualisations:")
     print("  - Standings table")

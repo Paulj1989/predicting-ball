@@ -31,4 +31,5 @@ dependencies = [
     "watchdog>=6.0.0",
     "streamlit-js-eval>=0.1.7",
     "boto3>=1.40.55",
+    "statsmodels>=0.14.5",
 ]

@@ -10,7 +10,7 @@ Execute the full modelling pipeline:
 4. Generate predictions
 
 Usage:
-    python scripts/modeling/run_complete_pipeline.py [--optimise-hyperparams]
+    python scripts/modeling/run_complete_pipeline.py [--tune]
 """
 
 import sys
@@ -26,7 +26,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Run complete modelling pipeline")
 
     parser.add_argument(
-        "--optimise-hyperparams",
+        "--tune",
         action="store_true",
         help="Optimise hyperparameters (takes longer)",
     )
@@ -79,29 +79,36 @@ def main():
     print("RUNNING COMPLETE PIPELINE")
     print("=" * 70)
 
-    # step 1: train model
+    # ========================================================================
+    # STEP 1 - TRAIN MODEL
+    # ========================================================================
     train_cmd = [
         "python",
         str(modeling_dir / "train_model.py"),
     ]
 
-    if args.optimise_hyperparams:
-        train_cmd.extend(["--optimise-hyperparams", "--n-trials", str(args.n_trials)])
+    if args.tune:
+        train_cmd.extend(["--tune", "--n-trials", str(args.n_trials)])
 
     run_command(train_cmd, "STEP 1: TRAINING MODEL")
 
-    # step 2: calibrate
+    # ========================================================================
+    # STEP 2 - CALIBRATE MODEL
+    # ========================================================================
     calibrate_cmd = [
         "python",
         str(modeling_dir / "run_calibration.py"),
         "--model-path",
         "outputs/models/production_model.pkl",
         "--comprehensive",
+        "--outcome-specific"
     ]
 
     run_command(calibrate_cmd, "STEP 2: CALIBRATING MODEL")
 
-    # step 3: validate (optional)
+    # ========================================================================
+    # STEP 3 - VALIDATE MODEL (OPTIONAL)
+    # ========================================================================
     if not args.skip_validation:
         validate_cmd = [
             "python",
@@ -114,7 +121,9 @@ def main():
 
         run_command(validate_cmd, "STEP 3: VALIDATING MODEL")
 
-    # step 4: generate predictions
+    # ========================================================================
+    # STEP 4 - GENERATE PREDICTIONS
+    # ========================================================================
     predict_cmd = [
         "python",
         str(modeling_dir / "generate_predictions.py"),

@@ -7,7 +7,7 @@ from typing import Optional
 from .xg_features import add_rolling_npxgd, add_venue_npxgd
 from .squad_features import add_squad_value_features
 from .odds_features import add_odds_features
-from .weighted_performance import calculate_weighted_performance
+from .weighted_goals import calculate_weighted_goals
 
 
 def prepare_model_features(
@@ -15,7 +15,7 @@ def prepare_model_features(
     windows: list = [5, 10],
     include_squad_values: bool = True,
     include_odds: bool = True,
-    include_weighted_performance: bool = True,
+    include_weighted_goals: bool = True,
     verbose: bool = False,
 ) -> pd.DataFrame:
     """
@@ -91,12 +91,12 @@ def prepare_model_features(
             df.loc[mask_played, "away_cards_red"] > 0
         ).astype(int)
 
-    # step 6: weighted performance composite
-    if include_weighted_performance:
+    # step 6: weighted goals composite
+    if include_weighted_goals:
         if verbose:
-            logger.info("6. Calculating weighted performance composite")
+            logger.info("6. Calculating weighted goals")
 
-        df = calculate_weighted_performance(df)
+        df = calculate_weighted_goals(df)
 
     if verbose:
         logger.info("=" * 60)

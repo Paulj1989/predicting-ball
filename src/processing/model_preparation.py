@@ -12,7 +12,7 @@ from src.features.feature_builder import prepare_model_features
 def prepare_bundesliga_data(
     db_path: str = "data/club_football.duckdb",
     windows: list = [5, 10],
-    verbose: bool = True,
+    verbose: bool = False,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Load data and engineer features for modeling.
@@ -60,7 +60,8 @@ def prepare_bundesliga_data(
     df = prepare_model_features(df, windows=windows, verbose=verbose)
 
     # verify feature creation
-    _verify_features(df)
+    if verbose:
+        _verify_features(df)
 
     # split into historic and current season
     current_season = df["season_end_year"].max()

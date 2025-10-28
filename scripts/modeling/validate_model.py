@@ -29,7 +29,7 @@ from src.io.model_io import load_model
 
 
 def parse_args():
-    """Parse command line arguments."""
+    """Parse command line arguments"""
     parser = argparse.ArgumentParser(
         description="Validate trained model on historical data"
     )
@@ -68,11 +68,17 @@ def parse_args():
         help="Rolling window sizes for npxGD features (default: use model's windows)",
     )
 
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Show detailed prediction quality analysis",
+    )
+
     return parser.parse_args()
 
 
 def main():
-    """Main validation pipeline."""
+    """Main validation pipeline"""
     args = parse_args()
 
     print("=" * 70)
@@ -112,16 +118,15 @@ def main():
     # ========================================================================
     print("\n2. Loading data...")
 
-    # data already includes all features (weighted performance, npxGD, etc.)
     historic_data, current_season = prepare_bundesliga_data(
         windows=windows, verbose=False
     )
 
-    # verify weighted performance exists
+    # verify weighted goals exists
     if "home_goals_weighted" not in historic_data.columns:
         print("\n   ✗ Error: home_goals_weighted not found in data")
         print(
-            "   Make sure prepare_bundesliga_data includes weighted performance calculation"
+            "   Make sure prepare_bundesliga_data includes weighted goals calculation"
         )
         sys.exit(1)
 
@@ -164,6 +169,60 @@ def main():
     results = backtest_multiple_seasons(
         model, all_data, test_seasons, calibrators=calibrators, verbose=True
     )
+
+    if args.debug:
+        # check actual prediction distributions
+        print("\n" + "="*60)
+        print("PREDICTION QUALITY ANALYSIS")
+        print("="*60)
+
+        for result in results:
+            season = result["season"]
+            preds = np.array(result["predictions"])
+            actuals = np.array(result["actuals"])
+
+            print(f"\nSeason {season}:")
+            print(f"  Predictions shape: {preds.shape}")
+            print(f"  NaN count: {np.isnan(preds).sum()}")
+
+            # check draw probabilities specifically
+            draw_probs = preds[:, 1]
+            print("\n  Draw probabilities:")
+            print(f"    Min: {draw_probs.min():.4f}")
+            print(f"    Max: {draw_probs.max():.4f}")
+            print(f"    Mean: {draw_probs.mean():.4f}")
+            print(f"    Median: {np.median(draw_probs):.4f}")
+
+            # distribution of predictions
+            print("\n  Prediction distribution:")
+            predicted_outcomes = np.argmax(preds, axis=1)
+            print(f"    Home wins: {(predicted_outcomes == 0).sum()}")
+            print(f"    Draws: {(predicted_outcomes == 1).sum()}")
+            print(f"    Away wins: {(predicted_outcomes == 2).sum()}")
+
+            # sample predictions
+            print("\n  Sample predictions (first 5):")
+            for i in range(min(5, len(preds))):
+                h, d, a = preds[i]
+                actual = ["H", "D", "A"][actuals[i]]
+                print(f"    Match {i}: H={h:.3f} D={d:.3f} A={a:.3f} (actual: {actual})")
+
+            # check if probabilities sum to 1
+            prob_sums = preds.sum(axis=1)
+            print("\n  Probability sums (should be ~1.0):")
+            print(f"    Min: {prob_sums.min():.4f}")
+            print(f"    Max: {prob_sums.max():.4f}")
+            print(f"    Mean: {prob_sums.mean():.4f}")
+
+            # check for zero draws
+            draw_preds = preds[:, 1]
+            max_draw = draw_preds.max() if len(draw_preds) > 0 else 0
+            print(
+                f"     Draw predictions: min={draw_preds.min():.4f}, max={max_draw:.4f}, mean={draw_preds.mean():.4f}"
+            )
+
+            if max_draw < 0.15:
+                print(f"     WARNING: Maximum draw probability is very low ({max_draw:.3f})")
 
     if len(results) == 0:
         print("\n✗ No validation results obtained")
@@ -249,9 +308,9 @@ def main():
 
     # print calibrator info if used
     if calibrators:
-        print("\n✓ Predictions were calibrated")
+        print("\n Predictions were calibrated")
     else:
-        print("\n⚠ No calibrators applied (use --calibrator-path to enable)")
+        print("\n No calibrators applied (use --calibrator-path to enable)")
 
 
 if __name__ == "__main__":

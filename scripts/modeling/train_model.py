@@ -3,11 +3,12 @@
 Train Final Model
 =================
 
-Fit the production model on all available data.
+Fit production model
 
 Usage:
     python scripts/modeling/train_model.py [--tune] [--dry-run]
     python scripts/modeling/train_model.py --tune --n-trials 50
+    python scripts/modeling/train_model.py --prev-model outputs/models/production_model.pkl
 """
 
 import sys
@@ -20,9 +21,8 @@ from datetime import datetime
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.models import (
-    fit_poisson_model,
+    fit_poisson_model_two_stage,
     calculate_home_advantage_prior,
-    calculate_promoted_team_priors,
     identify_promoted_teams,
     optimise_hyperparameters,
     get_default_hyperparameters,
@@ -41,12 +41,6 @@ def parse_args():
         "--tune",
         action="store_true",
         help="Run full hyperparameter optimisation via cross-validation",
-    )
-
-    parser.add_argument(
-        "--optimise-hyperparams",
-        action="store_true",
-        help="Alias for --tune (for backwards compatibility)",
     )
 
     parser.add_argument(
@@ -82,6 +76,19 @@ def parse_args():
         nargs="+",
         default=[5, 10],
         help="Rolling window sizes for npxGD features (default: 5 10)",
+    )
+
+    parser.add_argument(
+        "--prev-model",
+        type=str,
+        default=None,
+        help="Path to previous season's model for seasonal prior blending",
+    )
+
+    parser.add_argument(
+        "--skip-prev-season",
+        action="store_true",
+        help="Skip extracting previous season ratings (use squad values only)",
     )
 
     return parser.parse_args()
@@ -120,10 +127,6 @@ def main():
     """Main training pipeline"""
     args = parse_args()
 
-    # handle alias
-    if args.optimise_hyperparams:
-        args.tune = True
-
     # determine output directory
     if args.output_dir:
         output_dir = Path(args.output_dir)
@@ -156,11 +159,11 @@ def main():
     if "home_goals_weighted" not in historic_data.columns:
         print("\n   Error: home_goals_weighted not found in data")
         print(
-            "   Make sure prepare_bundesliga_data includes weighted performance calculation"
+            "   Make sure prepare_bundesliga_data includes weighted goals calculation"
         )
         sys.exit(1)
 
-    print("   Weighted performance calculated")
+    print("   Weighted goals calculated")
 
     # ========================================================================
     # PREPARE TRAINING DATA
@@ -197,7 +200,7 @@ def main():
         if previous_params:
             hyperparams = previous_params["hyperparams"]
             optimised_date = previous_params.get("optimised_at", "unknown")
-            print(f"   Loaded previously optimised hyperparameters")
+            print("   Loaded previously optimised hyperparameters")
             print(f"   Optimised at: {optimised_date}")
             print("\n   Using hyperparameters:")
             for key, val in hyperparams.items():
@@ -211,38 +214,111 @@ def main():
                 print(f"      {key}: {val}")
 
     # ========================================================================
-    # CALCULATE PRIORS
+    # EXTRACT PREVIOUS SEASON RATINGS
     # ========================================================================
-    print("\n4. Calculating priors...")
+    print("\n4. Extracting previous season ratings...")
 
-    home_adv_prior, home_adv_std = calculate_home_advantage_prior(
-        all_train_data, use_actual_goals=True, verbose=True
-    )
+    previous_season_params = None
+
+    if not args.skip_prev_season and len(historic_data) > 0:
+        last_complete_season = historic_data["season_end_year"].max()
+        last_season_data = historic_data[
+            historic_data["season_end_year"] == last_complete_season
+        ]
+
+        print(f"   Season: {last_complete_season}")
+        print(f"   Matches: {len(last_season_data)}")
+
+        # calculate home advantage from all historic data
+        home_adv_prior_temp, home_adv_std_temp = calculate_home_advantage_prior(
+            historic_data, use_actual_goals=True, verbose=False
+        )
+
+        # fit lightweight model on last season only
+        print(f"   Fitting model on season {last_complete_season}...")
+        prev_params = fit_poisson_model_two_stage(
+            last_season_data,
+            hyperparams,
+            promoted_priors=None,
+            home_adv_prior=home_adv_prior_temp,
+            home_adv_std=home_adv_std_temp,
+            n_random_starts=3,
+            verbose=True,
+        )
+
+        if prev_params and prev_params.get("success"):
+            previous_season_params = prev_params
+            print(f"   ✓ Extracted ratings for {len(prev_params['teams'])} teams")
+        else:
+            print("   ✗ Fit failed, will use squad values only")
+    else:
+        if args.skip_prev_season:
+            print("   Skipped (--skip-prev-season)")
+        else:
+            print("   No historic data available")
+
+    # ========================================================================
+    # IDENTIFY PROMOTED TEAMS
+    # ========================================================================
+    print("\n5. Identifying promoted teams...")
 
     last_historic_season = historic_data[
         historic_data["season_end_year"] == historic_data["season_end_year"].max()
     ]
 
-    promoted_teams = identify_promoted_teams(last_historic_season, current_season)
+    promoted_teams_info = identify_promoted_teams(last_historic_season, current_season)
 
-    if promoted_teams:
-        print(f"   Promoted teams detected: {', '.join(promoted_teams)}")
-        promoted_priors, _, _ = calculate_promoted_team_priors(
-            all_train_data, promoted_teams, current_season
+    # build promoted_priors dict with is_promoted flag
+    from src.models.priors import calculate_squad_value_priors
+
+    all_teams = sorted(
+        pd.unique(
+            pd.concat([all_train_data, current_season])[
+                ["home_team", "away_team"]
+            ].values.ravel()
         )
-    else:
-        promoted_priors = None
-        print("   No promoted teams detected")
+    )
+
+    squad_priors = calculate_squad_value_priors(
+        all_train_data, all_teams, verbose=False
+    )
+
+    # create promoted_priors dict
+    promoted_priors = {}
+    for team in promoted_teams_info.keys():
+        if team in squad_priors:
+            promoted_priors[team] = {
+                "attack_prior": squad_priors[team]["attack_prior"],
+                "defense_prior": squad_priors[team]["defense_prior"],
+                "is_promoted": True,
+            }
+
+    # add previous season params to dict
+    if previous_season_params:
+        promoted_priors["_previous_season_params"] = previous_season_params
+        print("   Previous season params will be used for 70/30 blending")
+
+    if promoted_priors:
+        print(
+            f"   Promoted teams: {len([k for k in promoted_priors if k != '_previous_season_params'])}"
+        )
+
+    # ========================================================================
+    # CALCULATE HOME ADVANTAGE PRIOR
+    # ========================================================================
+    home_adv_prior, home_adv_std = calculate_home_advantage_prior(
+        all_train_data, use_actual_goals=False, verbose=True
+    )
 
     # ========================================================================
     # FIT MODEL
     # ========================================================================
-    print("\n5. Fitting model on all training data...")
+    print("\n6. Fitting model..")
 
-    fitted_params = fit_poisson_model(
+    fitted_params = fit_poisson_model_two_stage(
         all_train_data,
         hyperparams,
-        promoted_priors=promoted_priors,
+        promoted_priors=promoted_priors,  # contains promoted teams + prev params
         home_adv_prior=home_adv_prior,
         home_adv_std=home_adv_std,
         n_random_starts=5,
@@ -258,12 +334,12 @@ def main():
     # ========================================================================
     # PACKAGE MODEL
     # ========================================================================
-    print("\n6. Packaging model...")
+    print("\n7. Packaging model...")
 
     model_package = {
         "params": fitted_params,
         "hyperparams": hyperparams,
-        "promoted_priors": promoted_priors,
+        "promoted_teams": promoted_teams_info,
         "home_adv_prior": home_adv_prior,
         "home_adv_std": home_adv_std,
         "windows": args.windows,
@@ -276,12 +352,14 @@ def main():
         "teams": fitted_params.get("teams", []),
         "trained_at": datetime.now(),
         "hyperparams_optimised": args.tune,
+        "uses_seasonal_priors": previous_season_params is not None,
+        "blend_weight_prev": 0.7 if previous_season_params else 0.0,
     }
 
     # ========================================================================
     # SAVE MODEL
     # ========================================================================
-    print("\n7. Saving model...")
+    print("\n8. Saving model...")
 
     model_path = output_dir / f"{args.model_name}.pkl"
     save_model(model_package, model_path)
@@ -300,20 +378,17 @@ def main():
         print("   Production model not affected")
         print("=" * 70)
 
-    print(f"Model saved to: {model_path}")
+    print(f"Model: {model_path}")
     print(f"Teams: {len(fitted_params.get('teams', []))}")
-    print(f"Training matches: {len(all_train_data)}")
-    print(
-        f"Hyperparameters {'optimised' if args.tune else 'loaded from previous optimisation'}"
-    )
+    print(f"Matches: {len(all_train_data)}")
+    print(f"Hyperparams: {'Optimised' if args.tune else 'Loaded from Previous Tuning'}")
+    print(f"Priors: {'70/30 Blend' if previous_season_params else 'Squad Values Only'}")
 
     if "log_likelihood" in fitted_params:
-        print(f"Final log-likelihood: {fitted_params['log_likelihood']:.2f}")
-
-    print(f"Rolling windows used: {args.windows}")
+        print(f"Log-likelihood: {fitted_params['log_likelihood']:.2f}")
 
     if "team_params" in fitted_params:
-        print("\nTop 5 teams by attack strength:")
+        print("\nTop 5 attack:")
         attack_strengths = fitted_params["team_params"]
         attack_sorted = sorted(
             attack_strengths.items(), key=lambda x: x[1]["attack"], reverse=True
@@ -322,16 +397,8 @@ def main():
             print(f"  {i}. {team}: {params['attack']:.3f}")
 
     if not args.dry_run:
-        print("\nNext steps:")
-        print(
-            f"  - Calibrate: python scripts/run_calibration.py --model-path {model_path}"
-        )
-        print(
-            f"  - Validate: python scripts/validate_model.py --model-path {model_path}"
-        )
-        print(
-            f"  - Predict: python scripts/generate_predictions.py --model-path {model_path}"
-        )
+        print("\nNext training (with this as prior):")
+        print(f"  --prev-model {model_path}")
 
 
 if __name__ == "__main__":

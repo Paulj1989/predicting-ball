@@ -51,6 +51,7 @@ class DataProcessor:
             "Monchengladbach": "Borussia Mönchengladbach",
             "M'gladbach": "Borussia Mönchengladbach",
             "Borussia Mönchengladbach": "Borussia Mönchengladbach",
+            "Borussia Monchengladbach": "Borussia Mönchengladbach",
 
             "Frankfurt": "Eintracht Frankfurt",
             "Eint Frankfurt": "Eintracht Frankfurt",
@@ -78,6 +79,7 @@ class DataProcessor:
 
             "Mainz": "Mainz",
             "Mainz 05": "Mainz",
+            "FSV Mainz 05": "Mainz",
             "1. FSV Mainz 05": "Mainz",
             "1.FSV Mainz 05": "Mainz",
 

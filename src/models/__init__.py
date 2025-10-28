@@ -1,8 +1,11 @@
 # src/models/__init__.py
 
 from .poisson import (
-    fit_poisson_model,
+    fit_baseline_strengths,
+    fit_feature_coefficients,
+    fit_poisson_model_two_stage,
     calculate_lambdas,
+    calculate_lambdas_single
 )
 
 from .priors import (
@@ -25,8 +28,11 @@ from .hyperparameters import (
 
 __all__ = [
     # core model
-    "fit_poisson_model",
+    "fit_baseline_strengths",
+    "fit_feature_coefficients",
+    "fit_poisson_model_two_stage",
     "calculate_lambdas",
+    "calculate_lambdas_single",
     # priors
     "calculate_home_advantage_prior",
     "calculate_promoted_team_priors",

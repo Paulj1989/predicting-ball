@@ -16,7 +16,7 @@ def sample_goals_calibrated(
     compared to the model's fitted lambdas.
 
     The hybrid architecture:
-    - Model fitted on weighted performance (npxG/npG) for stable parameters
+    - Model fitted on weighted goals (npxG/npG) for stable parameters
     - Sampling uses dispersion factor to match actual goal variance
     """
     # ensure lambda_val is array for consistent handling
@@ -75,12 +75,7 @@ def calculate_outcome_probabilities(
     max_goals: int = 8,
     use_poisson: bool = True,
 ) -> Tuple[float, float, float]:
-    """
-    Calculate match outcome probabilities (home/draw/away).
-
-    Can use either Poisson (fast, analytical) or negative binomial
-    (more accurate for high dispersion, but slower).
-    """
+    """Calculate match outcome probabilities (home/draw/away)"""
     home_win_prob = 0.0
     draw_prob = 0.0
     away_win_prob = 0.0
@@ -125,51 +120,3 @@ def calculate_outcome_probabilities(
     total = home_win_prob + draw_prob + away_win_prob
 
     return (home_win_prob / total, draw_prob / total, away_win_prob / total)
-
-
-def test_sampling_distribution(
-    lambda_val: float,
-    dispersion_factor: float,
-    n_samples: int = 10000,
-    verbose: bool = True,
-) -> dict:
-    """
-    Test sampling distribution properties.
-
-    Useful for validating that the sampling correctly implements the
-    desired overdispersion.
-    """
-    samples = sample_goals_calibrated(lambda_val, dispersion_factor, size=n_samples)
-
-    empirical_mean = samples.mean()
-    empirical_var = samples.var()
-
-    # theoretical values
-    theoretical_mean = lambda_val
-    theoretical_var = lambda_val * dispersion_factor
-
-    var_ratio = empirical_var / theoretical_var
-
-    results = {
-        "empirical_mean": empirical_mean,
-        "empirical_var": empirical_var,
-        "theoretical_mean": theoretical_mean,
-        "theoretical_var": theoretical_var,
-        "variance_ratio": var_ratio,
-    }
-
-    if verbose:
-        print(
-            f"\nTesting sampling with λ={lambda_val:.2f}, dispersion={dispersion_factor:.2f}"
-        )
-        print(
-            f"Theoretical: mean={theoretical_mean:.2f}, variance={theoretical_var:.2f}"
-        )
-        print(f"Empirical:   mean={empirical_mean:.2f}, variance={empirical_var:.2f}")
-
-        if abs(var_ratio - 1.0) < 0.1:
-            print(f"✓ Variance ratio: {var_ratio:.2f} (target: 1.00)")
-        else:
-            print(f"✗ Variance ratio: {var_ratio:.2f} (target: 1.00)")
-
-    return results
