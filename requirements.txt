@@ -20,7 +20,7 @@ attrs==25.3.0
     #   trio
 babel==2.17.0
     # via great-tables
-beautifulsoup4==4.13.5
+beautifulsoup4==4.14.2
     # via bs4
 blinker==1.9.0
     # via streamlit
