@@ -25,7 +25,7 @@ def evaluate_implied_odds_baseline(
 
     if missing_cols:
         if verbose:
-            print(f"  ⚠ Missing columns for baseline: {missing_cols}")
+            print(f"  MISSING COLUMNS: {missing_cols}")
         return None
 
     # filter to matches with complete odds
@@ -47,12 +47,12 @@ def evaluate_implied_odds_baseline(
     # require at least 80% coverage
     if n_valid < 0.8 * n_total:
         if verbose:
-            print(f"  ⚠ Insufficient odds coverage: {n_valid / n_total * 100:.1f}%")
+            print(f"  INSUFFICIENT ODDS COVERAGE: {n_valid / n_total * 100:.1f}%")
         return None
 
     if n_valid == 0:
         if verbose:
-            print("  ⚠ No matches with complete odds")
+            print("  NO MATCHES WITH COMPLETE ODDS")
         return None
 
     # get valid data - reset indices to avoid misalignment
@@ -70,7 +70,7 @@ def evaluate_implied_odds_baseline(
         or away_implied.isna().any()
     ):
         if verbose:
-            print("  ⚠ NaN values in implied probabilities")
+            print("  NaN VALUES IN IMPLIED PROBABILITIES")
         return None
 
     if (
@@ -79,7 +79,7 @@ def evaluate_implied_odds_baseline(
         or (away_implied <= 0).any()
     ):
         if verbose:
-            print("  ⚠ Non-positive implied probabilities")
+            print("  NON-POSITIVE IMPLIED PROBABILITIES")
         return None
 
     # normalise to remove bookmaker margin
@@ -87,7 +87,7 @@ def evaluate_implied_odds_baseline(
 
     if (total_implied == 0).any():
         if verbose:
-            print("  ⚠ Zero total implied probability")
+            print("  ZERO TOTAL IMPLIED PROBABILITY")
         return None
 
     baseline_probs = pd.DataFrame(
@@ -102,7 +102,7 @@ def evaluate_implied_odds_baseline(
     prob_sums = baseline_probs.sum(axis=1)
     if not np.allclose(prob_sums, 1.0, atol=1e-6):
         if verbose:
-            print(f"  ⚠ Probabilities don't sum to 1: {prob_sums.describe()}")
+            print(f"  PROBAILITIES DON'T SUM TO 1: {prob_sums.describe()}")
         return None
 
     # get actual outcomes - reset index to match baseline_probs
@@ -112,7 +112,7 @@ def evaluate_implied_odds_baseline(
     if len(baseline_probs) != len(actual_outcomes):
         if verbose:
             print(
-                f"  ⚠ Length mismatch: {len(baseline_probs)} probs vs {len(actual_outcomes)} outcomes"
+                f"  LENGTH MISMATCH: {len(baseline_probs)} probs vs {len(actual_outcomes)} outcomes"
             )
         return None
 
@@ -125,7 +125,7 @@ def evaluate_implied_odds_baseline(
         # validate metrics
         if np.isnan(rps) or np.isnan(brier) or np.isnan(log_loss_val):
             if verbose:
-                print("  ⚠ Baseline metrics contain NaN")
+                print("  BASELINE METRICS CONTAIN NaN")
                 print(f"     RPS: {rps}, Brier: {brier}, LogLoss: {log_loss_val}")
             return None
 

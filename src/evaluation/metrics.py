@@ -2,7 +2,7 @@
 
 import numpy as np
 import pandas as pd
-from typing import Union, Dict
+from typing import Any, Union, Dict, Optional, Tuple
 
 
 def calculate_rps(
@@ -43,7 +43,7 @@ def calculate_rps(
             f"Length mismatch: {len(ordered_predictions)} predictions vs {len(actuals)} actuals"
         )
 
-    # handle both string outcomes ('H', 'D', 'A') and integer outcomes (0, 1, 2)
+    # handle both string and integer outcomes
     if actuals.dtype.kind in ("U", "O"):
         outcome_map = {"H": 0, "D": 1, "A": 2}
         try:
@@ -131,7 +131,6 @@ def calculate_brier_score(
         actual_one_hot = np.array([1.0 if j == actual_idx else 0.0 for j in range(3)])
 
         # brier score is sum of squared errors, divided by two
-        # following Kruppa et al (2014))
         brier = np.sum((pred_probs - actual_one_hot) ** 2) / 2
         brier_scores.append(brier)
 
@@ -255,30 +254,81 @@ def calculate_accuracy(
 
     return float(accuracy)
 
-
-def evaluate_model_comprehensive(params: Dict, test_data: pd.DataFrame) -> tuple:
-    """Comprehensive model evaluation"""
+def evaluate_model_comprehensive(
+    params: Dict[str, Any],
+    test_data: pd.DataFrame,
+    use_dixon_coles: bool = True,
+    calibrators: Optional[Dict] = None,
+) -> Tuple[Dict[str, float], np.ndarray, np.ndarray]:
+    """Comprehensive model evaluation with multiple metrics"""
     from ..simulation.predictions import predict_match_probabilities
 
-    # generate predictions for all test matches
-    predictions_list = []
+    # generate predictions for all matches
+    predictions = []
+    actuals = []
 
-    for idx, row in test_data.iterrows():
-        probs = predict_match_probabilities(params, row)
-        predictions_list.append(probs)
+    for idx, match in test_data.iterrows():
+        # get prediction
+        pred = predict_match_probabilities(
+            params, match, use_dixon_coles=use_dixon_coles
+        )
 
-    predictions = pd.DataFrame(predictions_list)
-    actuals = test_data["result"].reset_index(drop=True)
+        predictions.append([pred["home_win"], pred["draw"], pred["away_win"]])
 
-    # calculate all metrics
-    metrics = {
-        "rps": calculate_rps(predictions, actuals),
-        "brier_score": calculate_brier_score(predictions, actuals),
-        "log_loss": calculate_log_loss(predictions, actuals),
-        "accuracy": calculate_accuracy(predictions, actuals),
-    }
+        # get actual outcome
+        actual = match.get("result", None)
+        if actual is None:
+            # infer from goals
+            home_goals = match.get("home_goals")
+            away_goals = match.get("away_goals")
+            if pd.notna(home_goals) and pd.notna(away_goals):
+                if home_goals > away_goals:
+                    actual = "H"
+                elif home_goals < away_goals:
+                    actual = "A"
+                else:
+                    actual = "D"
 
-    return metrics, predictions, actuals
+        actuals.append(actual)
+
+    predictions = np.array(predictions)
+
+    # apply calibration if provided
+    if calibrators is not None:
+
+        from ..models.calibration import apply_calibration
+
+        predictions = apply_calibration(predictions, calibrators)
+
+    # convert actuals to indices
+    outcome_map = {"H": 0, "D": 1, "A": 2}
+    actuals_idx = np.array([outcome_map.get(a, -1) for a in actuals])
+
+    # filter out any invalid actuals
+    valid_mask = actuals_idx >= 0
+    predictions_valid = predictions[valid_mask]
+    actuals_valid = actuals_idx[valid_mask]
+
+    # calculate metrics
+    metrics = {}
+    metrics["brier_score"] = calculate_brier_score(predictions_valid, actuals_valid)
+    metrics["rps"] = calculate_rps(predictions_valid, actuals_valid)
+    metrics["log_loss"] = calculate_log_loss(predictions_valid, actuals_valid)
+
+    predicted_outcomes = np.argmax(predictions_valid, axis=1)
+    metrics["accuracy"] = np.mean(predicted_outcomes == actuals_valid)
+
+    # per-outcome accuracy
+    for outcome_idx, outcome_name in enumerate(["home_win", "draw", "away_win"]):
+        mask = actuals_valid == outcome_idx
+        if mask.sum() > 0:
+            metrics[f"accuracy_{outcome_name}"] = np.mean(
+                predicted_outcomes[mask] == outcome_idx
+            )
+        else:
+            metrics[f"accuracy_{outcome_name}"] = np.nan
+
+    return metrics, predictions_valid, actuals_valid
 
 
 def compare_metrics(
