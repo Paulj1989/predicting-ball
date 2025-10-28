@@ -150,7 +150,7 @@ pillow==11.3.0
     #   predicting-ball (pyproject.toml)
     #   matplotlib
     #   streamlit
-protobuf==6.32.1
+protobuf==6.33.0
     # via streamlit
 pyarrow==22.0.0
     # via streamlit
