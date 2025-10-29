@@ -13,46 +13,42 @@ def render():
     st.markdown("""
     ### Methodology
 
-    This Bundesliga prediction model uses a Dixon-Coles corrected Poisson regression combined with Monte Carlo simulation to generate probabilistic forecasts for the 2025/26 season.
+    Predicting Ball uses a bivariate Poisson model with a Dixon-Coles correction, combined with Monte Carlo simulation. This generates a probabilistic forecast for individual matches and the entire season.
 
     #### Model Components
 
-    The prediction system consists of several integrated components:
+    Several integrated components make up the Predicting Ball model:
 
-    **Two-Stage Team Strength Estimation**: The model uses a two-stage fitting process to cleanly separate stable team ability from transient match-specific factors:
+    **Team Strength Estimation**: The model uses a two-stage process to separate long-term team ability and local match-specific factors.
 
-    - **Stage 1 (Baseline Strengths)**: Estimates each team's attacking and defensive capabilities along with home advantage, and uses a Dixon-Coles correction to reduce systematic undervaluing of low-scoring matches.
-    - **Stage 2 (Feature Coefficients)**: Fixes baseline team strengths and estimates coefficients for match-specific features including betting odds ratios and rolling 5-game npxGD.
+    - **Stage 1 (Team Strengths)** - Estimates each team's attack and defense ratings, along with home advantage, and uses a Dixon-Coles correction to reduce systematic undervaluing of low-scoring matches.
+    - **Stage 2 (Match Features)** - Fixes team strengths and estimates coefficients for match-specific features, including betting odds ratios and rolling 5-game npxGD.
 
-    **Informed Priors**: The model uses informed priors to handle data limitations. Transfermarkt's squad market values provide a reasonable proxy for team quality, translated into expected attack and defense ratings (returning teams using a blend of squad values and the previous season's ratings and promoted teams using entirely squad values). A home advantage prior is estimated from historical Bundesliga data with season-to-season variance.
+    **Informed Priors**: The model uses informed priors to handle data limitations. Transfermarkt's squad market values serve as a proxy for team quality, translated to ratings priors (using a blend of squad values and the previous season's ratings for returning teams, and only squad values for promoted teams). A home advantage prior is estimated from historical Bundesliga data, accounting for season-to-season variance.
 
-    **Calibrated Uncertainty Quantification**: The model quantifies prediction uncertainty through several mechanisms:
+    **Calibrated Uncertainty**: The model uses several mechanisms for quantifying prediction uncertainty:
 
-    - Parametric bootstrap with residual resampling (500 iterations) quantifies parameter uncertainty.
-    - Dispersion calibration adjusts goal distributions to match empirical variance in actual outcomes.
-    - Prediction intervals empirically calibrated to achieve target coverage (68%, 80%, 95%).
-    - Temperature scaling provides post-hoc probability calibration when needed.
+    - Residual bootstrapping (500 iterations) quantifies parameter uncertainty.
+    - Dispersion calibration adjusts the distribution of goals to match the variance in outcomes.
+    - Prediction intervals are empirically calibrated to achieve target coverage.
+    - Temperature scaling adds post-hoc probability calibration.
 
-    **Monte Carlo Simulation**: Season projections aggregate 10,000 simulations of remaining fixtures. Each simulation samples team parameters from the bootstrap distribution and generates match outcomes using Dixon-Coles corrected probabilities. Final league positions account for the full uncertainty in both team strengths and match outcomes, producing realistic probability distributions for the Meisterschale, European qualification, and relegation.
+    **Monte Carlo Simulation**: Season projections are based on 10,000 simulations of all remaining fixtures. Final league positions account for the uncertainty in both team strengths and match outcomes, producing (hopefully) realistic probability distributions for all league outcomes.
 
     #### Performance
 
-    The model has been validated on historical Bundesliga seasons using proper time-series cross-validation:
+    The model has been validated on previous Bundesliga seasons using time-series cross-validation:
 
-    - **Ranked Probability Score (RPS)**: Measures accuracy of ordered outcome predictions (home/draw/away)
-    - **Brier Score**: Quantifies calibration of probabilistic forecasts
-    - **Accuracy**: Percentage of correct outcome predictions
+    - **Ranked Probability Score (RPS)** - Measures accuracy of ordered outcome predictions (home/draw/away).
+    - **Brier Score** - Quantifies the accuracy of probabilistic predictions, similar to mean-squared error for probabilities.
+    - **Accuracy** - Percentage of correct outcome predictions.
 
     #### Data Sources
 
-    - **FBRef**: Match results, expected goals, shots, possession, and advanced statistics
-    - **Transfermarkt**: Squad market values and team rosters
-    - **Football-Data.co.uk**: Historical betting odds from multiple bookmakers
-    - **The Odds API**: Current betting odds for upcoming fixtures
-
-    #### Technical Details
-
-    The codebase uses Python with scientific computing libraries including NumPy, pandas, SciPy, and Optuna for optimization. The Dixon-Coles correction is applied consistently during both parameter estimation and prediction to ensure accurate draw probabilities. We use maximum likelihood estimation with time-weighted observations, giving recent matches more influence on parameter estimates while still incorporating historical information. The simulation engine uses NumPy's optimized random number generation for efficient Monte Carlo sampling.
+    - **FBRef** - Match results, expected goals, shots, possession, and advanced statistics.
+    - **Transfermarkt** - Squad market values and other squad features.
+    - **Football-Data.co.uk** - Historical betting odds from multiple bookmakers.
+    - **The Odds API** - Current betting odds for upcoming fixtures.
 
     ---
 
