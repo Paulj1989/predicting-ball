@@ -28,7 +28,7 @@ def render():
 
     **Calibrated Uncertainty**: The model uses several mechanisms for quantifying prediction uncertainty:
 
-    - Residual bootstrapping (500 iterations) quantifies parameter uncertainty.
+    - Residual bootstrapping (250 iterations) quantifies parameter uncertainty.
     - Dispersion calibration adjusts the distribution of goals to match the variance in outcomes.
     - Prediction intervals are empirically calibrated to achieve target coverage.
     - Temperature scaling adds post-hoc probability calibration.
