@@ -52,7 +52,7 @@ def parametric_bootstrap_with_residuals(
 
     # bootstrap loop
     for b in range(1, n_bootstrap):
-        if verbose and b % 100 == 0:
+        if verbose and b % 50 == 0:
             print(f"Bootstrap iteration {b}/{n_bootstrap}")
 
         # resample residuals

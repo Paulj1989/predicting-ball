@@ -41,8 +41,8 @@ def parse_args():
     parser.add_argument(
         "--n-bootstrap",
         type=int,
-        default=500,
-        help="Number of bootstrap samples (default: 500)",
+        default=250,
+        help="Number of bootstrap samples (default: 250)",
     )
 
     parser.add_argument(

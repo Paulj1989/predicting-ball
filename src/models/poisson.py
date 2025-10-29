@@ -280,18 +280,16 @@ def fit_feature_coefficients(
         else np.zeros(len(df_train))
     )
 
-    home_form_w5 = (
+    home_npxgd_w5 = (
         df_train["home_npxgd_w5"].fillna(0).values
         if "home_npxgd_w5" in df_train
         else np.zeros(len(df_train))
     )
-    away_form_w5 = (
+    away_npxgd_w5 = (
         df_train["away_npxgd_w5"].fillna(0).values
         if "away_npxgd_w5" in df_train
         else np.zeros(len(df_train))
     )
-
-    use_form = "home_npxgd_w5" in df_train.columns
 
     # ========================================================================
     # TIME WEIGHTING
@@ -311,7 +309,7 @@ def fit_feature_coefficients(
     def neg_loglik_features(x: np.ndarray) -> float:
         """Fit feature coefficients with fixed team strengths"""
         beta_odds = x[0]
-        beta_form = x[1] if use_form else 0.0
+        beta_form = x[1]
 
         # calculate lambdas (baseline + features)
         home_strength = (
@@ -319,13 +317,13 @@ def fit_feature_coefficients(
             + attack[home_idx]
             + defense[away_idx]
             + beta_odds * home_log_odds_ratio
-            + beta_form * home_form_w5
+            + beta_form * home_npxgd_w5
         )
         away_strength = (
             attack[away_idx]
             + defense[home_idx]
             - beta_odds * home_log_odds_ratio
-            + beta_form * away_form_w5
+            + beta_form * away_npxgd_w5
         )
 
         mu_h = np.clip(np.exp(home_strength), 0.1, 8.0)
@@ -367,7 +365,7 @@ def fit_feature_coefficients(
     )
 
     beta_odds = result.x[0]
-    beta_form = result.x[1] if use_form else 0.0
+    beta_form = result.x[1]
 
     # ========================================================================
     # COMBINE RESULTS
@@ -388,13 +386,13 @@ def fit_feature_coefficients(
         + attack[home_idx]
         + defense[away_idx]
         + beta_odds * home_log_odds_ratio
-        + beta_form * home_form_w5
+        + beta_form * home_npxgd_w5
     )
     away_strength = (
         attack[away_idx]
         + defense[home_idx]
         - beta_odds * home_log_odds_ratio
-        + beta_form * away_form_w5
+        + beta_form * away_npxgd_w5
     )
 
     lambda_h_fitted = np.exp(home_strength)
@@ -495,8 +493,8 @@ def calculate_lambdas_single(
     away_team: str,
     params: Dict[str, Any],
     home_log_odds_ratio: float = 0.0,
-    home_form_w5: float = 0.0,
-    away_form_w5: float = 0.0,
+    home_npxgd_w5: float = 0.0,
+    away_npxgd_w5: float = 0.0,
 ) -> Tuple[float, float]:
     """Calculate expected goals for a single match"""
     att_h = params.get("attack", {}).get(home_team, 0.0)
@@ -514,10 +512,10 @@ def calculate_lambdas_single(
         + def_a
         + home_adv
         + beta_odds * home_log_odds_ratio
-        + beta_form * home_form_w5
+        + beta_form * home_npxgd_w5
     )
     away_strength = (
-        att_a + def_h - beta_odds * home_log_odds_ratio + beta_form * away_form_w5
+        att_a + def_h - beta_odds * home_log_odds_ratio + beta_form * away_npxgd_w5
     )
 
     # convert to lambdas
@@ -569,12 +567,12 @@ def calculate_lambdas(
     )
 
     # form features
-    home_form_w5 = (
+    home_npxgd_w5 = (
         df["home_npxgd_w5"].fillna(0).values
         if "home_npxgd_w5" in df
         else np.zeros(len(df))
     )
-    away_form_w5 = (
+    away_npxgd_w5 = (
         df["away_npxgd_w5"].fillna(0).values
         if "away_npxgd_w5" in df
         else np.zeros(len(df))
@@ -586,13 +584,13 @@ def calculate_lambdas(
         + defense_arr[away_idx]
         + params.get("home_adv", 0.0)
         + params.get("beta_odds", 0.0) * home_log_odds_ratio
-        + params.get("beta_form", 0.0) * home_form_w5
+        + params.get("beta_form", 0.0) * home_npxgd_w5
     )
     away_strength = (
         attack_arr[away_idx]
         + defense_arr[home_idx]
         - params.get("beta_odds", 0.0) * home_log_odds_ratio
-        + params.get("beta_form", 0.0) * away_form_w5
+        + params.get("beta_form", 0.0) * away_npxgd_w5
     )
 
     # convert to lambdas (expected goals)

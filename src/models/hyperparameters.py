@@ -37,7 +37,7 @@ def optimise_hyperparameters(
     Search space:
         - time_decay: [0.0005, 0.002] (log scale)
         - lambda_reg: [0.2, 0.8] (linear scale)
-        - prior_decay_rate: [5.0, 20.0] (linear scale)
+        - prior_decay_rate: [5.0, 17.0] (linear scale)
         - rho: [-0.3, -0.1] (linear scale) - Dixon-Coles correlation
     """
     # import here to avoid circular dependency
@@ -62,7 +62,7 @@ def optimise_hyperparameters(
         hyperparams = {
             "time_decay": trial.suggest_float("time_decay", 0.0005, 0.002, log=True),
             "lambda_reg": trial.suggest_float("lambda_reg", 0.2, 0.8),
-            "prior_decay_rate": trial.suggest_float("prior_decay_rate", 5.0, 20.0),
+            "prior_decay_rate": trial.suggest_float("prior_decay_rate", 5.0, 17.0),
             "rho": trial.suggest_float("rho", -0.3, -0.1),
         }
 

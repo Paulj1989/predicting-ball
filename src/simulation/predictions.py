@@ -34,8 +34,8 @@ def predict_single_match(
     away_team: str,
     params: Dict[str, Any],
     home_log_odds_ratio: float = 0.0,
-    home_form_w5: float = 0.0,
-    away_form_w5: float = 0.0,
+    home_npxgd_w5: float = 0.0,
+    away_npxgd_w5: float = 0.0,
     max_goals: int = 8,
     use_dixon_coles: bool = True,
 ) -> Dict[str, Any]:
@@ -46,8 +46,8 @@ def predict_single_match(
         away_team=away_team,
         params=params,
         home_log_odds_ratio=home_log_odds_ratio,
-        home_form_w5=home_form_w5,
-        away_form_w5=away_form_w5,
+        home_npxgd_w5=home_npxgd_w5,
+        away_npxgd_w5=away_npxgd_w5,
     )
 
     # get rho parameter (default to -0.13 if not fitted)
@@ -116,13 +116,13 @@ def predict_match_probabilities(
     if pd.isna(home_log_odds_ratio):
         home_log_odds_ratio = 0.0
 
-    home_form_w5 = match_data.get("home_form_w5", 0.0)
-    if pd.isna(home_form_w5):
-        home_form_w5 = 0.0
+    home_npxgd_w5 = match_data.get("home_npxgd_w5", 0.0)
+    if pd.isna(home_npxgd_w5):
+        home_npxgd_w5 = 0.0
 
-    away_form_w5 = match_data.get("away_form_w5", 0.0)
-    if pd.isna(away_form_w5):
-        away_form_w5 = 0.0
+    away_npxgd_w5 = match_data.get("away_npxgd_w5", 0.0)
+    if pd.isna(away_npxgd_w5):
+        away_npxgd_w5 = 0.0
 
     # call the existing prediction function
     prediction = predict_single_match(
@@ -130,8 +130,8 @@ def predict_match_probabilities(
         away_team=away_team,
         params=params,
         home_log_odds_ratio=home_log_odds_ratio,
-        home_form_w5=home_form_w5,
-        away_form_w5=away_form_w5,
+        home_npxgd_w5=home_npxgd_w5,
+        away_npxgd_w5=away_npxgd_w5,
         max_goals=max_goals,
         use_dixon_coles=use_dixon_coles,
     )
@@ -165,13 +165,13 @@ def predict_next_fixtures(
         if pd.isna(home_log_odds_ratio):
             home_log_odds_ratio = 0
 
-        home_form_w5 = match.get("home_form_w5", 0.0)
-        if pd.isna(home_form_w5):
-            home_form_w5 = 0.0
+        home_npxgd_w5 = match.get("home_npxgd_w5", 0.0)
+        if pd.isna(home_npxgd_w5):
+            home_npxgd_w5 = 0.0
 
-        away_form_w5 = match.get("away_form_w5", 0.0)
-        if pd.isna(away_form_w5):
-            away_form_w5 = 0.0
+        away_npxgd_w5 = match.get("away_npxgd_w5", 0.0)
+        if pd.isna(away_npxgd_w5):
+            away_npxgd_w5 = 0.0
 
         # generate prediction
         pred = predict_single_match(
@@ -179,8 +179,8 @@ def predict_next_fixtures(
             away_team,
             params,
             home_log_odds_ratio=home_log_odds_ratio,
-            home_form_w5=home_form_w5,
-            away_form_w5=away_form_w5,
+            home_npxgd_w5=home_npxgd_w5,
+            away_npxgd_w5=away_npxgd_w5,
             use_dixon_coles=use_dixon_coles,
         )
 

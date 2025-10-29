@@ -131,12 +131,16 @@ def simulate_remaining_season_calibrated(
             # sample parameters from bootstrap
             params = bootstrap_params[np.random.randint(len(bootstrap_params))]
 
-            # create temporary df for vectorised calculation
+            # create temporary df
             temp_df = future_fixtures[["home_team", "away_team"]].copy()
-            if "home_log_odds" in future_fixtures.columns:
-                temp_df["home_log_odds"] = future_fixtures["home_log_odds"].fillna(0)
-            else:
-                temp_df["home_log_odds"] = 0.0
+
+            # copy all feature columns that exist
+            feature_cols = ["home_log_odds_ratio", "home_npxgd_w5", "away_npxgd_w5"]
+            for col in feature_cols:
+                if col in future_fixtures.columns:
+                    temp_df[col] = future_fixtures[col].fillna(0)
+                else:
+                    temp_df[col] = 0.0
 
             lambda_home, lambda_away = calculate_lambdas(temp_df, params)
 
@@ -202,7 +206,8 @@ def create_final_summary(
         mean_gd = mean_gf - mean_ga
 
         # calculate probabilities
-        pos_counts = np.bincount(results["positions"][:, i] - 1, minlength=n_teams)
+        positions = np.clip(results["positions"][:, i], 1, n_teams) - 1
+        pos_counts = np.bincount(positions, minlength=n_teams)
         title_prob = pos_counts[0] / n_simulations
         ucl_prob = pos_counts[:4].sum() / n_simulations
         relegation_prob = pos_counts[-2:].sum() / n_simulations
@@ -221,8 +226,15 @@ def create_final_summary(
             }
         )
 
-    return (
-        pd.DataFrame(rows)
-        .sort_values("projected_points", ascending=False)
-        .reset_index(drop=True)
-    )
+    df = pd.DataFrame(rows)
+
+    # sort by rounded points first, then by goal difference
+    df["points_rounded"] = df["projected_points"].round(0)
+    df = df.sort_values(
+        ["points_rounded", "projected_gd"], ascending=[False, False]
+    ).reset_index(drop=True)
+
+    # remove the temporary sorting column
+    df = df.drop(columns=["points_rounded"])
+
+    return df

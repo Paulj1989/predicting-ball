@@ -53,8 +53,8 @@ def parse_args():
     parser.add_argument(
         "--n-bootstrap",
         type=int,
-        default=500,
-        help="Number of bootstrap iterations (default: 500)",
+        default=250,
+        help="Number of bootstrap iterations (default: 250)",
     )
 
     parser.add_argument(
