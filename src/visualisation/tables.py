@@ -35,7 +35,7 @@ def create_standings_table(
             "Goal Difference": table_data["projected_gd"].round(1),
             "Overall": table_data["overall_rating"].round(2),
             "Attack": table_data["attack_rating"].round(2),
-            "Defence": table_data["defense_rating"].round(2),
+            "Defense": table_data["defense_rating"].round(2),
             "Meisterschale": table_data["title_prob"],
             "Champions League": table_data["ucl_prob"],
             "Relegation": table_data["relegation_prob"],
@@ -45,13 +45,13 @@ def create_standings_table(
     # create table
     tbl = (
         GT(display_data, rowname_col="Team")
-        .tab_spanner(label="Team Ratings", columns=["Overall", "Attack", "Defence"])
+        .tab_spanner(label="Team Ratings", columns=["Overall", "Attack", "Defense"])
         .tab_spanner(
             label="Simulated Probabilities",
             columns=["Meisterschale", "Champions League", "Relegation"],
         )
         .fmt_integer(columns=["Points", "Goal Difference"])
-        .fmt_number(columns=["Overall", "Attack", "Defence"], decimals=2)
+        .fmt_number(columns=["Overall", "Attack", "Defense"], decimals=2)
         .fmt_percent(
             columns=["Meisterschale", "Champions League", "Relegation"],
             decimals=1,
@@ -61,7 +61,7 @@ def create_standings_table(
         .tab_style(style=[style.text(weight="bold")], locations=loc.stub())
         .tab_header(
             title="Bundesliga 2025/26 Season Projections",
-            subtitle="100,000 Monte Carlo simulations using calibrated Poisson regression with parametric bootstrapping.",
+            subtitle="10,000 Monte Carlo simulations using calibrated Poisson regression with Dixon-Coles correction and parametric bootstrapping.",
         )
         .tab_options(
             table_width=table_width,
@@ -196,12 +196,12 @@ def create_team_ratings_table(
     save_path: Optional[str] = None,
     table_width: str = "800px",
 ) -> GT:
-    """Create table showing team ratings (attack, defence, overall)"""
+    """Create table showing team ratings (attack, defense, overall)"""
     # extract ratings
     teams = params.get("teams", [])
-    attack = params.get("attack", {})
-    defense_scaled = params.get("defense_scaled", {})
-    overall = params.get("overall", {})
+    attack_rating = params.get("attack_rating", {})
+    defense_rating = params.get("defense_rating", {})
+    overall_rating = params.get("overall_rating", {})
 
     # create dataframe
     ratings_data = []
@@ -209,9 +209,9 @@ def create_team_ratings_table(
         ratings_data.append(
             {
                 "Team": team,
-                "Overall": overall.get(team, np.nan),
-                "Attack": attack.get(team, np.nan),
-                "Defence": defense_scaled.get(team, np.nan),
+                "Overall": overall_rating.get(team, np.nan),
+                "Attack": attack_rating.get(team, np.nan),
+                "Defense": defense_rating.get(team, np.nan),
             }
         )
 
@@ -223,7 +223,7 @@ def create_team_ratings_table(
     # create table
     tbl = (
         GT(df, rowname_col="Team")
-        .fmt_number(columns=["Overall", "Attack", "Defence"], decimals=2)
+        .fmt_number(columns=["Overall", "Attack", "Defense"], decimals=2)
         .cols_align(align="center")
         .tab_style(style=[style.text(weight="bold")], locations=loc.stub())
         .tab_header(

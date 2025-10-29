@@ -26,6 +26,11 @@ from .hyperparameters import (
     get_default_hyperparameters,
 )
 
+from .ratings import (
+    create_interpretable_ratings,
+    add_interpretable_ratings_to_params,
+)
+
 __all__ = [
     # core model
     "fit_baseline_strengths",
@@ -45,4 +50,7 @@ __all__ = [
     # hyperparameters
     "optimise_hyperparameters",
     "get_default_hyperparameters",
+    # ratings
+    "create_interpretable_ratings",
+    "add_interpretable_ratings_to_params",
 ]
