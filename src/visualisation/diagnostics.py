@@ -217,13 +217,13 @@ def plot_team_ratings(
         ratings_data.append(
             {
                 "team": team,
-                "attack": params["attack"].get(team, 0),
-                "defense": params["defense_scaled"].get(team, 0),
-                "overall": params["overall"].get(team, 0),
+                "attack_rating": params["attack_rating"].get(team, 0),
+                "defense_rating": params["defense_rating"].get(team, 0),
+                "overall_rating": params["overall_rating"].get(team, 0),
             }
         )
 
-    df = pd.DataFrame(ratings_data).sort_values("overall", ascending=False)
+    df = pd.DataFrame(ratings_data).sort_values("overall_rating", ascending=False)
 
     # select top teams
     plot_data = df.head(top_n)
@@ -257,7 +257,7 @@ def plot_team_ratings(
     ax.set_xlabel("Team", fontsize=12, fontweight="bold")
     ax.set_ylabel("Rating", fontsize=12, fontweight="bold")
     ax.set_title(
-        "Team Attack and Defence Ratings", fontsize=14, fontweight="bold", pad=20
+        "Team Attack and Defense Ratings", fontsize=14, fontweight="bold", pad=20
     )
     ax.set_xticks(x)
     ax.set_xticklabels(plot_data["team"], rotation=45, ha="right", fontsize=10)

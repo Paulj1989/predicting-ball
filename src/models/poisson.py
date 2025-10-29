@@ -226,8 +226,6 @@ def fit_baseline_strengths(
     params = {
         "attack": {team: float(attack[i]) for i, team in enumerate(all_teams)},
         "defense": {team: float(defense[i]) for i, team in enumerate(all_teams)},
-        "defense_scaled": dict(zip(all_teams, -defense)),
-        "overall": dict(zip(all_teams, 0.5 * attack - 0.5 * defense)),
         "home_adv": float(home_adv),
         "rho": rho,
         "teams": all_teams,
@@ -251,6 +249,8 @@ def fit_feature_coefficients(
     verbose: bool = False,
 ) -> Dict[str, Any]:
     """Stage 2: Fit coefficients for match-specific features (odds, form)"""
+
+    from .ratings import add_interpretable_ratings_to_params
 
     # ========================================================================
     # SETUP
@@ -426,6 +426,8 @@ def fit_feature_coefficients(
         print(f"    Beta (odds): {beta_odds:.3f}")
         print(f"    Beta (form): {beta_form:.3f}")
         print(f"    Dispersion factor: {dispersion_factor:.3f}")
+
+    full_params = add_interpretable_ratings_to_params(full_params)
 
     return full_params
 
