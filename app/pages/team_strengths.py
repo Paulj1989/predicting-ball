@@ -11,6 +11,10 @@ def render(model, projections):
         '<h2 style="font-size: 1.8rem; text-align: center;">Team Strength Ratings</h2>',
         unsafe_allow_html=True,
     )
+    st.markdown(
+        '<div class="sub-header">Ratings are Z-scores approximately bound to a [-1, 1] scale.</div>',
+        unsafe_allow_html=True,
+    )
 
     if model is None:
         st.error("Model data not available")
@@ -55,16 +59,25 @@ def _render_comparison_charts(selected_team, teams, params):
     ratings_df = pd.DataFrame(
         {
             "team": teams,
-            "attack": [params["attack"].get(t, 0) for t in teams],
-            "defense": [params["defense_scaled"].get(t, 0) for t in teams],
-            "overall": [params["overall"].get(t, 0) for t in teams],
+            "attack": [params["attack_rating"].get(t, 0) for t in teams],
+            "defense": [params["defense_rating"].get(t, 0) for t in teams],
+            "overall": [params["overall_rating"].get(t, 0) for t in teams],
         }
     )
     ratings_df["is_selected"] = ratings_df["team"] == selected_team
 
+    # calculate symmetric axis limits
+    all_ratings = pd.concat([ratings_df["attack"], ratings_df["defense"]])
+    rating_min = all_ratings.min()
+    rating_max = all_ratings.max()
+
+    # add 10% margin for visual breathing room
+    margin = (rating_max - rating_min) * 0.1
+    axis_min = rating_min - margin
+    axis_max = rating_max + margin
+
     with col1:
         st.subheader("Attack vs Defense Ratings")
-
         scatter = (
             alt.Chart(ratings_df)
             .mark_circle(size=200)
@@ -72,12 +85,12 @@ def _render_comparison_charts(selected_team, teams, params):
                 x=alt.X(
                     "attack:Q",
                     title="Attack Rating",
-                    scale=alt.Scale(domain=[-0.8, 0.8]),
+                    scale=alt.Scale(domain=[axis_min, axis_max]),
                 ),
                 y=alt.Y(
                     "defense:Q",
                     title="Defense Rating",
-                    scale=alt.Scale(domain=[-0.8, 0.8]),
+                    scale=alt.Scale(domain=[axis_min, axis_max]),
                 ),
                 color=alt.condition(
                     alt.datum.is_selected == True,
@@ -148,9 +161,9 @@ def _render_top_performers(teams, params):
     ratings_df = pd.DataFrame(
         {
             "team": teams,
-            "attack": [params["attack"].get(t, 0) for t in teams],
-            "defense": [params["defense_scaled"].get(t, 0) for t in teams],
-            "overall": [params["overall"].get(t, 0) for t in teams],
+            "attack": [params["attack_rating"].get(t, 0) for t in teams],
+            "defense": [params["defense_rating"].get(t, 0) for t in teams],
+            "overall": [params["overall_rating"].get(t, 0) for t in teams],
         }
     )
 
