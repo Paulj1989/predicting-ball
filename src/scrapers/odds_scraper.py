@@ -116,6 +116,7 @@ class OddsScraper:
         markets: List[str] = ["h2h"],
         regions: str = "eu",
         odds_format: str = "decimal",
+        calculate_consensus: bool = True,
     ) -> pd.DataFrame:
         """Fetch upcoming bundesliga odds from The Odds API"""
         logger.info("Fetching upcoming odds from The Odds API")
@@ -181,6 +182,11 @@ class OddsScraper:
 
             df = pd.DataFrame(matches)
             logger.info(f"Retrieved {len(df)} upcoming matches")
+
+            # automatically calculate consensus odds
+            if calculate_consensus and not df.empty:
+                df = self.calculate_consensus_odds(df)
+
             return df
 
         except requests.exceptions.RequestException as e:
@@ -190,10 +196,7 @@ class OddsScraper:
             return pd.DataFrame()
 
     def calculate_consensus_odds(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Calculate consensus odds by averaging across all bookmakers.
-        Removes bookmaker margins by normalising implied probabilities.
-        """
+        """Calculate consensus odds by averaging across all bookmakers"""
         if df.empty:
             return df
 
@@ -208,24 +211,10 @@ class OddsScraper:
             logger.warning("No bookmaker odds found for consensus calculation")
             return df
 
-        # average across bookmakers
+        # average across bookmakers (raw odds only)
         df["consensus_home_odds"] = df[home_cols].mean(axis=1)
         df["consensus_draw_odds"] = df[draw_cols].mean(axis=1)
         df["consensus_away_odds"] = df[away_cols].mean(axis=1)
 
-        # calculate normalised implied probabilities (removes overround)
-        df["raw_home_prob"] = 1 / df["consensus_home_odds"]
-        df["raw_draw_prob"] = 1 / df["consensus_draw_odds"]
-        df["raw_away_prob"] = 1 / df["consensus_away_odds"]
-
-        total_prob = df["raw_home_prob"] + df["raw_draw_prob"] + df["raw_away_prob"]
-
-        df["implied_home_prob"] = df["raw_home_prob"] / total_prob
-        df["implied_draw_prob"] = df["raw_draw_prob"] / total_prob
-        df["implied_away_prob"] = df["raw_away_prob"] / total_prob
-
-        # cleanup
-        df = df.drop(columns=["raw_home_prob", "raw_draw_prob", "raw_away_prob"])
-
-        logger.info("Consensus odds calculated and normalised")
+        logger.info("Consensus odds calculated")
         return df
