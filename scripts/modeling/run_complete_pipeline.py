@@ -18,8 +18,6 @@ import argparse
 import subprocess
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-
 
 def parse_args():
     """Parse command line arguments"""

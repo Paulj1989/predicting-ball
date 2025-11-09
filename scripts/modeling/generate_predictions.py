@@ -9,28 +9,23 @@ Usage:
     python scripts/modeling/generate_predictions.py --model-path outputs/models/production_model.pkl
 """
 
-import sys
 import argparse
+import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-
-import pandas as pd
 import numpy as np
+import pandas as pd
 
-from src.simulation import (
-    parametric_bootstrap_with_residuals,
-    simulate_remaining_season_calibrated,
-    predict_next_fixtures,
-    get_current_standings,
-    create_final_summary,
-)
+from src.io.model_io import load_calibrators, load_model
 from src.processing.model_preparation import prepare_bundesliga_data
-from src.io.model_io import load_model, load_calibrators
-from src.visualisation import (
-    create_standings_table,
-    create_next_fixtures_table
+from src.simulation import (
+    create_final_summary,
+    get_current_standings,
+    parametric_bootstrap_with_residuals,
+    predict_next_fixtures,
+    simulate_remaining_season_calibrated,
 )
+from src.visualisation import create_next_fixtures_table, create_standings_table
 
 
 def parse_args():
