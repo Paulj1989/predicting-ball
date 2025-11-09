@@ -5,10 +5,14 @@ import numpy as np
 
 
 def add_odds_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Add betting odds derived features"""
-    df = df.copy()
+    """
+    Add betting odds derived features.
 
+    If 'draw_odds' is present, log odds ratio is calculated using implied probabilities.
+    If 'draw_odds' is missing, log odds ratio is calculated directly from decimal odds as log(away_odds / home_odds).
+    """
     if "home_odds" in df.columns and "away_odds" in df.columns:
+        df = df.copy()
         # convert odds to probabilities
         if "draw_odds" in df.columns:
             home_prob, draw_prob, away_prob = convert_odds_to_probabilities(
@@ -40,7 +44,7 @@ def convert_odds_to_probabilities(
     draw_odds: pd.Series,
     away_odds: pd.Series,
     remove_margin: bool = True,
-) -> tuple:
+) -> tuple[pd.Series, pd.Series, pd.Series]:
     """Convert decimal odds to implied probabilities"""
     # convert odds to raw probabilities
     raw_home_prob = 1 / home_odds
@@ -72,6 +76,11 @@ def calculate_log_odds_ratio(
         log_odds_ratio = log(P_home / P_away)
 
     Positive values favour home team, negative favour away team.
+
+    Parameters:
+        home_prob (pd.Series): Implied probability for home team.
+        away_prob (pd.Series): Implied probability for away team.
+        epsilon (float): Small value added to probabilities to avoid division by zero or log(0).
     """
     # add epsilon to avoid log(0)
     home_prob_safe = home_prob + epsilon
