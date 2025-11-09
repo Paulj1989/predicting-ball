@@ -4,6 +4,30 @@ import numpy as np
 import pandas as pd
 from typing import Dict, Tuple, Any, Optional
 
+# blend weight constants for prior calculations
+PROMOTED_ELO_WEIGHT = 2 / 3
+PROMOTED_SQUAD_WEIGHT = 1 / 3
+RETURNING_PREV_WEIGHT = 1 / 3
+RETURNING_SQUAD_WEIGHT = 1 / 3
+RETURNING_ELO_WEIGHT = 1 / 3
+
+
+def _get_team_metric(df: pd.DataFrame, team: str, metric_col: str) -> float:
+    """Helper function to calculate average metric for a team from home/away columns"""
+    team_rows = df[(df["home_team"] == team) | (df["away_team"] == team)]
+
+    if len(team_rows) == 0:
+        return np.nan
+
+    # get values when team is home
+    home_col = f"home_{metric_col}" if "home_" not in metric_col else metric_col
+    away_col = f"away_{metric_col}" if "away_" not in metric_col else metric_col
+
+    home_val = team_rows[team_rows["home_team"] == team][home_col].mean()
+    away_val = team_rows[team_rows["away_team"] == team][away_col].mean()
+
+    return np.nanmean([home_val, away_val])
+
 
 def calculate_home_advantage_prior(
     historic_data: pd.DataFrame, use_actual_goals: bool = True, verbose: bool = True
@@ -28,6 +52,13 @@ def calculate_home_advantage_prior(
         home_metric = historic_data["home_goals_weighted"].dropna().mean()
         away_metric = historic_data["away_goals_weighted"].dropna().mean()
         metric_name = "npxG/npG"
+
+    # safety check for division by zero
+    if away_metric <= 0 or home_metric <= 0:
+        raise ValueError(
+            f"Invalid metric values: home={home_metric:.3f}, away={away_metric:.3f}. "
+            "Both must be positive for home advantage calculation."
+        )
 
     # home advantage ratio (multiplicative on goals scale)
     ratio = home_metric / away_metric
@@ -84,22 +115,10 @@ def calculate_squad_value_priors(
     Maps relative squad value to expected attack/defense strength using
     piecewise linear interpolation between quartiles.
     """
-    # extract squad values
-    squad_values = {}
-    for team in all_teams:
-        team_rows = df_train[
-            (df_train["home_team"] == team) | (df_train["away_team"] == team)
-        ]
-        if len(team_rows) > 0:
-            home_val = team_rows[team_rows["home_team"] == team][
-                "home_value_pct"
-            ].mean()
-            away_val = team_rows[team_rows["away_team"] == team][
-                "away_value_pct"
-            ].mean()
-            squad_values[team] = np.nanmean([home_val, away_val])
-        else:
-            squad_values[team] = np.nan
+    # extract squad values using helper function
+    squad_values = {
+        team: _get_team_metric(df_train, team, "value_pct") for team in all_teams
+    }
 
     # calculate league statistics
     valid_values = [v for v in squad_values.values() if not np.isnan(v)]
@@ -181,18 +200,8 @@ def calculate_elo_priors(
     verbose: bool = False,
 ) -> Dict[str, Dict[str, float]]:
     """Calculate attack/defense priors from Elo ratings for all teams"""
-    # extract elo ratings
-    elo_ratings = {}
-    for team in all_teams:
-        team_rows = df_train[
-            (df_train["home_team"] == team) | (df_train["away_team"] == team)
-        ]
-        if len(team_rows) > 0:
-            home_elo = team_rows[team_rows["home_team"] == team]["home_elo"].mean()
-            away_elo = team_rows[team_rows["away_team"] == team]["away_elo"].mean()
-            elo_ratings[team] = np.nanmean([home_elo, away_elo])
-        else:
-            elo_ratings[team] = np.nan
+    # extract elo ratings using helper function
+    elo_ratings = {team: _get_team_metric(df_train, team, "elo") for team in all_teams}
 
     # calculate league statistics
     valid_elos = [e for e in elo_ratings.values() if not np.isnan(e)]
@@ -264,12 +273,7 @@ def calculate_all_team_priors(
     previous_season_params: Optional[Dict[str, Any]] = None,
     verbose: bool = True,
 ) -> Dict[str, Dict[str, float]]:
-    """
-    Calculate priors for all teams.
-
-    Promoted teams: 2/3 Elo + 1/3 squad values
-    Returning teams: 1/3 previous season + 1/3 squad values + 1/3 Elo
-    """
+    """Calculate priors for all teams using weighted blends"""
     if verbose:
         print("\n" + "=" * 60)
         print("CALCULATING PRIORS FOR ALL TEAMS")
@@ -312,12 +316,14 @@ def calculate_all_team_priors(
         if is_promoted:
             # promoted teams: 2/3 elo + 1/3 squad (if elo available)
             if elo_available:
-                attack_prior = (2 / 3) * ep["attack_prior"] + (1 / 3) * sp[
-                    "attack_prior"
-                ]
-                defense_prior = (2 / 3) * ep["defense_prior"] + (1 / 3) * sp[
-                    "defense_prior"
-                ]
+                attack_prior = (
+                    PROMOTED_ELO_WEIGHT * ep["attack_prior"]
+                    + PROMOTED_SQUAD_WEIGHT * sp["attack_prior"]
+                )
+                defense_prior = (
+                    PROMOTED_ELO_WEIGHT * ep["defense_prior"]
+                    + PROMOTED_SQUAD_WEIGHT * sp["defense_prior"]
+                )
                 source = "promoted_elo_squad"
             else:
                 attack_prior = sp["attack_prior"]
@@ -330,14 +336,14 @@ def calculate_all_team_priors(
             # returning teams: 1/3 previous + 1/3 squad + 1/3 elo
             if elo_available:
                 attack_prior = (
-                    (1 / 3) * prev_attack[team]
-                    + (1 / 3) * sp["attack_prior"]
-                    + (1 / 3) * ep["attack_prior"]
+                    RETURNING_PREV_WEIGHT * prev_attack[team]
+                    + RETURNING_SQUAD_WEIGHT * sp["attack_prior"]
+                    + RETURNING_ELO_WEIGHT * ep["attack_prior"]
                 )
                 defense_prior = (
-                    (1 / 3) * prev_defense[team]
-                    + (1 / 3) * sp["defense_prior"]
-                    + (1 / 3) * ep["defense_prior"]
+                    RETURNING_PREV_WEIGHT * prev_defense[team]
+                    + RETURNING_SQUAD_WEIGHT * sp["defense_prior"]
+                    + RETURNING_ELO_WEIGHT * ep["defense_prior"]
                 )
                 source = "returning_three_way"
             else:
@@ -368,8 +374,14 @@ def calculate_all_team_priors(
 
     if verbose:
         print("\nPrior Summary:")
-        print(f"  Promoted teams: {n_promoted} (2/3 Elo + 1/3 squad)")
-        print(f"  Returning teams: {n_returning} (1/3 prev + 1/3 squad + 1/3 Elo)")
+        print(
+            f"  Promoted teams: {n_promoted} "
+            f"({PROMOTED_ELO_WEIGHT:.1%} Elo + {PROMOTED_SQUAD_WEIGHT:.1%} squad)"
+        )
+        print(
+            f"  Returning teams: {n_returning} "
+            f"({RETURNING_PREV_WEIGHT:.1%} prev + {RETURNING_SQUAD_WEIGHT:.1%} squad + {RETURNING_ELO_WEIGHT:.1%} Elo)"
+        )
         print(f"  Elo data available: {'Yes' if has_elo else 'No'}")
 
         # show examples
@@ -406,12 +418,13 @@ def calculate_all_team_priors(
 
 
 def identify_promoted_teams(
-    historic_data: pd.DataFrame, current_season: pd.DataFrame
+    historic_data: pd.DataFrame, current_season: pd.DataFrame, verbose: bool = True
 ) -> Dict[str, Dict[str, Any]]:
     """Identify teams in current season not in previous season"""
-    print("\n" + "=" * 60)
-    print("PROMOTED TEAM IDENTIFICATION")
-    print("=" * 60)
+    if verbose:
+        print("\n" + "=" * 60)
+        print("PROMOTED TEAM IDENTIFICATION")
+        print("=" * 60)
 
     last_season_year = historic_data["season_end_year"].max()
     last_season_data = historic_data[
@@ -425,26 +438,13 @@ def identify_promoted_teams(
     promoted = current_teams - last_season_teams
 
     if len(promoted) == 0:
-        print("\nNo promoted teams identified")
+        if verbose:
+            print("\nNo promoted teams identified")
         return {}
 
     promoted_info = {}
     for team in promoted:
-        team_rows = current_season[
-            (current_season["home_team"] == team)
-            | (current_season["away_team"] == team)
-        ]
-
-        if len(team_rows) > 0:
-            home_val = team_rows[team_rows["home_team"] == team][
-                "home_value_pct"
-            ].mean()
-            away_val = team_rows[team_rows["away_team"] == team][
-                "away_value_pct"
-            ].mean()
-            squad_value_pct = np.nanmean([home_val, away_val])
-        else:
-            squad_value_pct = np.nan
+        squad_value_pct = _get_team_metric(current_season, team, "value_pct")
 
         historic_appearances = historic_data[
             (historic_data["home_team"] == team) | (historic_data["away_team"] == team)
@@ -456,14 +456,17 @@ def identify_promoted_teams(
             "historic_matches": len(historic_appearances),
         }
 
-        print(f"\n  {team}:")
-        print(f"    Squad value: {squad_value_pct:.1f}%")
-        if len(historic_appearances) > 0:
-            seasons_played = sorted(historic_appearances["season_end_year"].unique())
-            print(f"    Previous seasons: {', '.join(map(str, seasons_played))}")
-            print("    Status: RETURNING")
-        else:
-            print("    Status: NEW")
+        if verbose:
+            print(f"\n  {team}:")
+            print(f"    Squad value: {squad_value_pct:.1f}%")
+            if len(historic_appearances) > 0:
+                seasons_played = sorted(
+                    historic_appearances["season_end_year"].unique()
+                )
+                print(f"    Previous seasons: {', '.join(map(str, seasons_played))}")
+                print("    Status: RETURNING")
+            else:
+                print("    Status: NEW")
 
     return promoted_info
 
@@ -473,16 +476,17 @@ def calculate_promoted_team_priors(
     promoted_teams: Dict[str, Dict[str, Any]],
     current_season: pd.DataFrame,
     previous_season_params: Optional[Dict[str, Any]] = None,
+    verbose: bool = True,
 ) -> Tuple[Dict[str, Dict[str, float]], float, float]:
     """
-    Calculate priors for ALL teams.
+    Calculate priors for ALL teams using weighted blends of available information.
 
-    Promoted teams: 2/3 Elo + 1/3 squad values
-    Returning teams: 1/3 previous + 1/3 squad + 1/3 Elo
+    This function calculates home advantage and delegates to calculate_all_team_priors
+    to compute attack/defense priors for each team based on their status (promoted/returning).
     """
     # calculate home advantage prior
     home_adv_prior, home_adv_std = calculate_home_advantage_prior(
-        df_train, use_actual_goals=True, verbose=True
+        df_train, use_actual_goals=True, verbose=verbose
     )
 
     # get all teams
@@ -500,7 +504,7 @@ def calculate_promoted_team_priors(
         all_teams,
         promoted_teams,
         previous_season_params,
-        verbose=True,
+        verbose=verbose,
     )
 
     return all_priors, home_adv_prior, home_adv_std
