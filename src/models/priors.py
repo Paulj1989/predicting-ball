@@ -175,72 +175,234 @@ def calculate_squad_value_priors(
     return priors
 
 
-def calculate_seasonal_priors(
+def calculate_elo_priors(
     df_train: pd.DataFrame,
     all_teams: list,
-    previous_params: Optional[Dict[str, Any]] = None,
-    blend_weight_prev: float = 0.7,
     verbose: bool = False,
 ) -> Dict[str, Dict[str, float]]:
-    """
-    Blend previous season parameters with squad value priors.
-
-    For returning teams: 70% previous season + 30% squad value.
-    For promoted teams: 100% squad value.
-    """
-    # get squad value priors
-    squad_priors = calculate_squad_value_priors(df_train, all_teams, verbose=False)
-
-    if previous_params is None:
-        # no previous season: use squad values only
-        if verbose:
-            print("  No previous season params, using squad values only")
-        return squad_priors
-
-    # blend with previous season
-    blended_priors = {}
-    prev_attack = previous_params.get("attack", {})
-    prev_defense = previous_params.get("defense", {})
-
+    """Calculate attack/defense priors from Elo ratings for all teams"""
+    # extract elo ratings
+    elo_ratings = {}
     for team in all_teams:
-        sp = squad_priors.get(team, {"attack_prior": 0.0, "defense_prior": 0.0})
-
-        # check if team existed previous season
-        if team in prev_attack and team in prev_defense:
-            # blend: 70% previous season, 30% squad value
-            attack_prior = (
-                blend_weight_prev * prev_attack[team]
-                + (1 - blend_weight_prev) * sp["attack_prior"]
-            )
-            defense_prior = (
-                blend_weight_prev * prev_defense[team]
-                + (1 - blend_weight_prev) * sp["defense_prior"]
-            )
-            source = "blended"
+        team_rows = df_train[
+            (df_train["home_team"] == team) | (df_train["away_team"] == team)
+        ]
+        if len(team_rows) > 0:
+            home_elo = team_rows[team_rows["home_team"] == team]["home_elo"].mean()
+            away_elo = team_rows[team_rows["away_team"] == team]["away_elo"].mean()
+            elo_ratings[team] = np.nanmean([home_elo, away_elo])
         else:
-            # new team: squad value only
-            attack_prior = sp["attack_prior"]
-            defense_prior = sp["defense_prior"]
-            source = "squad_value"
+            elo_ratings[team] = np.nan
 
-        blended_priors[team] = {
+    # calculate league statistics
+    valid_elos = [e for e in elo_ratings.values() if not np.isnan(e)]
+    if len(valid_elos) == 0:
+        # no elo ratings available
+        if verbose:
+            print("\nNo Elo ratings available - returning neutral priors")
+        return {team: {"attack_prior": 0.0, "defense_prior": 0.0} for team in all_teams}
+
+    league_avg_elo = np.mean(valid_elos)
+    league_std_elo = np.std(valid_elos)
+
+    if verbose:
+        print("\nElo Rating Distribution:")
+        print(f"  League average: {league_avg_elo:.1f}")
+        print(f"  League std dev: {league_std_elo:.1f}")
+        print(f"  Min: {np.min(valid_elos):.1f}, Max: {np.max(valid_elos):.1f}")
+
+    # map elo to attack/defense priors
+    priors = {}
+    for team in all_teams:
+        elo = elo_ratings[team]
+
+        if np.isnan(elo):
+            priors[team] = {"attack_prior": 0.0, "defense_prior": 0.0}
+            continue
+
+        # z-score normalisation
+        z_score = (elo - league_avg_elo) / league_std_elo
+
+        # map to parameter space
+        # 1 std dev (~150 elo points) = 0.25 parameter units
+        attack_prior = z_score * 0.25
+        defense_prior = (
+            -z_score * 0.25
+        )  # inverted: higher elo = better defense = lower param
+
+        priors[team] = {
             "attack_prior": attack_prior,
             "defense_prior": defense_prior,
-            "source": source,
+            "elo_rating": elo,
+            "elo_z_score": z_score,
         }
 
     if verbose:
-        n_blended = sum(
-            1 for p in blended_priors.values() if p.get("source") == "blended"
+        print("\nElo → Prior Mapping (selected teams):")
+        sorted_teams = sorted(
+            all_teams,
+            key=lambda t: elo_ratings[t] if not np.isnan(elo_ratings[t]) else 0,
+            reverse=True,
         )
-        n_squad = len(blended_priors) - n_blended
-        print(
-            f"\nSeasonal Prior Blending ({blend_weight_prev:.0%} previous / {1 - blend_weight_prev:.0%} squad):"
-        )
-        print(f"  {n_blended} teams: blended from previous season")
-        print(f"  {n_squad} teams: squad value only (new/promoted)")
+        for i, team in enumerate(sorted_teams[:3] + sorted_teams[-3:]):
+            if i == 3:
+                print("  ...")
+            p = priors[team]
+            if not np.isnan(p.get("elo_rating", np.nan)):
+                print(
+                    f"  {team}: Elo={p['elo_rating']:.0f} (z={p['elo_z_score']:+.2f}) → "
+                    f"attack={p['attack_prior']:+.3f}, defense={p['defense_prior']:+.3f}"
+                )
 
-    return blended_priors
+    return priors
+
+
+def calculate_all_team_priors(
+    df_train: pd.DataFrame,
+    all_teams: list,
+    promoted_teams: Dict[str, Dict[str, Any]],
+    previous_season_params: Optional[Dict[str, Any]] = None,
+    verbose: bool = True,
+) -> Dict[str, Dict[str, float]]:
+    """
+    Calculate priors for all teams.
+
+    Promoted teams: 2/3 Elo + 1/3 squad values
+    Returning teams: 1/3 previous season + 1/3 squad values + 1/3 Elo
+    """
+    if verbose:
+        print("\n" + "=" * 60)
+        print("CALCULATING PRIORS FOR ALL TEAMS")
+        print("=" * 60)
+
+    # calculate component priors
+    squad_priors = calculate_squad_value_priors(df_train, all_teams, verbose=False)
+    elo_priors = calculate_elo_priors(df_train, all_teams, verbose=False)
+
+    # check elo availability
+    has_elo = any(
+        not np.isnan(elo_priors.get(team, {}).get("elo_rating", np.nan))
+        for team in all_teams
+    )
+
+    # extract previous season attack/defense if available
+    prev_attack = {}
+    prev_defense = {}
+    if previous_season_params is not None:
+        if "team_params" in previous_season_params:
+            for team, params in previous_season_params["team_params"].items():
+                prev_attack[team] = params.get("attack", 0.0)
+                prev_defense[team] = params.get("defense", 0.0)
+
+    # calculate blended priors
+    all_priors = {}
+
+    promoted_team_names = set(promoted_teams.keys())
+    n_promoted = 0
+    n_returning = 0
+
+    for team in all_teams:
+        sp = squad_priors.get(team, {"attack_prior": 0.0, "defense_prior": 0.0})
+        ep = elo_priors.get(team, {"attack_prior": 0.0, "defense_prior": 0.0})
+
+        is_promoted = team in promoted_team_names
+        has_prev = team in prev_attack and team in prev_defense
+        elo_available = not np.isnan(ep.get("elo_rating", np.nan))
+
+        if is_promoted:
+            # promoted teams: 2/3 elo + 1/3 squad (if elo available)
+            if elo_available:
+                attack_prior = (2 / 3) * ep["attack_prior"] + (1 / 3) * sp[
+                    "attack_prior"
+                ]
+                defense_prior = (2 / 3) * ep["defense_prior"] + (1 / 3) * sp[
+                    "defense_prior"
+                ]
+                source = "promoted_elo_squad"
+            else:
+                attack_prior = sp["attack_prior"]
+                defense_prior = sp["defense_prior"]
+                source = "promoted_squad_only"
+
+            n_promoted += 1
+
+        elif has_prev:
+            # returning teams: 1/3 previous + 1/3 squad + 1/3 elo
+            if elo_available:
+                attack_prior = (
+                    (1 / 3) * prev_attack[team]
+                    + (1 / 3) * sp["attack_prior"]
+                    + (1 / 3) * ep["attack_prior"]
+                )
+                defense_prior = (
+                    (1 / 3) * prev_defense[team]
+                    + (1 / 3) * sp["defense_prior"]
+                    + (1 / 3) * ep["defense_prior"]
+                )
+                source = "returning_three_way"
+            else:
+                # no elo: blend previous + squad (50/50)
+                attack_prior = 0.5 * prev_attack[team] + 0.5 * sp["attack_prior"]
+                defense_prior = 0.5 * prev_defense[team] + 0.5 * sp["defense_prior"]
+                source = "returning_prev_squad"
+
+            n_returning += 1
+
+        else:
+            # new team without previous season
+            if elo_available:
+                attack_prior = 0.5 * ep["attack_prior"] + 0.5 * sp["attack_prior"]
+                defense_prior = 0.5 * ep["defense_prior"] + 0.5 * sp["defense_prior"]
+                source = "new_elo_squad"
+            else:
+                attack_prior = sp["attack_prior"]
+                defense_prior = sp["defense_prior"]
+                source = "new_squad_only"
+
+        all_priors[team] = {
+            "attack_prior": attack_prior,
+            "defense_prior": defense_prior,
+            "source": source,
+            "is_promoted": is_promoted,
+        }
+
+    if verbose:
+        print("\nPrior Summary:")
+        print(f"  Promoted teams: {n_promoted} (2/3 Elo + 1/3 squad)")
+        print(f"  Returning teams: {n_returning} (1/3 prev + 1/3 squad + 1/3 Elo)")
+        print(f"  Elo data available: {'Yes' if has_elo else 'No'}")
+
+        # show examples
+        print("\nPromoted teams:")
+        for team in promoted_team_names:
+            if team in all_priors:
+                p = all_priors[team]
+                sp = squad_priors[team]
+                ep = elo_priors[team]
+                print(f"  {team}:")
+                if not np.isnan(sp.get("squad_value_pct", np.nan)):
+                    print(f"    Squad value: {sp['squad_value_pct']:.1f}%")
+                if not np.isnan(ep.get("elo_rating", np.nan)):
+                    print(f"    Elo rating: {ep['elo_rating']:.0f}")
+                print(
+                    f"    Final: attack={p['attack_prior']:+.3f}, defense={p['defense_prior']:+.3f}"
+                )
+
+        print("\nReturning teams (sample):")
+        returning_teams = [
+            t for t in all_teams if t in prev_attack and t not in promoted_team_names
+        ]
+        for team in returning_teams[:3]:
+            p = all_priors[team]
+            print(f"  {team}:")
+            print(
+                f"    Previous: attack={prev_attack[team]:+.3f}, defense={prev_defense[team]:+.3f}"
+            )
+            print(
+                f"    Final: attack={p['attack_prior']:+.3f}, defense={p['defense_prior']:+.3f}"
+            )
+
+    return all_priors
 
 
 def identify_promoted_teams(
@@ -312,86 +474,33 @@ def calculate_promoted_team_priors(
     current_season: pd.DataFrame,
     previous_season_params: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Dict[str, Dict[str, float]], float, float]:
-    """Calculate informed priors for promoted teams"""
-    print("\n" + "=" * 60)
-    print("CALCULATING PROMOTED TEAM PRIORS")
-    print("=" * 60)
+    """
+    Calculate priors for ALL teams.
 
+    Promoted teams: 2/3 Elo + 1/3 squad values
+    Returning teams: 1/3 previous + 1/3 squad + 1/3 Elo
+    """
     # calculate home advantage prior
     home_adv_prior, home_adv_std = calculate_home_advantage_prior(
         df_train, use_actual_goals=True, verbose=True
     )
 
-    if len(promoted_teams) == 0:
-        return {}, home_adv_prior, home_adv_std
-
     # get all teams
-    all_teams = sorted(pd.unique(df_train[["home_team", "away_team"]].values.ravel()))
-    for team in promoted_teams.keys():
-        if team not in all_teams:
-            all_teams.append(team)
-    all_teams = sorted(all_teams)
+    all_teams = sorted(
+        pd.unique(
+            pd.concat([df_train, current_season])[
+                ["home_team", "away_team"]
+            ].values.ravel()
+        )
+    )
 
-    # calculate squad value priors
-    squad_priors = calculate_squad_value_priors(df_train, all_teams, verbose=True)
+    # calculate priors for all teams
+    all_priors = calculate_all_team_priors(
+        df_train,
+        all_teams,
+        promoted_teams,
+        previous_season_params,
+        verbose=True,
+    )
 
-    print("\nPromoted team priors from squad values:")
-    priors = {}
-
-    for team in promoted_teams.keys():
-        if team not in squad_priors:
-            print(f"\n  {team}: No squad value data, using conservative prior")
-            priors[team] = {"attack_prior": -0.3, "defense_prior": 0.3}
-            continue
-
-        sp = squad_priors[team]
-        attack_prior = sp["attack_prior"]
-        defense_prior = sp["defense_prior"]
-
-        print(f"\n  {team}:")
-        if "squad_value_pct" in sp:
-            print(f"    Squad value: {sp['squad_value_pct']:.1f}%")
-            print(f"    Relative strength: {sp['relative_strength']:.2f}x")
-        print(f"    Attack prior: {attack_prior:.3f}")
-        print(f"    Defense prior: {defense_prior:.3f}")
-
-        # adjust with early season performance if available
-        team_matches = current_season[
-            (
-                (current_season["home_team"] == team)
-                | (current_season["away_team"] == team)
-            )
-            & (current_season["is_played"] == True)
-        ]
-
-        if len(team_matches) >= 3:
-            home_matches = team_matches[team_matches["home_team"] == team]
-            away_matches = team_matches[team_matches["away_team"] == team]
-
-            goals_scored = (
-                home_matches["home_goals"].sum() + away_matches["away_goals"].sum()
-            ) / len(team_matches)
-
-            goals_conceded = (
-                home_matches["away_goals"].sum() + away_matches["home_goals"].sum()
-            ) / len(team_matches)
-
-            # convert to rating scale
-            performance_attack = (goals_scored - 1.5) * 0.3
-            performance_defense = (goals_conceded - 1.5) * 0.3
-
-            # blend: 70% prior, 30% performance
-            attack_prior = 0.7 * attack_prior + 0.3 * performance_attack
-            defense_prior = 0.7 * defense_prior + 0.3 * performance_defense
-
-            print(f"    Adjusted with {len(team_matches)} early matches")
-            print(f"    Final attack prior: {attack_prior:.3f}")
-            print(f"    Final defense prior: {defense_prior:.3f}")
-
-        priors[team] = {"attack_prior": attack_prior, "defense_prior": defense_prior}
-
-    # add previous season params as metadata
-    if previous_season_params is not None:
-        priors["_previous_season_params"] = previous_season_params
-
-    return priors, home_adv_prior, home_adv_std
+    return all_priors, home_adv_prior, home_adv_std
