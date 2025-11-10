@@ -18,12 +18,12 @@ import pandas as pd
 import pickle
 from datetime import datetime
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.models import (
     fit_poisson_model_two_stage,
-    calculate_home_advantage_prior,
     identify_promoted_teams,
+    calculate_home_advantage_prior,
+    calculate_promoted_team_priors,
     optimise_hyperparameters,
     get_default_hyperparameters,
 )
@@ -258,9 +258,9 @@ def main():
             print("   No historic data available")
 
     # ========================================================================
-    # IDENTIFY PROMOTED TEAMS
+    # IDENTIFY PROMOTED TEAMS AND CALCULATE PRIORS
     # ========================================================================
-    print("\n5. Identifying promoted teams...")
+    print("\n5. Identifying promoted teams and calculating priors...")
 
     last_historic_season = historic_data[
         historic_data["season_end_year"] == historic_data["season_end_year"].max()
@@ -268,57 +268,25 @@ def main():
 
     promoted_teams_info = identify_promoted_teams(last_historic_season, current_season)
 
-    # build promoted_priors dict with is_promoted flag
-    from src.models.priors import calculate_squad_value_priors
-
-    all_teams = sorted(
-        pd.unique(
-            pd.concat([all_train_data, current_season])[
-                ["home_team", "away_team"]
-            ].values.ravel()
-        )
-    )
-
-    squad_priors = calculate_squad_value_priors(
-        all_train_data, all_teams, verbose=False
-    )
-
-    # create promoted_priors dict
-    promoted_priors = {}
-    for team in promoted_teams_info.keys():
-        if team in squad_priors:
-            promoted_priors[team] = {
-                "attack_prior": squad_priors[team]["attack_prior"],
-                "defense_prior": squad_priors[team]["defense_prior"],
-                "is_promoted": True,
-            }
-
-    # add previous season params to dict
-    if previous_season_params:
-        promoted_priors["_previous_season_params"] = previous_season_params
-        print("   Previous season params will be used for 70/30 blending")
-
-    if promoted_priors:
-        print(
-            f"   Promoted teams: {len([k for k in promoted_priors if k != '_previous_season_params'])}"
-        )
-
-    # ========================================================================
-    # CALCULATE HOME ADVANTAGE PRIOR
-    # ========================================================================
-    home_adv_prior, home_adv_std = calculate_home_advantage_prior(
-        all_train_data, use_actual_goals=False, verbose=True
+    # calculate priors for all teams (promoted + returning)
+    # this handles Elo, squad values, and previous season blending
+    all_priors, home_adv_prior, home_adv_std = calculate_promoted_team_priors(
+        all_train_data,
+        promoted_teams_info,
+        current_season,
+        previous_season_params=previous_season_params,
+        verbose=True,
     )
 
     # ========================================================================
     # FIT MODEL
     # ========================================================================
-    print("\n6. Fitting model..")
+    print("\n6. Fitting model...")
 
     fitted_params = fit_poisson_model_two_stage(
         all_train_data,
         hyperparams,
-        promoted_priors=promoted_priors,  # contains promoted teams + prev params
+        promoted_priors=all_priors,  # priors for all teams (Elo + squad + prev season)
         home_adv_prior=home_adv_prior,
         home_adv_std=home_adv_std,
         n_random_starts=5,
