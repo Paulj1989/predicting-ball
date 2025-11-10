@@ -19,7 +19,7 @@ def prepare_bundesliga_data(
 
     Pipeline:
     1. Load integrated data from database
-    2. Add basic derived fields (points, total_goals, Elo features)
+    2. Add basic derived fields (points, total_goals)
     3. Build all features via feature builder
     4. Split into historic vs current season
     5. Filter for modeling requirements
@@ -28,7 +28,6 @@ def prepare_bundesliga_data(
     - Match outcome features (points, totals)
     - Squad value features (ratios, logs, percentiles)
     - Odds features (ratios, margins)
-    - Elo features (ratings, differences, ratios, normalised)
     - Rolling npxGD statistics (5 and 10 game windows)
     - Venue-specific npxGD (home at home, away away)
     - Red card indicators
@@ -87,7 +86,7 @@ def prepare_bundesliga_data(
 
 
 def _add_basic_match_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Add basic match outcome features and Elo-derived features"""
+    """Add basic match outcome features"""
     mask_played = df["is_played"]
 
     if mask_played.any():
@@ -104,33 +103,6 @@ def _add_basic_match_features(df: pd.DataFrame) -> pd.DataFrame:
             df.loc[mask_played, "home_goals"] + df.loc[mask_played, "away_goals"]
         )
 
-    # add elo-derived features if elo ratings present
-    if "home_elo" in df.columns and "away_elo" in df.columns:
-        elo_mask = df["home_elo"].notna() & df["away_elo"].notna()
-
-        if elo_mask.any():
-            # elo difference and ratio already created by data_processor
-            # add normalised versions for modeling
-
-            # normalised elo (mean-centered, scaled by std)
-            all_elos = pd.concat(
-                [df.loc[elo_mask, "home_elo"], df.loc[elo_mask, "away_elo"]]
-            )
-            elo_mean = all_elos.mean()
-            elo_std = all_elos.std()
-
-            df.loc[elo_mask, "home_elo_norm"] = (
-                df.loc[elo_mask, "home_elo"] - elo_mean
-            ) / elo_std
-            df.loc[elo_mask, "away_elo_norm"] = (
-                df.loc[elo_mask, "away_elo"] - elo_mean
-            ) / elo_std
-
-            # elo difference (normalised)
-            df.loc[elo_mask, "elo_diff_norm"] = (
-                df.loc[elo_mask, "home_elo_norm"] - df.loc[elo_mask, "away_elo_norm"]
-            )
-
     return df
 
 
@@ -144,10 +116,7 @@ def _verify_features(df: pd.DataFrame):
         ("away_venue_npxgd_per_game", "Away venue npxGD"),
         ("odds_home_away_ratio", "Odds ratio"),
         ("value_ratio", "Value ratio"),
-        ("home_elo", "Elo (home)"),
-        ("away_elo", "Elo (away)"),
-        ("elo_diff", "Elo difference"),
-        ("elo_ratio", "Elo ratio"),
+        ("home_elo", "Elo ratings"),
     ]
 
     print("\n  Feature verification:")
@@ -190,8 +159,6 @@ def test_data_preparation():
         "odds_home_away_ratio",
         "home_elo",
         "away_elo",
-        "elo_diff",
-        "elo_ratio",
     ]
 
     print("\nFeature validation:")

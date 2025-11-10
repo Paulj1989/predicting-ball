@@ -1,9 +1,6 @@
 # scripts/run_data_pipeline.py
 
-import sys
 import os
-
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 import argparse
 import logging
@@ -16,6 +13,7 @@ from src.processing.data_processor import DataProcessor
 from src.scrapers.fbref_scraper import FBRefScraper
 from src.scrapers.transfermarkt_scraper import TransfermarktScraper
 from src.scrapers.odds_scraper import OddsScraper
+from src.scrapers.elo_scraper import EloScraper
 from src.utils import determine_current_season
 
 
@@ -85,6 +83,7 @@ def get_seasons_to_scrape(
         "fbref": "raw.match_logs_fbref",
         "transfermarkt": "raw.squad_values_tm",
         "odds": "raw.historical_odds",
+        "elo": "raw.elo_ratings",
     }
 
     if source not in table_map:
@@ -350,6 +349,38 @@ def _display_upcoming_fixtures(upcoming_odds: pd.DataFrame, num_fixtures: int = 
             )
 
 
+def scrape_elo(
+    conn: duckdb.DuckDBPyConnection, seasons: List[int], force_rescrape: bool = False
+):
+    """Scrape Elo ratings from Club Elo"""
+    logger.info("=" * 60)
+    logger.info("ELO RATINGS (Club Elo)")
+    logger.info("=" * 60)
+
+    if not seasons:
+        logger.info("Elo ratings up to date - skipping")
+        return
+
+    scraper = EloScraper()
+
+    # load existing data
+    existing_data = _load_existing_data(conn, "raw.elo_ratings", "Elo ratings")
+
+    # scrape new seasons
+    new_data = scraper.scrape_multiple_seasons(min(seasons), max(seasons))
+
+    if not new_data.empty:
+        # combine with existing data
+        combined_data = _combine_with_existing(
+            existing_data, new_data, seasons, "season_end_year"
+        )
+
+        # save to database
+        _save_to_database(conn, combined_data, "raw.elo_ratings", "Elo ratings")
+    else:
+        logger.warning("No new Elo data retrieved")
+
+
 def _load_existing_data(
     conn: duckdb.DuckDBPyConnection, table_name: str, description: str
 ) -> pd.DataFrame:
@@ -439,10 +470,14 @@ def run_scrapers(
         odds_seasons, _ = get_seasons_to_scrape(
             conn, "odds", start_year, end_year, force_rescrape
         )
+        elo_seasons, _ = get_seasons_to_scrape(
+            conn, "elo", start_year, end_year, force_rescrape
+        )
 
         # run each scraper
         scrape_transfermarkt(conn, tm_seasons, force_rescrape)
         scrape_fbref(conn, fb_seasons, force_rescrape)
+        scrape_elo(conn, elo_seasons, force_rescrape)
         scrape_odds(conn, odds_seasons, force_rescrape)
 
     finally:
@@ -471,6 +506,7 @@ def display_pipeline_summary():
             conn, "raw.squad_values_tm", "Squad values (Transfermarkt)"
         )
         _display_table_count(conn, "raw.match_logs_fbref", "Match results & xG (FBRef)")
+        _display_table_count(conn, "raw.elo_ratings", "Elo ratings (Club Elo)")
 
         # odds tables
         try:
@@ -665,8 +701,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Run Bundesliga data pipeline",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=
-        """
+        epilog="""
         Examples:
         # Run incremental update for current season
         python scripts/run_data_pipeline.py

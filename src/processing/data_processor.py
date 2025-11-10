@@ -7,13 +7,15 @@ from datetime import datetime
 import logging
 from typing import Dict, List, Tuple
 
+from ..utils import standardise_team_name
+
 
 class DataProcessor:
     """
     Data integration layer for combining raw data sources.
 
     Responsibilities:
-    - Merge data from multiple sources (FBRef, Transfermarkt, Odds)
+    - Merge data from multiple sources (FBRef, Transfermarkt, Odds, Elo)
     - Standardise team names across sources
     - Basic data quality checks and deduplication
     """
@@ -23,119 +25,6 @@ class DataProcessor:
         self.db_path = db_path
         self.logger = logging.getLogger(__name__)
         self.conn = None
-        self.team_mappings = self._initialise_team_mappings()
-
-    def _initialise_team_mappings(self) -> Dict[str, str]:
-        """Initialise comprehensive team name mappings"""
-        return {
-
-            "Bayern": "Bayern Munich",
-            "Bayern Munich": "Bayern Munich",
-            "FC Bayern München": "Bayern Munich",
-
-            "Dortmund": "Borussia Dortmund",
-            "Borussia Dortmund": "Borussia Dortmund",
-            "BVB": "Borussia Dortmund",
-
-            "Leipzig": "RB Leipzig",
-            "RB Leipzig": "RB Leipzig",
-
-            "Leverkusen": "Bayer Leverkusen",
-            "Bayer Leverkusen": "Bayer Leverkusen",
-            "Bayer 04 Leverkusen": "Bayer Leverkusen",
-
-            "M'Gladbach": "Borussia Mönchengladbach",
-            "Mönchengladbach": "Borussia Mönchengladbach",
-            "Gladbach": "Borussia Mönchengladbach",
-            "Bor. Mönchengladbach": "Borussia Mönchengladbach",
-            "Monchengladbach": "Borussia Mönchengladbach",
-            "M'gladbach": "Borussia Mönchengladbach",
-            "Borussia Mönchengladbach": "Borussia Mönchengladbach",
-            "Borussia Monchengladbach": "Borussia Mönchengladbach",
-
-            "Frankfurt": "Eintracht Frankfurt",
-            "Eint Frankfurt": "Eintracht Frankfurt",
-            "Eintracht Frankfurt": "Eintracht Frankfurt",
-            "Ein Frankfurt": "Eintracht Frankfurt",
-
-            "Union Berlin": "Union Berlin",
-            "1. FC Union Berlin": "Union Berlin",
-            "FC Union Berlin": "Union Berlin",
-            "1.FC Union Berlin": "Union Berlin",
-
-            "Wolfsburg": "Wolfsburg",
-            "VfL Wolfsburg": "Wolfsburg",
-
-            "Stuttgart": "Stuttgart",
-            "VfB Stuttgart": "Stuttgart",
-
-            "Bremen": "Werder Bremen",
-            "Werder Bremen": "Werder Bremen",
-            "SV Werder Bremen": "Werder Bremen",
-
-            "Hoffenheim": "Hoffenheim",
-            "TSG Hoffenheim": "Hoffenheim",
-            "TSG 1899 Hoffenheim": "Hoffenheim",
-
-            "Mainz": "Mainz",
-            "Mainz 05": "Mainz",
-            "FSV Mainz 05": "Mainz",
-            "1. FSV Mainz 05": "Mainz",
-            "1.FSV Mainz 05": "Mainz",
-
-            "Augsburg": "Augsburg",
-            "FC Augsburg": "Augsburg",
-
-            "Freiburg": "Freiburg",
-            "SC Freiburg": "Freiburg",
-
-            "Köln": "FC Köln",
-            "FC Köln": "FC Köln",
-            "1. FC Köln": "FC Köln",
-            "1.FC Köln": "FC Köln",
-            "Cologne": "FC Köln",
-            "FC Koln": "FC Köln",
-
-            "Schalke": "Schalke 04",
-            "Schalke 04": "Schalke 04",
-            "FC Schalke 04": "Schalke 04",
-
-            "Bochum": "Bochum",
-            "VfL Bochum": "Bochum",
-
-            "Arminia": "Arminia Bielefeld",
-            "Bielefeld": "Arminia Bielefeld",
-            "Arminia Bielefeld": "Arminia Bielefeld",
-
-            "Fürth": "Greuther Fürth",
-            "Greuther Fürth": "Greuther Fürth",
-            "SpVgg Greuther Fürth": "Greuther Fürth",
-            "Greuther Furth": "Greuther Fürth",
-
-            "Kiel": "Holstein Kiel",
-            "Holstein Kiel": "Holstein Kiel",
-
-            "Heidenheim": "Heidenheim",
-            "1. FC Heidenheim": "Heidenheim",
-            "1.FC Heidenheim 1846": "Heidenheim",
-
-            "St. Pauli": "St. Pauli",
-            "St Pauli": "St. Pauli",
-            "FC St. Pauli": "St. Pauli",
-
-            "Darmstadt": "Darmstadt",
-            "Darmstadt 98": "Darmstadt",
-            "SV Darmstadt 98": "Darmstadt",
-
-            "Hertha": "Hertha BSC",
-            "Hertha BSC": "Hertha BSC",
-
-            "Nurnberg": "FC Nürnberg",
-            "Hannover": "Hannover 96",
-            "Hamburg": "Hamburger SV",
-            "Paderborn": "SC Paderborn 07",
-            "Fortuna Dusseldorf": "Fortuna Düsseldorf",
-        }
 
     def connect_db(self):
         """Establish connection to DuckDB database"""
@@ -149,12 +38,12 @@ class DataProcessor:
     def standardise_team_names(
         self, df: pd.DataFrame, team_columns: List[str]
     ) -> pd.DataFrame:
-        """Standardise team names across datasets using mapping dictionary"""
+        """Standardise team names across datasets using centralised mapping"""
         df = df.copy()
 
         for col in team_columns:
             if col in df.columns:
-                df[col] = df[col].map(lambda x: self.team_mappings.get(x, x))
+                df[col] = df[col].apply(standardise_team_name)
 
         return df
 
@@ -291,6 +180,7 @@ class DataProcessor:
             self.logger.info("Loading data from database")
             matches = self._load_matches()
             squad_values = self._load_squad_values()
+            elo_ratings, has_elo = self._load_elo_ratings()
             historical_odds, has_historical = self._load_historical_odds()
             upcoming_odds, has_upcoming = self._load_upcoming_odds()
 
@@ -299,6 +189,8 @@ class DataProcessor:
             matches = self.process_fbref_data(matches)
             squad_values = self.process_transfermarkt_data(squad_values)
 
+            if has_elo:
+                elo_ratings = self.standardise_team_names(elo_ratings, ["team"])
             if has_historical:
                 historical_odds = self.process_historical_odds(historical_odds)
             if has_upcoming:
@@ -309,6 +201,10 @@ class DataProcessor:
 
             # merge squad values
             matches = self._merge_squad_values(matches, squad_values)
+
+            # merge Elo ratings
+            if has_elo:
+                matches = self._merge_elo_ratings(matches, elo_ratings)
 
             # merge odds
             if has_historical:
@@ -351,6 +247,15 @@ class DataProcessor:
             return df, True
         except:
             self.logger.warning("No upcoming odds available")
+            return pd.DataFrame(), False
+
+    def _load_elo_ratings(self) -> Tuple[pd.DataFrame, bool]:
+        """Load Elo ratings from database"""
+        try:
+            df = self.conn.execute("SELECT * FROM raw.elo_ratings").df()
+            return df, True
+        except:
+            self.logger.warning("No Elo ratings available")
             return pd.DataFrame(), False
 
     def _merge_squad_values(
@@ -480,6 +385,37 @@ class DataProcessor:
 
         return matches
 
+    def _merge_elo_ratings(
+        self, matches: pd.DataFrame, elo_ratings: pd.DataFrame
+    ) -> pd.DataFrame:
+        """Merge Elo ratings for home and away teams"""
+        # merge home team Elo
+        matches = matches.merge(
+            elo_ratings[["season_end_year", "team", "elo"]],
+            left_on=["season_end_year", "home_team"],
+            right_on=["season_end_year", "team"],
+            how="left",
+            suffixes=("", "_home"),
+        ).drop(columns=["team"], errors="ignore")
+
+        matches = matches.rename(columns={"elo": "home_elo"})
+
+        # merge away team Elo
+        matches = matches.merge(
+            elo_ratings[["season_end_year", "team", "elo"]],
+            left_on=["season_end_year", "away_team"],
+            right_on=["season_end_year", "team"],
+            how="left",
+            suffixes=("", "_away"),
+        ).drop(columns=["team"], errors="ignore")
+
+        matches = matches.rename(columns={"elo": "away_elo"})
+
+        coverage = matches["home_elo"].notna().mean()
+        self.logger.info(f"Elo ratings coverage: {coverage:.1%}")
+
+        return matches
+
     def _deduplicate_and_save(self, matches: pd.DataFrame) -> pd.DataFrame:
         """Remove duplicates and save to database"""
         before = len(matches)
@@ -515,6 +451,9 @@ class DataProcessor:
 
         self.logger.info("Data coverage:")
         self.logger.info(f"  Squad values: {matches['home_value'].notna().mean():.1%}")
+
+        if "home_elo" in matches.columns:
+            self.logger.info(f"  Elo ratings: {matches['home_elo'].notna().mean():.1%}")
 
         if "home_odds" in matches.columns:
             self.logger.info(
