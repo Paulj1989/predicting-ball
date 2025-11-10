@@ -297,7 +297,7 @@ uvloop==0.22.1
     # via uvicorn
 watchdog==6.0.0
     # via predicting-ball (pyproject.toml)
-watchfiles==1.1.0
+watchfiles==1.1.1
     # via uvicorn
 webdriver-manager==4.0.2
     # via predicting-ball (pyproject.toml)
