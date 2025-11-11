@@ -5,7 +5,7 @@ import numpy as np
 import duckdb
 from datetime import datetime
 import logging
-from typing import Dict, List, Tuple
+from typing import List, Tuple
 
 from ..utils import standardise_team_name
 
@@ -84,37 +84,13 @@ class DataProcessor:
         )
         return df
 
-    def calculate_implied_probabilities(
-        self, home_odds: float, draw_odds: float, away_odds: float
-    ) -> Dict[str, float]:
-        """
-        Calculate normalised implied probabilities from decimal odds.
-        Removes bookmaker overround by normalising probabilities to sum to 1.
-        """
-        if pd.isna(home_odds) or pd.isna(draw_odds) or pd.isna(away_odds):
-            return {"home_prob": None, "draw_prob": None, "away_prob": None}
-
-        # convert odds to raw probabilities
-        raw_home = 1 / home_odds
-        raw_draw = 1 / draw_odds
-        raw_away = 1 / away_odds
-
-        # normalise to remove bookmaker margin
-        total = raw_home + raw_draw + raw_away
-
-        return {
-            "home_prob": raw_home / total,
-            "draw_prob": raw_draw / total,
-            "away_prob": raw_away / total,
-        }
-
     def process_historical_odds(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Process historical betting odds from football-data.co.uk.
 
         Operations:
         - Standardise team names
-        - Calculate implied probabilities (Bet365 odds)
+        - Extract raw odds (Pinnacle)
         - Rename columns for consistency
         """
         # standardise team names
@@ -123,52 +99,47 @@ class DataProcessor:
         # convert date to datetime
         df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
 
-        # use bet365 odds as primary (most complete coverage)
-        odds_cols = ["B365H", "B365D", "B365A"]
+        # use pinnacle odds as primary (sharp bookmaker)
+        odds_cols = ["PSH", "PSD", "PSA"]
         if all(col in df.columns for col in odds_cols):
-            # calculate implied probabilities
-            implied_probs = df.apply(
-                lambda row: self.calculate_implied_probabilities(
-                    row["B365H"], row["B365D"], row["B365A"]
-                ),
-                axis=1,
-            )
+            # extract raw odds
+            df["home_odds"] = df["PSH"]
+            df["draw_odds"] = df["PSD"]
+            df["away_odds"] = df["PSA"]
 
-            df["odds_home_prob"] = [p["home_prob"] for p in implied_probs]
-            df["odds_draw_prob"] = [p["draw_prob"] for p in implied_probs]
-            df["odds_away_prob"] = [p["away_prob"] for p in implied_probs]
-
-            # rename for consistency
-            df["home_odds"] = df["B365H"]
-            df["draw_odds"] = df["B365D"]
-            df["away_odds"] = df["B365A"]
-
-            self.logger.info(f"Processed {len(df)} historical odds records")
+            self.logger.info(f"Processed {len(df)} historical odds records (Pinnacle)")
         else:
-            self.logger.warning("Bet365 odds columns not found")
+            self.logger.warning("Pinnacle odds columns not found")
 
         return df
 
     def process_upcoming_odds(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Process upcoming match odds from The Odds API"""
+        """
+        Process upcoming match odds from The Odds API.
+
+        Operations:
+        - Standardise team names
+        - Extract raw odds (Pinnacle)
+        - Rename columns for consistency
+        """
         # standardise team names
         df = self.standardise_team_names(df, ["home_team", "away_team"])
 
         # convert timestamp
         df["commence_time"] = pd.to_datetime(df["commence_time"])
 
-        # rename for consistency with historical odds
-        if "consensus_home_odds" in df.columns:
-            df["home_odds"] = df["consensus_home_odds"]
-            df["draw_odds"] = df["consensus_draw_odds"]
-            df["away_odds"] = df["consensus_away_odds"]
+        # use pinnacle odds as primary (sharp bookmaker)
+        pinnacle_cols = ["pinnacle_h2h_home", "pinnacle_h2h_draw", "pinnacle_h2h_away"]
+        if all(col in df.columns for col in pinnacle_cols):
+            # extract raw odds - probabilities calculated in feature engineering
+            df["home_odds"] = df["pinnacle_h2h_home"]
+            df["draw_odds"] = df["pinnacle_h2h_draw"]
+            df["away_odds"] = df["pinnacle_h2h_away"]
 
-            # probabilities already calculated by scraper
-            df["odds_home_prob"] = df["implied_home_prob"]
-            df["odds_draw_prob"] = df["implied_draw_prob"]
-            df["odds_away_prob"] = df["implied_away_prob"]
+            self.logger.info(f"Processed {len(df)} upcoming odds records (Pinnacle)")
+        else:
+            self.logger.warning("Pinnacle odds columns not found in upcoming odds")
 
-        self.logger.info(f"Processed {len(df)} upcoming odds records")
         return df
 
     def create_integrated_dataset(self) -> pd.DataFrame:
@@ -202,7 +173,7 @@ class DataProcessor:
             # merge squad values
             matches = self._merge_squad_values(matches, squad_values)
 
-            # merge Elo ratings
+            # merge elo ratings
             if has_elo:
                 matches = self._merge_elo_ratings(matches, elo_ratings)
 
@@ -225,11 +196,31 @@ class DataProcessor:
 
     def _load_matches(self) -> pd.DataFrame:
         """Load match data from database"""
-        return self.conn.execute("SELECT * FROM raw.match_logs_fbref").df()
+        try:
+            return self.conn.execute("SELECT * FROM raw.match_logs_fbref").df()
+        except Exception as e:
+            self.logger.error("Failed to load match data from raw.match_logs_fbref")
+            self.logger.error("This table is required for data integration")
+            self.logger.error(
+                "Possible causes:\n"
+                "  1. FBRef scraper failed to retrieve data\n"
+                "  2. Table was not created during scraping\n"
+                "  3. Database connection issue"
+            )
+            raise ValueError(
+                "Cannot integrate data: raw.match_logs_fbref table does not exist. "
+                "Please check FBRef scraper logs and ensure match data is scraped successfully."
+            ) from e
 
     def _load_squad_values(self) -> pd.DataFrame:
         """Load squad values from database"""
-        return self.conn.execute("SELECT * FROM raw.squad_values_tm").df()
+        try:
+            return self.conn.execute("SELECT * FROM raw.squad_values_tm").df()
+        except Exception as e:
+            self.logger.warning(
+                "Squad values table not found - continuing without squad values"
+            )
+            return pd.DataFrame()
 
     def _load_historical_odds(self) -> Tuple[pd.DataFrame, bool]:
         """Load historical odds from database"""
@@ -315,9 +306,6 @@ class DataProcessor:
                     "home_odds",
                     "draw_odds",
                     "away_odds",
-                    "odds_home_prob",
-                    "odds_draw_prob",
-                    "odds_away_prob",
                 ]
             ],
             left_on=["date", "home_team", "away_team"],
@@ -351,9 +339,6 @@ class DataProcessor:
                     "home_odds",
                     "draw_odds",
                     "away_odds",
-                    "odds_home_prob",
-                    "odds_draw_prob",
-                    "odds_away_prob",
                 ]
             ],
             on=["match_date", "home_team", "away_team"],
@@ -366,9 +351,6 @@ class DataProcessor:
             "home_odds",
             "draw_odds",
             "away_odds",
-            "odds_home_prob",
-            "odds_draw_prob",
-            "odds_away_prob",
         ]
 
         for col in odds_cols:
@@ -389,7 +371,7 @@ class DataProcessor:
         self, matches: pd.DataFrame, elo_ratings: pd.DataFrame
     ) -> pd.DataFrame:
         """Merge Elo ratings for home and away teams"""
-        # merge home team Elo
+        # merge home team elo
         matches = matches.merge(
             elo_ratings[["season_end_year", "team", "elo"]],
             left_on=["season_end_year", "home_team"],
@@ -400,7 +382,7 @@ class DataProcessor:
 
         matches = matches.rename(columns={"elo": "home_elo"})
 
-        # merge away team Elo
+        # merge away team elo
         matches = matches.merge(
             elo_ratings[["season_end_year", "team", "elo"]],
             left_on=["season_end_year", "away_team"],
