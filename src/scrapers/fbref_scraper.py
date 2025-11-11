@@ -4,7 +4,7 @@ import time
 import random
 from datetime import datetime
 import pandas as pd
-from selenium import webdriver
+import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
@@ -29,33 +29,70 @@ class FBRefScraper(BaseScraper):
 
     def setup_driver(self):
         """Configure and initialise chrome webdriver"""
-        chrome_options = Options()
+        chrome_options = uc.ChromeOptions()
 
+        # headless cloudflare bypass
         if self.headless:
-            chrome_options.add_argument("--headless")
-            chrome_options.add_argument("--disable-gpu")
+            chrome_options.add_argument("--headless=new")
+            self.logger.info("Using headless mode")
 
+        # core arguments
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        chrome_options.add_experimental_option("useAutomationExtension", False)
         chrome_options.add_argument("--window-size=1920,1080")
+        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
 
-        self.driver = webdriver.Chrome(options=chrome_options)
+        # additional arguments
+        chrome_options.add_argument("--disable-web-security")
+        chrome_options.add_argument("--disable-site-isolation-trials")
+        chrome_options.add_argument(
+            "--disable-features=IsolateOrigins,site-per-process"
+        )
+        chrome_options.add_argument("--disable-software-rasterizer")
+        chrome_options.add_argument("--disable-gpu")
 
+        # user agent
+        chrome_options.add_argument(
+            "user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+        )
+        prefs = {
+            "profile.default_content_setting_values.notifications": 2,
+            "profile.default_content_settings.popups": 0,
+            "credentials_enable_service": False,
+            "profile.password_manager_enabled": False,
+        }
+        chrome_options.add_experimental_option("prefs", prefs)
+
+        self.driver = uc.Chrome(
+            options=chrome_options,
+            use_subprocess=True,
+            version_main=None,
+            driver_executable_path=None,
+            headless=self.headless,
+        )
+
+        # override navigator.webdriver property
         self.driver.execute_cdp_cmd(
             "Page.addScriptToEvaluateOnNewDocument",
             {
                 "source": """
-                Object.defineProperty(navigator, 'webdriver', {
-                    get: () => undefined
-                })
-            """
+                    Object.defineProperty(navigator, 'webdriver', {
+                        get: () => undefined
+                    });
+                    Object.defineProperty(navigator, 'plugins', {
+                        get: () => [1, 2, 3, 4, 5]
+                    });
+                    Object.defineProperty(navigator, 'languages', {
+                        get: () => ['en-US', 'en']
+                    });
+                """
             },
         )
 
-        self.logger.info("Chrome driver initialised")
+        mode = "headless" if self.headless else "headed"
+        self.logger.info(
+            f"Undetected Chrome driver initialised ({mode} mode with maximum stealth)"
+        )
 
     def _extract_team_id_from_url(self, url: str) -> Optional[str]:
         """Extract FBRef Team ID from URL"""
@@ -108,12 +145,34 @@ class FBRefScraper(BaseScraper):
 
         try:
             self.driver.get(url)
-            time.sleep(random.uniform(2, 4))
+
+            wait_time = (
+                random.uniform(10, 15) if self.headless else random.uniform(8, 12)
+            )
+            self.logger.debug(
+                f"Waiting {wait_time:.1f}s for Cloudflare verification..."
+            )
+            time.sleep(wait_time)
+
+            try:
+                self.driver.execute_script(
+                    "window.scrollTo(0, document.body.scrollHeight/2);"
+                )
+                time.sleep(random.uniform(0.5, 1.5))
+                self.driver.execute_script("window.scrollTo(0, 0);")
+                time.sleep(random.uniform(0.5, 1.0))
+            except:
+                pass
 
             # find main fixtures table (should have 300+ rows for bundesliga)
             match_table = self._find_match_table()
             if not match_table:
-                self.logger.error("Match table not found")
+                self.logger.error(f"Match table not found at {url}")
+                self.logger.error("This could mean:")
+                self.logger.error("  1. FBRef changed their table structure/IDs")
+                self.logger.error("  2. URL format is incorrect for this season")
+                self.logger.error("  3. Page requires more time to load")
+                self.logger.error("  4. FBRef is blocking automated access")
                 return pd.DataFrame()
 
             # extract team ids for later stat scraping
@@ -160,8 +219,39 @@ class FBRefScraper(BaseScraper):
 
     def _find_match_table(self):
         """Find the main fixtures table on the page"""
-        tables = self.driver.find_elements(By.TAG_NAME, "table")
+        # try common fbref table ids for schedule pages first
+        common_table_ids = [
+            "sched_all",  # schedule table for all matches
+            "matchlogs_for",  # sometimes used for fixtures
+        ]
 
+        for table_id in common_table_ids:
+            try:
+                table = self.driver.find_element(By.ID, table_id)
+                rows = table.find_elements(By.TAG_NAME, "tr")
+                self.logger.info(f"✓ Found table '{table_id}' with {len(rows)} rows")
+                return table
+            except NoSuchElementException:
+                self.logger.debug(f"Table ID '{table_id}' not found")
+                continue
+
+        # fallback: look for table with class containing "stats_table"
+        try:
+            tables = self.driver.find_elements(By.CSS_SELECTOR, "table.stats_table")
+            for table in tables:
+                try:
+                    rows = table.find_elements(By.TAG_NAME, "tr")
+                    # bundesliga has 306 matches per season, so look for large tables
+                    if len(rows) > 100:
+                        self.logger.debug(f"Found stats_table with {len(rows)} rows")
+                        return table
+                except:
+                    continue
+        except:
+            pass
+
+        # final fallback: original logic - any table with many rows
+        tables = self.driver.find_elements(By.TAG_NAME, "table")
         for table in tables:
             try:
                 rows = table.find_elements(By.TAG_NAME, "tr")
@@ -172,7 +262,49 @@ class FBRefScraper(BaseScraper):
             except:
                 continue
 
+        # if still not found, log all table IDs for debugging
+        self.logger.error("Could not find fixtures table using any method")
+        self._log_available_tables()
         return None
+
+    def _log_available_tables(self):
+        """Log all tables found on page for debugging"""
+        try:
+            tables = self.driver.find_elements(By.TAG_NAME, "table")
+            self.logger.info(f"Found {len(tables)} total tables on page:")
+
+            for idx, table in enumerate(tables[:10]):  # limit to first 10
+                table_id = table.get_attribute("id")
+                table_class = table.get_attribute("class")
+                try:
+                    rows = table.find_elements(By.TAG_NAME, "tr")
+                    row_count = len(rows)
+                except:
+                    row_count = "unknown"
+
+                self.logger.info(
+                    f"  Table {idx + 1}: id='{table_id}', class='{table_class}', rows={row_count}"
+                )
+
+            # if no tables found, check what's actually on the page
+            if len(tables) == 0:
+                page_title = self.driver.title
+                page_source_preview = self.driver.page_source[:500]
+                self.logger.error(f"Page title: {page_title}")
+                self.logger.error(f"Page source preview: {page_source_preview}")
+
+                # check for common error indicators
+                if "404" in page_title or "not found" in page_title.lower():
+                    self.logger.error("Page appears to be a 404 error")
+                elif "403" in page_title or "forbidden" in page_title.lower():
+                    self.logger.error("Page appears to be blocked (403)")
+                elif "captcha" in self.driver.page_source.lower():
+                    self.logger.error(
+                        "Page contains CAPTCHA - automated access blocked"
+                    )
+
+        except Exception as e:
+            self.logger.error(f"Could not log available tables: {e}")
 
     def _parse_all_matches(self, match_table, season_end_year: int) -> List[Dict]:
         """Parse all match rows from fixtures table"""

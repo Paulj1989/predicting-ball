@@ -5,13 +5,16 @@ from .poisson import (
     fit_feature_coefficients,
     fit_poisson_model_two_stage,
     calculate_lambdas,
-    calculate_lambdas_single
+    calculate_lambdas_single,
 )
 
 from .priors import (
     calculate_home_advantage_prior,
     calculate_promoted_team_priors,
     identify_promoted_teams,
+    calculate_squad_value_priors,
+    calculate_elo_priors,
+    calculate_all_team_priors,
 )
 
 from .calibration import (
@@ -42,6 +45,9 @@ __all__ = [
     "calculate_home_advantage_prior",
     "calculate_promoted_team_priors",
     "identify_promoted_teams",
+    "calculate_squad_value_priors",
+    "calculate_elo_priors",
+    "calculate_all_team_priors",
     # calibration (temperature scaling)
     "fit_temperature_scaler",
     "apply_temperature_scaling",

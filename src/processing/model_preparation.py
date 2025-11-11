@@ -116,6 +116,7 @@ def _verify_features(df: pd.DataFrame):
         ("away_venue_npxgd_per_game", "Away venue npxGD"),
         ("odds_home_away_ratio", "Odds ratio"),
         ("value_ratio", "Value ratio"),
+        ("home_elo", "Elo ratings"),
     ]
 
     print("\n  Feature verification:")
@@ -156,6 +157,8 @@ def test_data_preparation():
         "away_venue_npxgd_per_game",
         "value_ratio",
         "odds_home_away_ratio",
+        "home_elo",
+        "away_elo",
     ]
 
     print("\nFeature validation:")

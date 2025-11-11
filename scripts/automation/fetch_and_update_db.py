@@ -17,8 +17,6 @@ import argparse
 from datetime import datetime
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-
 # import existing data fetching functions
 from src.scrapers.fbref_scraper import FBRefScraper
 from src.scrapers.transfermarkt_scraper import TransfermarktScraper
