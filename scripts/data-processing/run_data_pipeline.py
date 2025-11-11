@@ -223,7 +223,9 @@ def scrape_fbref(
         logger.info("FBRef data up to date - skipping")
         return
 
-    scraper = FBRefScraper(headless=True)
+    # when cloudflare blocks headless, run manually with: HEADED=true python scripts/...
+    headed = os.getenv("HEADED", "false").lower() == "true"
+    scraper = FBRefScraper(headless=not headed)
 
     # load existing data
     existing_data = _load_existing_data(conn, "raw.match_logs_fbref", "FBRef")
@@ -550,7 +552,8 @@ def ensure_schema_compatibility(conn: duckdb.DuckDBPyConnection):
 
     # check fbref schema
     try:
-        scraper = FBRefScraper(headless=True)
+        headed = os.getenv("HEADED", "false").lower() == "true"
+        scraper = FBRefScraper(headless=not headed)
         current_season = determine_current_season()
 
         # get a small sample to check schema
