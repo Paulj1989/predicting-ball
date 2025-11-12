@@ -46,7 +46,7 @@ click==8.3.0
     # via
     #   streamlit
     #   uvicorn
-colorlog==6.9.0
+colorlog==6.10.1
     # via optuna
 commonmark==0.9.1
     # via great-tables
