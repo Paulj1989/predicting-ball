@@ -547,7 +547,7 @@ def _display_table_count(
         logger.info(f"  {description}: Not available")
 
 
-def ensure_schema_compatibility(conn: duckdb.DuckDBPyConnection):
+def ensure_schema_compatibility(conn: duckdb.DuckDBPyConnection, headed: bool = False):
     """
     Ensure all scrapers produce schemas compatible with existing tables.
 
@@ -557,8 +557,8 @@ def ensure_schema_compatibility(conn: duckdb.DuckDBPyConnection):
 
     # check fbref schema
     try:
-        # always use headless for schema checks
-        scraper = FBRefScraper(headless=True)
+        # use same browser mode as main scraping
+        scraper = FBRefScraper(headless=not headed)
         current_season = determine_current_season()
 
         # get a small sample to check schema
@@ -666,6 +666,7 @@ def main(
     end_year: Optional[int] = None,
     force_rescrape: bool = False,
     headed: bool = False,
+    check_schema: bool = False,
 ):
     """Execute complete data pipeline"""
     logger.info("=" * 80)
@@ -681,13 +682,18 @@ def main(
         logger.info("\n[Step 1/3] Setting up database")
         setup_database()
 
-        # step 1.5: ensure schema compatibility
-        logger.info("\n[Step 1.5/3] Checking schema compatibility")
-        conn = duckdb.connect("data/club_football.duckdb")
-        try:
-            ensure_schema_compatibility(conn)
-        finally:
-            conn.close()
+        # step 1.5: ensure schema compatibility (optional)
+        if check_schema:
+            logger.info("\n[Step 1.5/3] Checking schema compatibility")
+            conn = duckdb.connect("data/club_football.duckdb")
+            try:
+                ensure_schema_compatibility(conn, headed)
+            finally:
+                conn.close()
+        else:
+            logger.info(
+                "\n[Step 1.5/3] Skipping schema compatibility check (use --check-schema to enable)"
+            )
 
         # step 2: data collection
         logger.info("\n[Step 2/3] Running scrapers")
@@ -727,6 +733,12 @@ if __name__ == "__main__":
 
         # Use headed mode when FBRef blocks automated scraping
         python scripts/run_data_pipeline.py --headed
+
+        # Run with schema compatibility checks
+        python scripts/run_data_pipeline.py --check-schema
+
+        # Use headed mode with schema checks
+        python scripts/run_data_pipeline.py --headed --check-schema
         """,
     )
 
@@ -752,6 +764,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Use headed mode for FBRef scraper (manual backup when blocked)",
     )
+    parser.add_argument(
+        "--check-schema",
+        action="store_true",
+        help="Run schema compatibility checks before scraping (optional)",
+    )
 
     args = parser.parse_args()
 
@@ -764,4 +781,5 @@ if __name__ == "__main__":
         end_year=args.end_year,
         force_rescrape=args.force_rescrape,
         headed=args.headed,
+        check_schema=args.check_schema,
     )
