@@ -6,35 +6,50 @@ from datetime import datetime
 import pandas as pd
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import NoSuchElementException, TimeoutException
 import logging
 from typing import Optional, Dict, List
-import re
 
 from .base_scraper import BaseScraper
+from ..utils.team_utils import get_fbref_team_ids_for_season, get_fbref_url_name
 
 
 class FBRefScraper(BaseScraper):
-    """FBRef match logs scraper using Selenium"""
+    """
+    FBRef scraper using shooting logs for all competitions.
+
+    This scraper:
+    - Uses only shooting logs (which include goals, npxG, and penalties)
+    - Scrapes all competitions (Bundesliga, DFB-Pokal, European competitions)
+    - Extracts full team schedules for calculating rest days and consecutive away games
+    - Merges team perspectives into match-level records
+    """
 
     def __init__(
-        self, headless: bool = True, min_delay: float = 3.0, max_delay: float = 7.0
+        self, headless: bool = True, min_delay: float = 5.0, max_delay: float = 10.0
     ):
-        """Initialise fbref scraper with selenium webdriver"""
+        """Initialise FBRef scraper with Selenium WebDriver"""
         super().__init__(min_delay, max_delay)
         self.headless = headless
         self.driver = None
-        self.team_id_cache = {}
 
     def setup_driver(self):
-        """Configure and initialise chrome webdriver"""
+        """
+        Configure and initialise undetected Chrome WebDriver.
+
+        Uses undetected_chromedriver for better cloudflare bypass.
+        Supports both headless and headed modes.
+        """
         chrome_options = uc.ChromeOptions()
 
-        # headless cloudflare bypass
+        # configure headless mode (default for automated pipelines)
         if self.headless:
             chrome_options.add_argument("--headless=new")
             self.logger.info("Using headless mode")
+        else:
+            self.logger.info("Using headed mode (visible browser)")
 
         # core arguments
         chrome_options.add_argument("--no-sandbox")
@@ -51,10 +66,13 @@ class FBRefScraper(BaseScraper):
         chrome_options.add_argument("--disable-software-rasterizer")
         chrome_options.add_argument("--disable-gpu")
 
-        # user agent
+        # realistic user agent (updated to match current chrome)
         chrome_options.add_argument(
-            "user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+            "user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
         )
+
+        # browser preferences
         prefs = {
             "profile.default_content_setting_values.notifications": 2,
             "profile.default_content_settings.popups": 0,
@@ -63,6 +81,7 @@ class FBRefScraper(BaseScraper):
         }
         chrome_options.add_experimental_option("prefs", prefs)
 
+        # initialise undetected chrome
         self.driver = uc.Chrome(
             options=chrome_options,
             use_subprocess=True,
@@ -76,81 +95,138 @@ class FBRefScraper(BaseScraper):
             "Page.addScriptToEvaluateOnNewDocument",
             {
                 "source": """
-                    Object.defineProperty(navigator, 'webdriver', {
-                        get: () => undefined
-                    });
-                    Object.defineProperty(navigator, 'plugins', {
-                        get: () => [1, 2, 3, 4, 5]
-                    });
-                    Object.defineProperty(navigator, 'languages', {
-                        get: () => ['en-US', 'en']
-                    });
-                """
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined
+                });
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => [1, 2, 3, 4, 5]
+                });
+                Object.defineProperty(navigator, 'languages', {
+                    get: () => ['en-US', 'en']
+                });
+                window.chrome = {
+                    runtime: {}
+                };
+            """
             },
         )
 
         mode = "headless" if self.headless else "headed"
-        self.logger.info(
-            f"Undetected Chrome driver initialised ({mode} mode with maximum stealth)"
-        )
-
-    def _extract_team_id_from_url(self, url: str) -> Optional[str]:
-        """Extract FBRef Team ID from URL"""
-        match = re.search(r"/squads/([a-f0-9]+)/", url)
-        return match.group(1) if match else None
-
-    def _extract_team_ids_from_fixtures(self, match_table) -> Dict[str, str]:
-        """Extract Team IDs from fixtures table"""
-        team_ids = {}
-
-        try:
-            team_links = match_table.find_elements(
-                By.CSS_SELECTOR, 'a[href*="/squads/"]'
-            )
-
-            for link in team_links:
-                try:
-                    team_name = link.text.strip()
-                    url = link.get_attribute("href")
-                    team_id = self._extract_team_id_from_url(url)
-
-                    if team_name and team_id and team_name not in team_ids:
-                        team_ids[team_name] = team_id
-                        self.logger.debug(f"Found: {team_name} -> {team_id}")
-                except:
-                    continue
-
-            self.logger.info(f"Extracted {len(team_ids)} Team IDs")
-
-        except Exception as e:
-            self.logger.error(f"Error extracting Team IDs: {e}")
-
-        return team_ids
+        self.logger.info(f"Undetected Chrome driver initialised ({mode} mode)")
 
     def scrape_season(self, season_end_year: int) -> pd.DataFrame:
         """
-        Scrape complete match logs and statistics for a Bundesliga season.
+        Scrape complete match data for a Bundesliga season (all competitions).
 
         Process:
-        1. Load fixtures page
-        2. Extract Team IDs from match table
-        3. Parse all match results
-        4. Scrape team-level statistics for each team
-        5. Merge team stats to match data
+        1. Load team IDs for Bundesliga teams
+        2. For each team, scrape shooting logs (all competitions)
+        3. Calculate schedule-based features (rest days, consecutive away games)
+        4. Merge team perspectives into match-level records
         """
         season_string = f"{season_end_year - 1}-{season_end_year}"
-        url = f"https://fbref.com/en/comps/20/{season_string}/schedule/{season_string}-Bundesliga-Scores-and-Fixtures"
+        self.logger.info(f"Scraping season {season_string} - all competitions")
 
-        self.logger.info(f"Scraping season {season_string}")
+        # get bundesliga team ids
+        team_ids = get_fbref_team_ids_for_season(season_end_year)
+        self.logger.info(
+            f"Retrieved {len(team_ids)} teams for season {season_end_year}"
+        )
+        self.logger.debug(
+            f"Teams: {', '.join(list(team_ids.keys())[:5])}... (showing first 5)"
+        )
+
+        # scrape shooting logs for all teams
+        all_team_data = []
+        failed_teams = []
+
+        for idx, (team_name, team_id) in enumerate(team_ids.items()):
+            self.logger.info(f"Scraping {team_name} ({idx + 1}/{len(team_ids)})")
+
+            team_shooting = self._scrape_team_shooting_logs(
+                team_id, season_string, team_name
+            )
+
+            if not team_shooting.empty:
+                team_shooting["season_end_year"] = season_end_year
+                all_team_data.append(team_shooting)
+            else:
+                # track failed teams for retry
+                failed_teams.append((team_name, team_id))
+
+            # polite delay between teams
+            if idx < len(team_ids) - 1:
+                self.respect_rate_limit()
+
+        # retry failed teams once with longer delay
+        # this handles transient network issues or temporary rate limiting
+        if failed_teams:
+            self.logger.info(
+                f"Retrying {len(failed_teams)} failed teams with longer delays"
+            )
+
+            for retry_num, (team_name, team_id) in enumerate(failed_teams):
+                # extra polite delay before retry (15-20 seconds)
+                # this is longer than normal rate limiting to avoid triggering defences
+                retry_delay = random.uniform(15, 20)
+                self.logger.info(f"  Waiting {retry_delay:.1f}s before retry...")
+                time.sleep(retry_delay)
+
+                self.logger.info(
+                    f"  Retry: {team_name} ({retry_num + 1}/{len(failed_teams)})"
+                )
+
+                team_shooting = self._scrape_team_shooting_logs(
+                    team_id, season_string, team_name
+                )
+
+                if not team_shooting.empty:
+                    team_shooting["season_end_year"] = season_end_year
+                    all_team_data.append(team_shooting)
+                    self.logger.info(f"    ✓ Retry successful for {team_name}")
+                else:
+                    self.logger.warning(
+                        f"    ✗ Retry failed for {team_name} - check team ID/URL"
+                    )
+
+                # apply rate limiting between retries
+                if retry_num < len(failed_teams) - 1:
+                    self.respect_rate_limit()
+
+        if not all_team_data:
+            self.logger.warning("No data retrieved")
+            return pd.DataFrame()
+
+        # combine all team data
+        combined_team_data = pd.concat(all_team_data, ignore_index=True)
+        self.logger.info(f"Retrieved {len(combined_team_data)} team match records")
+
+        # calculate schedule-based features
+        combined_team_data = self._calculate_schedule_features(combined_team_data)
+
+        # convert team-level data to match-level data
+        matches_df = self._create_match_level_data(combined_team_data, season_end_year)
+
+        self.logger.info(f"Created {len(matches_df)} match records")
+        return matches_df
+
+    def _scrape_team_shooting_logs(
+        self, team_id: str, season_string: str, team_name: str
+    ) -> pd.DataFrame:
+        """Scrape shooting log data for a team (all competitions)"""
+        team_url_name = get_fbref_url_name(team_name)
+        url = f"https://fbref.com/en/squads/{team_id}/{season_string}/matchlogs/all_comps/shooting/{team_url_name}-Match-Logs-All-Competitions"
 
         try:
+            self.logger.debug(f"  Fetching: {url}")
             self.driver.get(url)
 
+            # wait for cloudflare verification (longer in headless mode)
             wait_time = (
                 random.uniform(10, 15) if self.headless else random.uniform(8, 12)
             )
             self.logger.debug(
-                f"Waiting {wait_time:.1f}s for Cloudflare verification..."
+                f"  Waiting {wait_time:.1f}s for Cloudflare verification..."
             )
             time.sleep(wait_time)
 
@@ -161,431 +237,137 @@ class FBRefScraper(BaseScraper):
                 time.sleep(random.uniform(0.5, 1.5))
                 self.driver.execute_script("window.scrollTo(0, 0);")
                 time.sleep(random.uniform(0.5, 1.0))
-            except:
+            except Exception:
                 pass
 
-            # find main fixtures table (should have 300+ rows for bundesliga)
-            match_table = self._find_match_table()
-            if not match_table:
-                self.logger.error(f"Match table not found at {url}")
-                self.logger.error("This could mean:")
-                self.logger.error("  1. FBRef changed their table structure/IDs")
-                self.logger.error("  2. URL format is incorrect for this season")
-                self.logger.error("  3. Page requires more time to load")
-                self.logger.error("  4. FBRef is blocking automated access")
-                return pd.DataFrame()
+            cookie_selectors = [
+                "button.qc-cmp2-summary-buttons button",
+                ".qc-cmp2-summary-buttons button",
+                "button[mode='primary']",
+                "button.fc-cta-consent",
+                "button.fc-button.fc-cta-consent",
+            ]
 
-            # extract team ids for later stat scraping
-            team_ids = self._extract_team_ids_from_fixtures(match_table)
-
-            # parse all match rows
-            matches = self._parse_all_matches(match_table, season_end_year)
-            if not matches:
-                self.logger.warning("No matches parsed")
-                return pd.DataFrame()
-
-            matches_df = pd.DataFrame(matches)
-            self.logger.info(f"Parsed {len(matches)} matches")
-
-            # filter team ids to only bundesliga teams (in case page had extra links)
-            teams_in_matches = set(matches_df["home_team"].unique()) | set(
-                matches_df["away_team"].unique()
-            )
-            team_ids = {
-                team: tid for team, tid in team_ids.items() if team in teams_in_matches
-            }
-
-            self.logger.info(f"Filtered to {len(team_ids)} Bundesliga teams")
-            self.team_id_cache[season_end_year] = team_ids
-
-            # scrape detailed team statistics
-            if team_ids:
-                team_stats = self._scrape_all_team_stats(
-                    season_end_year, season_string, team_ids
-                )
-
-                if not team_stats.empty:
-                    matches_df = self._merge_team_stats_to_matches(
-                        matches_df, team_stats
-                    )
-            else:
-                self.logger.warning("No Team IDs - skipping advanced stats")
-
-            return matches_df
-
-        except Exception as e:
-            self.logger.error(f"Error scraping season {season_end_year}: {e}")
-            return pd.DataFrame()
-
-    def _find_match_table(self):
-        """Find the main fixtures table on the page"""
-        # try common fbref table ids for schedule pages first
-        common_table_ids = [
-            "sched_all",  # schedule table for all matches
-            "matchlogs_for",  # sometimes used for fixtures
-        ]
-
-        for table_id in common_table_ids:
-            try:
-                table = self.driver.find_element(By.ID, table_id)
-                rows = table.find_elements(By.TAG_NAME, "tr")
-                self.logger.info(f"✓ Found table '{table_id}' with {len(rows)} rows")
-                return table
-            except NoSuchElementException:
-                self.logger.debug(f"Table ID '{table_id}' not found")
-                continue
-
-        # fallback: look for table with class containing "stats_table"
-        try:
-            tables = self.driver.find_elements(By.CSS_SELECTOR, "table.stats_table")
-            for table in tables:
+            for selector in cookie_selectors:
                 try:
-                    rows = table.find_elements(By.TAG_NAME, "tr")
-                    # bundesliga has 306 matches per season, so look for large tables
-                    if len(rows) > 100:
-                        self.logger.debug(f"Found stats_table with {len(rows)} rows")
-                        return table
-                except:
+                    cookie_button = WebDriverWait(self.driver, 3).until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
+                    )
+                    cookie_button.click()
+                    self.logger.debug(
+                        f"  Cookie consent dismissed using selector: {selector}"
+                    )
+                    time.sleep(0.5)  # brief pause after clicking
+                    break
+                except (TimeoutException, Exception):
                     continue
-        except:
-            pass
 
-        # final fallback: original logic - any table with many rows
-        tables = self.driver.find_elements(By.TAG_NAME, "table")
-        for table in tables:
+            # wait for the shooting logs table to load (up to 20 seconds)
+            # use visibility instead of just presence for more reliable detection
             try:
-                rows = table.find_elements(By.TAG_NAME, "tr")
-                # bundesliga has 306 matches per season
-                if len(rows) > 100:
-                    self.logger.debug(f"Found match table with {len(rows)} rows")
-                    return table
-            except:
-                continue
-
-        # if still not found, log all table IDs for debugging
-        self.logger.error("Could not find fixtures table using any method")
-        self._log_available_tables()
-        return None
-
-    def _log_available_tables(self):
-        """Log all tables found on page for debugging"""
-        try:
-            tables = self.driver.find_elements(By.TAG_NAME, "table")
-            self.logger.info(f"Found {len(tables)} total tables on page:")
-
-            for idx, table in enumerate(tables[:10]):  # limit to first 10
-                table_id = table.get_attribute("id")
-                table_class = table.get_attribute("class")
-                try:
-                    rows = table.find_elements(By.TAG_NAME, "tr")
-                    row_count = len(rows)
-                except:
-                    row_count = "unknown"
-
-                self.logger.info(
-                    f"  Table {idx + 1}: id='{table_id}', class='{table_class}', rows={row_count}"
+                wait = WebDriverWait(self.driver, 20)
+                table = wait.until(
+                    EC.visibility_of_element_located((By.ID, "matchlogs_for"))
                 )
-
-            # if no tables found, check what's actually on the page
-            if len(tables) == 0:
-                page_title = self.driver.title
-                page_source_preview = self.driver.page_source[:500]
-                self.logger.error(f"Page title: {page_title}")
-                self.logger.error(f"Page source preview: {page_source_preview}")
-
-                # check for common error indicators
-                if "404" in page_title or "not found" in page_title.lower():
-                    self.logger.error("Page appears to be a 404 error")
-                elif "403" in page_title or "forbidden" in page_title.lower():
-                    self.logger.error("Page appears to be blocked (403)")
-                elif "captcha" in self.driver.page_source.lower():
-                    self.logger.error(
-                        "Page contains CAPTCHA - automated access blocked"
-                    )
-
-        except Exception as e:
-            self.logger.error(f"Could not log available tables: {e}")
-
-    def _parse_all_matches(self, match_table, season_end_year: int) -> List[Dict]:
-        """Parse all match rows from fixtures table"""
-        matches = []
-
-        tbody = (
-            match_table.find_element(By.TAG_NAME, "tbody")
-            if match_table.find_elements(By.TAG_NAME, "tbody")
-            else match_table
-        )
-        rows = tbody.find_elements(By.TAG_NAME, "tr")
-
-        for row in rows:
-            match_data = self._parse_match_row(row, season_end_year)
-            if match_data:
-                matches.append(match_data)
-
-        return matches
-
-    def _scrape_all_team_stats(
-        self, season_end_year: int, season_string: str, team_ids: Dict[str, str]
-    ) -> pd.DataFrame:
-        """Scrape shooting, possession, and misc stats for all teams"""
-        all_team_stats = []
-
-        for idx, (team_name, team_id) in enumerate(team_ids.items()):
-            self.logger.info(f"Scraping {team_name} ({idx + 1}/{len(team_ids)})")
-
-            # scrape each stat type
-            shooting_stats = self._scrape_team_shooting(
-                team_id, season_string, team_name
-            )
-            self.respect_rate_limit()
-
-            possession_stats = self._scrape_team_possession(
-                team_id, season_string, team_name
-            )
-            self.respect_rate_limit()
-
-            misc_stats = self._scrape_team_misc(team_id, season_string, team_name)
-
-            # merge all stat types for this team
-            team_match_stats = self._merge_stat_types(
-                shooting_stats, possession_stats, misc_stats
-            )
-
-            if not team_match_stats.empty:
-                team_match_stats["season_end_year"] = season_end_year
-                all_team_stats.append(team_match_stats)
-
-            # polite delay between teams
-            if idx < len(team_ids) - 1:
-                self.respect_rate_limit()
-
-        if all_team_stats:
-            combined = pd.concat(all_team_stats, ignore_index=True)
-            self.logger.info(f"Scraped {len(combined)} total stat records")
-            return combined
-
-        return pd.DataFrame()
-
-    def _merge_stat_types(
-        self,
-        shooting_stats: pd.DataFrame,
-        possession_stats: pd.DataFrame,
-        misc_stats: pd.DataFrame,
-    ) -> pd.DataFrame:
-        """Merge shooting, possession, and misc stats for a single team"""
-        result = pd.DataFrame()
-
-        # start with first non-empty dataframe
-        if not shooting_stats.empty:
-            result = shooting_stats
-        elif not possession_stats.empty:
-            result = possession_stats
-        elif not misc_stats.empty:
-            result = misc_stats
-        else:
-            return result
-
-        # merge additional stat types
-        for stats in [possession_stats, misc_stats]:
-            if not stats.empty and not result.empty:
-                result = result.merge(
-                    stats, on=["date", "team", "opponent"], how="outer"
+                self.logger.debug("  Table found and visible")
+            except TimeoutException:
+                # table not found within timeout - log available tables for debugging
+                all_tables = self.driver.find_elements(By.TAG_NAME, "table")
+                table_ids = [
+                    t.get_attribute("id") for t in all_tables if t.get_attribute("id")
+                ]
+                self.logger.warning(
+                    "  ✗ Table 'matchlogs_for' not visible after 20s wait"
                 )
-            elif not stats.empty:
-                result = stats
+                self.logger.debug(f"    Available tables: {table_ids}")
 
-        return result
+                # save page source for debugging
+                if self.logger.level <= 10:  # DEBUG level
+                    page_source = self.driver.page_source
+                    self.logger.debug(f"    Page title: {self.driver.title}")
+                    self.logger.debug(f"    Page source length: {len(page_source)}")
 
-    def _scrape_team_shooting(
-        self, team_id: str, season_string: str, team_name: str
-    ) -> pd.DataFrame:
-        """Scrape shooting statistics for a team"""
-        team_url_name = team_name.replace(" ", "-")
-        url = f"https://fbref.com/en/squads/{team_id}/{season_string}/matchlogs/c20/shooting/{team_url_name}-Match-Logs-Bundesliga"
+                return pd.DataFrame()
 
-        try:
-            self.driver.get(url)
-            time.sleep(random.uniform(2, 3))
-
-            table = self.driver.find_element(By.ID, "matchlogs_for")
             tbody = table.find_element(By.TAG_NAME, "tbody")
             rows = tbody.find_elements(By.TAG_NAME, "tr")
 
+            self.logger.debug(f"  Found {len(rows)} rows in table")
+
             shooting_data = []
+            skipped_rows = 0
 
             for row in rows:
                 try:
-                    # extract date and opponent
                     match_data = self._extract_row_data(row)
+
+                    # debug: log first row's field names
+                    if len(shooting_data) == 0 and match_data:
+                        self.logger.debug(
+                            f"  Sample fields from first row: {list(match_data.keys())[:10]}"
+                        )
+
                     date_str = match_data.get("date")
                     opponent = match_data.get("opponent")
 
                     if not date_str or not opponent:
+                        skipped_rows += 1
                         continue
 
                     match_date = datetime.strptime(date_str, "%Y-%m-%d").date()
 
-                    # extract shooting stats
+                    # extract all relevant shooting stats and schedule info
+                    # using fbref's actual data-stat field names from the page
                     shooting_row = {
                         "date": match_date,
                         "team": team_name,
                         "opponent": opponent,
-                        "shots": self._safe_float(match_data.get("shots")),
-                        "shots_on_target": self._safe_float(
+                        "venue": match_data.get("venue", ""),
+                        "competition": match_data.get("comp", ""),
+                        "result": match_data.get("result", ""),
+                        # goals and xg
+                        "goals": self._safe_int(match_data.get("goals_for")),
+                        "goals_against": self._safe_int(
+                            match_data.get("goals_against")
+                        ),
+                        "npxg": self._safe_float(match_data.get("npxg")),
+                        # penalties
+                        "pens_made": self._safe_int(match_data.get("pens_made")),
+                        "pens_att": self._safe_int(match_data.get("pens_att")),
+                        # other shooting stats
+                        "shots": self._safe_int(match_data.get("shots")),
+                        "shots_on_target": self._safe_int(
                             match_data.get("shots_on_target")
                         ),
                         "avg_shot_distance": self._safe_float(
                             match_data.get("average_shot_distance")
                         ),
-                        "shots_free_kicks": self._safe_float(
+                        "shots_free_kicks": self._safe_int(
                             match_data.get("shots_free_kicks")
-                        ),
-                        "npxg": self._safe_float(match_data.get("npxg")),
-                        "pens_made": self._safe_float(match_data.get("pens_made")),
-                        "pens_att": self._safe_float(match_data.get("pens_att")),
-                        "goals_per_shot": self._safe_float(
-                            match_data.get("goals_per_shot")
-                        ),
-                        "npxg_per_shot": self._safe_float(
-                            match_data.get("npxg_per_shot")
                         ),
                     }
 
                     shooting_data.append(shooting_row)
 
                 except Exception as e:
-                    self.logger.debug(f"Error parsing shooting row: {e}")
+                    self.logger.debug(f"Error parsing row for {team_name}: {e}")
+                    skipped_rows += 1
                     continue
+
+            if skipped_rows > 0:
+                self.logger.debug(f"  Skipped {skipped_rows} rows (headers/empty)")
 
             if shooting_data:
                 df = pd.DataFrame(shooting_data)
-                self.logger.debug(f"  {len(df)} shooting records")
+                self.logger.info(f"  ✓ {len(df)} match records")
                 return df
+            else:
+                self.logger.warning("  ✗ No valid match data extracted")
+                return pd.DataFrame()
 
-        except NoSuchElementException:
-            self.logger.debug(f"  No shooting table for {team_name}")
         except Exception as e:
-            self.logger.error(f"  Error scraping shooting for {team_name}: {e}")
-
-        return pd.DataFrame()
-
-    def _scrape_team_possession(
-        self, team_id: str, season_string: str, team_name: str
-    ) -> pd.DataFrame:
-        """Scrape possession statistics for a team"""
-        team_url_name = team_name.replace(" ", "-")
-        url = f"https://fbref.com/en/squads/{team_id}/{season_string}/matchlogs/c20/possession/{team_url_name}-Match-Logs-Bundesliga"
-
-        try:
-            self.driver.get(url)
-            time.sleep(random.uniform(2, 3))
-
-            table = self.driver.find_element(By.ID, "matchlogs_for")
-            tbody = table.find_element(By.TAG_NAME, "tbody")
-            rows = tbody.find_elements(By.TAG_NAME, "tr")
-
-            possession_data = []
-
-            for row in rows:
-                try:
-                    match_data = self._extract_row_data(row)
-                    date_str = match_data.get("date")
-                    opponent = match_data.get("opponent")
-
-                    if not date_str or not opponent:
-                        continue
-
-                    match_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-
-                    possession_row = {
-                        "date": match_date,
-                        "team": team_name,
-                        "opponent": opponent,
-                        "possession": self._safe_float(match_data.get("possession")),
-                        "touches": self._safe_float(match_data.get("touches")),
-                        "touches_att_pen_area": self._safe_float(
-                            match_data.get("touches_att_pen_area")
-                        ),
-                        "touches_att_3rd": self._safe_float(
-                            match_data.get("touches_att_3rd")
-                        ),
-                    }
-
-                    possession_data.append(possession_row)
-
-                except Exception as e:
-                    self.logger.debug(f"Error parsing possession row: {e}")
-                    continue
-
-            if possession_data:
-                df = pd.DataFrame(possession_data)
-                self.logger.debug(f"  {len(df)} possession records")
-                return df
-
-        except NoSuchElementException:
-            self.logger.debug(f"  No possession table for {team_name}")
-        except Exception as e:
-            self.logger.error(f"  Error scraping possession for {team_name}: {e}")
-
-        return pd.DataFrame()
-
-    def _scrape_team_misc(
-        self, team_id: str, season_string: str, team_name: str
-    ) -> pd.DataFrame:
-        """Scrape miscellaneous statistics for a team"""
-        team_url_name = team_name.replace(" ", "-")
-        url = f"https://fbref.com/en/squads/{team_id}/{season_string}/matchlogs/c20/misc/{team_url_name}-Match-Logs-Bundesliga"
-
-        try:
-            self.driver.get(url)
-            time.sleep(random.uniform(2, 3))
-
-            table = self.driver.find_element(By.ID, "matchlogs_for")
-            tbody = table.find_element(By.TAG_NAME, "tbody")
-            rows = tbody.find_elements(By.TAG_NAME, "tr")
-
-            misc_data = []
-
-            for row in rows:
-                try:
-                    match_data = self._extract_row_data(row)
-                    date_str = match_data.get("date")
-                    opponent = match_data.get("opponent")
-
-                    if not date_str or not opponent:
-                        continue
-
-                    match_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-
-                    misc_row = {
-                        "date": match_date,
-                        "team": team_name,
-                        "opponent": opponent,
-                        "cards_yellow": self._safe_float(
-                            match_data.get("cards_yellow")
-                        ),
-                        "cards_red": self._safe_float(match_data.get("cards_red")),
-                        "fouls": self._safe_float(match_data.get("fouls")),
-                        "offsides": self._safe_float(match_data.get("offsides")),
-                    }
-
-                    misc_data.append(misc_row)
-
-                except Exception as e:
-                    self.logger.debug(f"Error parsing misc row: {e}")
-                    continue
-
-            if misc_data:
-                df = pd.DataFrame(misc_data)
-                self.logger.debug(f"  {len(df)} misc records")
-                return df
-
-        except NoSuchElementException:
-            self.logger.debug(f"  No misc table for {team_name}")
-        except Exception as e:
-            self.logger.error(f"  Error scraping misc for {team_name}: {e}")
-
-        return pd.DataFrame()
+            self.logger.error(f"  ✗ Error: {e}")
+            return pd.DataFrame()
 
     def _extract_row_data(self, row) -> Dict[str, str]:
         """
@@ -608,7 +390,7 @@ class FBRefScraper(BaseScraper):
         return match_data
 
     def _safe_float(self, value: str) -> Optional[float]:
-        """Safely convert string to float, returning none on failure"""
+        """Safely convert string to float, returning None on failure"""
         if not value or value == "":
             return None
         try:
@@ -616,220 +398,214 @@ class FBRefScraper(BaseScraper):
         except (ValueError, TypeError):
             return None
 
-    def _merge_team_stats_to_matches(
-        self, matches_df: pd.DataFrame, team_stats: pd.DataFrame
+    def _safe_int(self, value: str) -> Optional[int]:
+        """Safely convert string to int, returning None on failure"""
+        if not value or value == "":
+            return None
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            return None
+
+    def _calculate_schedule_features(self, team_data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Calculate schedule-based features for each team.
+
+        Features calculated:
+        - rest_days: Number of days since last match
+        - consecutive_away_games: Number of consecutive away games (including current)
+        """
+        if team_data.empty:
+            return team_data
+
+        self.logger.info("Calculating schedule features")
+
+        # sort by team and date
+        team_data = team_data.sort_values(["team", "date"]).reset_index(drop=True)
+
+        # initialise feature columns
+        team_data["rest_days"] = None
+        team_data["consecutive_away_games"] = 0
+
+        # calculate features for each team
+        for team in team_data["team"].unique():
+            team_mask = team_data["team"] == team
+            team_matches = team_data[team_mask].copy()
+
+            # calculate rest days
+            rest_days = []
+            prev_date = None
+
+            for date in team_matches["date"]:
+                if prev_date is None:
+                    rest_days.append(None)  # first match has no previous match
+                else:
+                    days = (date - prev_date).days
+                    rest_days.append(days)
+                prev_date = date
+
+            team_data.loc[team_mask, "rest_days"] = rest_days
+
+            # calculate consecutive away games
+            consecutive_away = []
+            away_count = 0
+
+            for venue in team_matches["venue"]:
+                if venue == "Away":
+                    away_count += 1
+                    consecutive_away.append(away_count)
+                else:
+                    away_count = 0
+                    consecutive_away.append(0)
+
+            team_data.loc[team_mask, "consecutive_away_games"] = consecutive_away
+
+        self.logger.info("Schedule features calculated")
+        return team_data
+
+    def _create_match_level_data(
+        self, team_data: pd.DataFrame, season_end_year: int
     ) -> pd.DataFrame:
-        """Merge team-level statistics to match-level data"""
-        self.logger.info("Merging team stats to matches")
+        """
+        Convert team-level data to match-level data.
 
-        # ensure date types match
-        matches_df["date"] = pd.to_datetime(matches_df["date"]).dt.date
-        team_stats["date"] = pd.to_datetime(team_stats["date"]).dt.date
+        Each match has two team perspectives (home and away).
+        This method merges them into single match records.
+        """
+        if team_data.empty:
+            return pd.DataFrame()
 
-        # remove duplicates from team stats
-        before_dedup = len(team_stats)
-        team_stats = team_stats.drop_duplicates(subset=["date", "team", "opponent"])
-        after_dedup = len(team_stats)
-        if before_dedup != after_dedup:
-            self.logger.warning(
-                f"Removed {before_dedup - after_dedup} duplicate team stat rows"
-            )
+        self.logger.info("Converting to match-level data")
 
-        # define all stat columns to rename
-        stat_cols = [
-            "shots",
-            "shots_on_target",
-            "avg_shot_distance",
-            "shots_free_kicks",
-            "npxg",
-            "pens_made",
-            "pens_att",
-            "goals_per_shot",
-            "npxg_per_shot",
-            "possession",
-            "touches",
-            "touches_att_pen_area",
-            "touches_att_3rd",
-            "cards_yellow",
-            "cards_red",
-            "fouls",
-            "offsides",
-        ]
+        matches = []
+        processed_matches = set()
 
-        # merge home team stats
-        matches_df = matches_df.merge(
-            team_stats,
-            left_on=["date", "home_team", "away_team"],
-            right_on=["date", "team", "opponent"],
-            how="left",
-            suffixes=("", "_home_drop"),
-        )
+        # ensure date is date type
+        team_data["date"] = pd.to_datetime(team_data["date"]).dt.date
 
-        # rename to home_* prefix
-        for col in stat_cols:
-            if col in matches_df.columns:
-                matches_df = matches_df.rename(columns={col: f"home_{col}"})
+        for _, row in team_data.iterrows():
+            date = row["date"]
+            team = row["team"]
+            opponent = row["opponent"]
+            venue = row["venue"]
 
-        # cleanup temporary columns
-        matches_df = matches_df.drop(columns=["team", "opponent"], errors="ignore")
-        drop_cols = [c for c in matches_df.columns if "_home_drop" in c]
-        matches_df = matches_df.drop(columns=drop_cols, errors="ignore")
+            # create unique match identifier
+            teams_sorted = tuple(sorted([team, opponent]))
+            match_id = (date, teams_sorted[0], teams_sorted[1])
 
-        # merge away team stats
-        matches_df = matches_df.merge(
-            team_stats,
-            left_on=["date", "away_team", "home_team"],
-            right_on=["date", "team", "opponent"],
-            how="left",
-            suffixes=("", "_away_drop"),
-        )
+            if match_id in processed_matches:
+                continue
+            processed_matches.add(match_id)
 
-        # rename to away_* prefix
-        for col in stat_cols:
-            if col in matches_df.columns:
-                matches_df = matches_df.rename(columns={col: f"away_{col}"})
+            # determine home and away teams
+            if venue == "Home":
+                home_team = team
+                away_team = opponent
+                home_data = row
 
-        # cleanup temporary columns
-        matches_df = matches_df.drop(columns=["team", "opponent"], errors="ignore")
-        drop_cols = [c for c in matches_df.columns if "_away_drop" in c]
-        matches_df = matches_df.drop(columns=drop_cols, errors="ignore")
+                # find away team's data for this match
+                away_data = team_data[
+                    (team_data["date"] == date)
+                    & (team_data["team"] == opponent)
+                    & (team_data["opponent"] == team)
+                ]
+                away_data = away_data.iloc[0] if len(away_data) > 0 else None
 
-        # final deduplication safety check
-        before_final = len(matches_df)
+            elif venue == "Away":
+                home_team = opponent
+                away_team = team
+                away_data = row
+
+                # find home team's data for this match
+                home_data = team_data[
+                    (team_data["date"] == date)
+                    & (team_data["team"] == opponent)
+                    & (team_data["opponent"] == team)
+                ]
+                home_data = home_data.iloc[0] if len(home_data) > 0 else None
+
+            else:
+                # neutral venue or unknown - skip or use alphabetical order
+                self.logger.debug(
+                    f"Skipping neutral/unknown venue match: {team} vs {opponent}"
+                )
+                continue
+
+            # build match record
+            match_record = {
+                "season_end_year": season_end_year,
+                "season": f"{season_end_year - 1}/{season_end_year}",
+                "date": date,
+                "home_team": home_team,
+                "away_team": away_team,
+            }
+
+            # add competition info (use home team's data, should be same)
+            if home_data is not None:
+                match_record["competition"] = home_data.get("competition", "")
+            elif away_data is not None:
+                match_record["competition"] = away_data.get("competition", "")
+
+            # add home team stats
+            if home_data is not None:
+                for col in [
+                    "goals",
+                    "goals_against",
+                    "npxg",
+                    "pens_made",
+                    "pens_att",
+                    "shots",
+                    "shots_on_target",
+                    "avg_shot_distance",
+                    "shots_free_kicks",
+                    "rest_days",
+                    "consecutive_away_games",
+                ]:
+                    match_record[f"home_{col}"] = home_data.get(col)
+
+            # add away team stats
+            if away_data is not None:
+                for col in [
+                    "goals",
+                    "goals_against",
+                    "npxg",
+                    "pens_made",
+                    "pens_att",
+                    "shots",
+                    "shots_on_target",
+                    "avg_shot_distance",
+                    "shots_free_kicks",
+                    "rest_days",
+                    "consecutive_away_games",
+                ]:
+                    match_record[f"away_{col}"] = away_data.get(col)
+
+            matches.append(match_record)
+
+        if not matches:
+            return pd.DataFrame()
+
+        matches_df = pd.DataFrame(matches)
+
+        # sort by date
+        matches_df = matches_df.sort_values("date").reset_index(drop=True)
+
+        # final deduplication check
+        before_dedup = len(matches_df)
         matches_df = matches_df.drop_duplicates(
             subset=["date", "home_team", "away_team"], keep="first"
         )
-        after_final = len(matches_df)
-        if before_final != after_final:
+        after_dedup = len(matches_df)
+
+        if before_dedup != after_dedup:
             self.logger.warning(
-                f"Removed {before_final - after_final} duplicate match rows"
+                f"Removed {before_dedup - after_dedup} duplicate match rows"
             )
 
-        self.logger.info(f"Merge complete - {matches_df.shape}")
         return matches_df
 
-    def _parse_match_row(self, row, season_end_year: int) -> Optional[Dict]:
-        """Parse a single match row from fixtures table"""
-        try:
-            cells = row.find_elements(By.TAG_NAME, "td")
-            if not cells:
-                cells = row.find_elements(By.TAG_NAME, "th")
-
-            if len(cells) < 8:
-                return None
-
-            # skip month separator rows
-            first_text = cells[0].text.strip() if cells else ""
-            month_names = [
-                "January",
-                "February",
-                "March",
-                "April",
-                "May",
-                "June",
-                "July",
-                "August",
-                "September",
-                "October",
-                "November",
-                "December",
-            ]
-            if any(month in first_text for month in month_names):
-                return None
-
-            # extract all cell data
-            match_data = {}
-            for cell in cells:
-                try:
-                    stat = cell.get_attribute("data-stat")
-                    if stat:
-                        match_data[stat] = cell.text.strip()
-                except:
-                    continue
-
-            # parse gameweek
-            week = None
-            if "gameweek" in match_data and match_data["gameweek"].isdigit():
-                week = int(match_data["gameweek"])
-
-            # parse date
-            match_date = None
-            if "date" in match_data and match_data["date"]:
-                try:
-                    match_date = datetime.strptime(
-                        match_data["date"], "%Y-%m-%d"
-                    ).date()
-                except:
-                    pass
-
-            # extract team names
-            home_team = match_data.get("home_team") or match_data.get("squad_a")
-            away_team = match_data.get("away_team") or match_data.get("squad_b")
-
-            # validate team names
-            invalid_names = {"Home", "Away", "Team", "Opponent", "", None}
-            if (
-                not home_team
-                or not away_team
-                or home_team in invalid_names
-                or away_team in invalid_names
-            ):
-                return None
-
-            # parse score
-            home_goals, away_goals = self._parse_score(match_data.get("score"))
-
-            # parse xg
-            home_xg = self._parse_xg(match_data, ["home_xg", "xg_a"])
-            away_xg = self._parse_xg(match_data, ["away_xg", "xg_b"])
-
-            return {
-                "season_end_year": season_end_year,
-                "season": f"{season_end_year - 1}/{season_end_year}",
-                "week": week,
-                "date": match_date,
-                "home_team": home_team,
-                "home_xg": home_xg,
-                "home_goals": home_goals,
-                "away_team": away_team,
-                "away_xg": away_xg,
-                "away_goals": away_goals,
-            }
-
-        except Exception as e:
-            self.logger.debug(f"Error parsing row: {e}")
-            return None
-
-    def _parse_score(self, score_str: str) -> tuple:
-        """Parse score string into home and away goals"""
-        if not score_str:
-            return None, None
-
-        for separator in ["–", "-", "—"]:
-            if separator in score_str:
-                parts = score_str.split(separator)
-                if len(parts) == 2:
-                    try:
-                        home_goals = int(parts[0].strip())
-                        away_goals = int(parts[1].strip())
-                        return home_goals, away_goals
-                    except ValueError:
-                        pass
-
-        return None, None
-
-    def _parse_xg(self, match_data: Dict, field_names: List[str]) -> Optional[float]:
-        """Parse xG value from match data"""
-        for field in field_names:
-            if field in match_data:
-                try:
-                    return float(match_data[field])
-                except (ValueError, TypeError):
-                    pass
-        return None
-
     def scrape_multiple_seasons(self, start_year: int, end_year: int) -> pd.DataFrame:
-        """Scrape match data for multiple Bundesliga seasons"""
+        """Scrape match data for multiple Bundesliga seasons (all competitions)"""
         self.setup_driver()
         all_data = []
 
