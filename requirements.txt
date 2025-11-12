@@ -129,7 +129,7 @@ numpy==2.3.4
     #   seaborn
     #   statsmodels
     #   streamlit
-optuna==4.5.0
+optuna==4.6.0
     # via predicting-ball (pyproject.toml)
 outcome==1.3.0.post0
     # via
