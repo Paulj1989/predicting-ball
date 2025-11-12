@@ -58,7 +58,7 @@ duckdb==1.4.1
     # via predicting-ball (pyproject.toml)
 faicons==0.2.2
     # via great-tables
-fastapi==0.120.1
+fastapi==0.121.1
     # via predicting-ball (pyproject.toml)
 fonttools==4.60.0
     # via matplotlib
