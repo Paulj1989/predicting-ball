@@ -212,7 +212,10 @@ def scrape_transfermarkt(
 
 
 def scrape_fbref(
-    conn: duckdb.DuckDBPyConnection, seasons: List[int], force_rescrape: bool = False
+    conn: duckdb.DuckDBPyConnection,
+    seasons: List[int],
+    force_rescrape: bool = False,
+    headed: bool = False,
 ):
     """Scrape FBRef match logs and advanced statistics"""
     logger.info("=" * 60)
@@ -223,8 +226,7 @@ def scrape_fbref(
         logger.info("FBRef data up to date - skipping")
         return
 
-    # when cloudflare blocks headless, run manually with: HEADED=true python scripts/...
-    headed = os.getenv("HEADED", "false").lower() == "true"
+    # use headless by default (for manual backup when blocked, use --headed)
     scraper = FBRefScraper(headless=not headed)
 
     # load existing data
@@ -451,7 +453,10 @@ def _save_to_database(
 
 
 def run_scrapers(
-    start_year: int, end_year: Optional[int] = None, force_rescrape: bool = False
+    start_year: int,
+    end_year: Optional[int] = None,
+    force_rescrape: bool = False,
+    headed: bool = False,
 ):
     """Execute all scrapers with incremental updates"""
     if end_year is None:
@@ -478,7 +483,7 @@ def run_scrapers(
 
         # run each scraper
         scrape_transfermarkt(conn, tm_seasons, force_rescrape)
-        scrape_fbref(conn, fb_seasons, force_rescrape)
+        scrape_fbref(conn, fb_seasons, force_rescrape, headed)
         scrape_elo(conn, elo_seasons, force_rescrape)
         scrape_odds(conn, odds_seasons, force_rescrape)
 
@@ -552,8 +557,8 @@ def ensure_schema_compatibility(conn: duckdb.DuckDBPyConnection):
 
     # check fbref schema
     try:
-        headed = os.getenv("HEADED", "false").lower() == "true"
-        scraper = FBRefScraper(headless=not headed)
+        # always use headless for schema checks
+        scraper = FBRefScraper(headless=True)
         current_season = determine_current_season()
 
         # get a small sample to check schema
@@ -657,13 +662,18 @@ def _ensure_table_schema(
 
 
 def main(
-    start_year: int = 2021, end_year: Optional[int] = None, force_rescrape: bool = False
+    start_year: int = 2021,
+    end_year: Optional[int] = None,
+    force_rescrape: bool = False,
+    headed: bool = False,
 ):
     """Execute complete data pipeline"""
     logger.info("=" * 80)
     logger.info("BUNDESLIGA DATA PIPELINE")
     logger.info(f"Started at: {datetime.now()}")
     logger.info(f"Mode: {'FORCE RESCRAPE' if force_rescrape else 'INCREMENTAL UPDATE'}")
+    if headed:
+        logger.info("FBRef Mode: HEADED (manual override)")
     logger.info("=" * 80)
 
     try:
@@ -681,7 +691,7 @@ def main(
 
         # step 2: data collection
         logger.info("\n[Step 2/3] Running scrapers")
-        run_scrapers(start_year, end_year, force_rescrape)
+        run_scrapers(start_year, end_year, force_rescrape, headed)
 
         # step 3: data integration
         logger.info("\n[Step 3/3] Integrating data sources")
@@ -714,6 +724,9 @@ if __name__ == "__main__":
 
         # Force rescrape all data
         python scripts/run_data_pipeline.py --force-rescrape
+
+        # Use headed mode when FBRef blocks automated scraping
+        python scripts/run_data_pipeline.py --headed
         """,
     )
 
@@ -734,6 +747,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Force rescrape all data, ignoring existing data",
     )
+    parser.add_argument(
+        "--headed",
+        action="store_true",
+        help="Use headed mode for FBRef scraper (manual backup when blocked)",
+    )
 
     args = parser.parse_args()
 
@@ -745,4 +763,5 @@ if __name__ == "__main__":
         start_year=args.start_year,
         end_year=args.end_year,
         force_rescrape=args.force_rescrape,
+        headed=args.headed,
     )
