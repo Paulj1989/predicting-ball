@@ -204,6 +204,7 @@ FBREF_TEAM_IDS = {
     "Darmstadt": "6a6967fc",
     "Greuther Fürth": "12192a4c",
     "Arminia Bielefeld": "247c4b67",
+    "Hamburger SV": "26790c6a",
 }
 
 
@@ -234,6 +235,7 @@ FBREF_URL_NAMES = {
     "Darmstadt": "Darmstadt-98",
     "Greuther Fürth": "Greuther-Fürth",
     "Arminia Bielefeld": "Arminia",
+    "Hamburger SV": "Hamburger-SV",
 }
 
 
@@ -352,12 +354,12 @@ BUNDESLIGA_SEASONS = {
         "Borussia Mönchengladbach",
         "Hoffenheim",
         "Werder Bremen",
-        "Bochum",
         "Augsburg",
         "Stuttgart",
         "Heidenheim",
         "St. Pauli",
-        "Holstein Kiel",
+        "Hamburger SV",
+        "FC Köln",
     ],
 }
 

@@ -291,18 +291,6 @@ def fit_feature_coefficients(
         else np.zeros(len(df_train))
     )
 
-    # schedule features
-    rest_days_diff = (
-        df_train["rest_days_diff"].fillna(0).values
-        if "rest_days_diff" in df_train
-        else np.zeros(len(df_train))
-    )
-    away_consecutive_away = (
-        df_train["away_consecutive_away_games"].fillna(0).values
-        if "away_consecutive_away_games" in df_train
-        else np.zeros(len(df_train))
-    )
-
     # ========================================================================
     # TIME WEIGHTING
     # ========================================================================
@@ -322,8 +310,6 @@ def fit_feature_coefficients(
         """Fit feature coefficients with fixed team strengths"""
         beta_odds = x[0]
         beta_form = x[1]
-        beta_rest = x[2]
-        beta_away_burden = x[3]
 
         # calculate lambdas (baseline + features)
         home_strength = (
@@ -332,14 +318,12 @@ def fit_feature_coefficients(
             + defense[away_idx]
             + beta_odds * home_log_odds_ratio
             + beta_form * home_npxgd_w5
-            + beta_rest * rest_days_diff
         )
         away_strength = (
             attack[away_idx]
             + defense[home_idx]
             - beta_odds * home_log_odds_ratio
             + beta_form * away_npxgd_w5
-            - beta_away_burden * away_consecutive_away
         )
 
         mu_h = np.clip(np.exp(home_strength), 0.1, 8.0)
@@ -351,9 +335,7 @@ def fit_feature_coefficients(
         ll_total = np.sum(combined_weights * (ll_h + ll_a))
 
         # light regularisation on features
-        reg_features = 0.01 * (
-            beta_odds**2 + beta_form**2 + beta_rest**2 + beta_away_burden**2
-        )
+        reg_features = 0.01 * (beta_odds**2 + beta_form**2)
 
         return -ll_total + reg_features
 
@@ -370,11 +352,9 @@ def fit_feature_coefficients(
     bounds = [
         (0.0, 1.5),  # beta_odds
         (-0.5, 0.5),  # beta_form
-        (-0.3, 0.3),  # beta_rest
-        (-0.25, 0.25),  # beta_away_burden
     ]
 
-    x0 = np.array([0.5, 0.1, 0.05, 0.03])
+    x0 = np.array([0.5, 0.1])
 
     result = minimize(
         neg_loglik_features,
@@ -386,8 +366,6 @@ def fit_feature_coefficients(
 
     beta_odds = result.x[0]
     beta_form = result.x[1]
-    beta_rest = result.x[2]
-    beta_away_burden = result.x[3]
 
     # ========================================================================
     # COMBINE RESULTS
@@ -396,8 +374,6 @@ def fit_feature_coefficients(
     full_params = baseline_params.copy()
     full_params["beta_odds"] = beta_odds
     full_params["beta_form"] = beta_form
-    full_params["beta_rest"] = beta_rest
-    full_params["beta_away_burden"] = beta_away_burden
     full_params["log_likelihood_features"] = -result.fun
 
     # add calibration parameters
@@ -411,14 +387,12 @@ def fit_feature_coefficients(
         + defense[away_idx]
         + beta_odds * home_log_odds_ratio
         + beta_form * home_npxgd_w5
-        + beta_rest * rest_days_diff
     )
     away_strength = (
         attack[away_idx]
         + defense[home_idx]
         - beta_odds * home_log_odds_ratio
         + beta_form * away_npxgd_w5
-        - beta_away_burden * away_consecutive_away
     )
 
     lambda_h_fitted = np.exp(home_strength)
@@ -449,8 +423,6 @@ def fit_feature_coefficients(
         print("\n  ✓ Feature coefficients fitted")
         print(f"    Beta (odds): {beta_odds:.3f}")
         print(f"    Beta (form): {beta_form:.3f}")
-        print(f"    Beta (rest): {beta_rest:.3f}")
-        print(f"    Beta (away burden): {beta_away_burden:.3f}")
         print(f"    Dispersion factor: {dispersion_factor:.3f}")
 
     full_params = add_interpretable_ratings_to_params(full_params)
@@ -505,8 +477,6 @@ def fit_poisson_model_two_stage(
         print(f"  Home advantage: {full_params['home_adv']:.3f}")
         print(f"  Odds weight: {full_params['beta_odds']:.3f}")
         print(f"  Form weight: {full_params['beta_form']:.3f}")
-        print(f"  Rest advantage weight: {full_params['beta_rest']:.3f}")
-        print(f"  Away burden weight: {full_params['beta_away_burden']:.3f}")
         print(f"  Rho: {full_params['rho']:.3f}")
         print(f"  Dispersion factor: {full_params['dispersion_factor']:.3f}")
 
@@ -525,8 +495,6 @@ def calculate_lambdas_single(
     home_log_odds_ratio: float = 0.0,
     home_npxgd_w5: float = 0.0,
     away_npxgd_w5: float = 0.0,
-    rest_days_diff: float = 0.0,
-    away_consecutive_away_games: float = 0.0,
 ) -> Tuple[float, float]:
     """Calculate expected goals for a single match"""
     att_h = params.get("attack", {}).get(home_team, 0.0)
@@ -537,8 +505,6 @@ def calculate_lambdas_single(
     home_adv = params.get("home_adv", 0.0)
     beta_odds = params.get("beta_odds", 0.0)
     beta_form = params.get("beta_form", 0.0)
-    beta_rest = params.get("beta_rest", 0.0)
-    beta_away_burden = params.get("beta_away_burden", 0.0)
 
     # calculate strengths
     home_strength = (
@@ -547,14 +513,9 @@ def calculate_lambdas_single(
         + home_adv
         + beta_odds * home_log_odds_ratio
         + beta_form * home_npxgd_w5
-        + beta_rest * rest_days_diff
     )
     away_strength = (
-        att_a
-        + def_h
-        - beta_odds * home_log_odds_ratio
-        + beta_form * away_npxgd_w5
-        - beta_away_burden * away_consecutive_away_games
+        att_a + def_h - beta_odds * home_log_odds_ratio + beta_form * away_npxgd_w5
     )
 
     # convert to lambdas
@@ -617,18 +578,6 @@ def calculate_lambdas(
         else np.zeros(len(df))
     )
 
-    # schedule features
-    rest_days_diff = (
-        df["rest_days_diff"].fillna(0).values
-        if "rest_days_diff" in df
-        else np.zeros(len(df))
-    )
-    away_consecutive_away = (
-        df["away_consecutive_away_games"].fillna(0).values
-        if "away_consecutive_away_games" in df
-        else np.zeros(len(df))
-    )
-
     # calculate strengths
     home_strength = (
         attack_arr[home_idx]
@@ -636,14 +585,12 @@ def calculate_lambdas(
         + params.get("home_adv", 0.0)
         + params.get("beta_odds", 0.0) * home_log_odds_ratio
         + params.get("beta_form", 0.0) * home_npxgd_w5
-        + params.get("beta_rest", 0.0) * rest_days_diff
     )
     away_strength = (
         attack_arr[away_idx]
         + defense_arr[home_idx]
         - params.get("beta_odds", 0.0) * home_log_odds_ratio
         + params.get("beta_form", 0.0) * away_npxgd_w5
-        - params.get("beta_away_burden", 0.0) * away_consecutive_away
     )
 
     # convert to lambdas (expected goals)

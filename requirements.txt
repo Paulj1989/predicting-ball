@@ -236,7 +236,7 @@ sqlalchemy==2.0.44
     # via
     #   alembic
     #   optuna
-starlette==0.50.0
+starlette==0.49.3
     # via fastapi
 statsmodels==0.14.5
     # via predicting-ball (pyproject.toml)
