@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Run Complete Pipeline
+Run Model Pipeline
 =====================
 
 Execute the full modelling pipeline:
@@ -10,7 +10,7 @@ Execute the full modelling pipeline:
 4. Generate predictions
 
 Usage:
-    python scripts/modeling/run_complete_pipeline.py [--tune]
+    python scripts/modeling/run_model_pipeline.py [--tune]
 """
 
 import sys
