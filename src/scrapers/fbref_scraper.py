@@ -22,22 +22,17 @@ from ..utils.team_utils import (
 
 class FBRefScraper(BaseScraper):
     """
-    FBRef scraper with multilevel data architecture for Bundesliga predictions.
+    FBRef scraper for Bundesliga match data.
 
     Data Architecture:
-    1. Bundesliga Schedule (authoritative source for fixtures we're predicting)
+    1. Bundesliga Schedule (authoritative source for fixtures)
     - Match dates, home/away teams, final scores
     - Single source of truth for Bundesliga fixtures
 
-    2. Complete Team Activity Log (all competitions)
-    - Used ONLY for calculating schedule features
-    - Includes: Bundesliga, DFB-Pokal, Champions League, Europa League
-    - Critical: rest days and consecutive away games must account for ALL matches
-
-    3. Bundesliga Shooting Statistics
-    - Performance metrics for Bundesliga matches only
-    - npxg, shots, shots_on_target, penalties, etc.
-    - Merged into Bundesliga schedule
+    2. Bundesliga Shooting Statistics
+    - Scrapes Bundesliga-specific shooting logs for each team (/c20/ URLs)
+    - Performance metrics: npxg, shots, shots_on_target, penalties, etc.
+    - Merged into Bundesliga schedule for complete match records
     """
 
     def __init__(
@@ -129,7 +124,7 @@ class FBRefScraper(BaseScraper):
                 },
             )
         except Exception as e:
-            # CDP command may fail in some environments, log but continue
+            # cdp command may fail in some environments, log but continue
             self.logger.warning(f"Could not set CDP commands: {e}")
             self.logger.warning("Continuing without navigator property overrides")
 
@@ -140,11 +135,10 @@ class FBRefScraper(BaseScraper):
         """
         Scrape complete match data for a Bundesliga season.
 
-        Revised process with correct schedule feature calculation:
+        Process:
         1. Scrape Bundesliga schedule
-        2. Scrape ALL team activity (all competitions) for schedule feature calculation
-        3. Calculate schedule features using ALL team activity
-        4. Merge Bundesliga shooting statistics into the schedule
+        2. Scrape Bundesliga shooting statistics for each team
+        3. Merge shooting statistics into the schedule
         """
         season_string = f"{season_end_year - 1}-{season_end_year}"
         self.logger.info(f"Scraping season {season_string}")
@@ -159,13 +153,13 @@ class FBRefScraper(BaseScraper):
         # polite delay after schedule scrape
         self.respect_rate_limit()
 
-        # step 2: scrape ALL team activity (all competitions)
+        # step 2: scrape bundesliga shooting statistics
         team_ids = get_fbref_team_ids_for_season(season_end_year)
         self.logger.info(
-            f"Scraping complete activity logs for {len(team_ids)} teams (all competitions)"
+            f"Scraping Bundesliga shooting statistics for {len(team_ids)} teams"
         )
 
-        all_team_activity = []
+        bundesliga_shooting = []
         failed_teams = []
 
         for idx, (team_name, team_id) in enumerate(team_ids.items()):
@@ -176,10 +170,8 @@ class FBRefScraper(BaseScraper):
             )
 
             if not team_data.empty:
-                # Keep ALL competitions - critical for schedule features
-                all_team_activity.append(team_data)
+                bundesliga_shooting.append(team_data)
             else:
-                # track failed teams for retry
                 failed_teams.append((team_name, team_id))
 
             # polite delay between teams
@@ -206,7 +198,7 @@ class FBRefScraper(BaseScraper):
                 )
 
                 if not team_data.empty:
-                    all_team_activity.append(team_data)
+                    bundesliga_shooting.append(team_data)
                     self.logger.info(f"    ✓ Retry successful for {team_name}")
                 else:
                     self.logger.warning(f"    ✗ Retry failed for {team_name}")
@@ -215,37 +207,20 @@ class FBRefScraper(BaseScraper):
                 if retry_num < len(failed_teams) - 1:
                     self.respect_rate_limit()
 
-        if not all_team_activity:
-            self.logger.warning("No team activity data retrieved")
+        if not bundesliga_shooting:
+            self.logger.warning("No shooting data retrieved")
             return pd.DataFrame()
 
-        # combine all team activity (ALL competitions)
-        combined_team_activity = pd.concat(all_team_activity, ignore_index=True)
+        # combine all bundesliga shooting data
+        combined_shooting = pd.concat(bundesliga_shooting, ignore_index=True)
         self.logger.info(
-            f"Retrieved {len(combined_team_activity)} team match records across all competitions"
+            f"Retrieved {len(combined_shooting)} Bundesliga shooting records"
         )
 
-        # step 3: calculate schedule features using ALL team activity
-        bundesliga_schedule = self._calculate_schedule_features_from_all_activity(
-            bundesliga_schedule, combined_team_activity
+        # step 3: merge bundesliga shooting statistics
+        bundesliga_schedule = self._merge_shooting_stats_into_schedule(
+            bundesliga_schedule, combined_shooting
         )
-
-        # step 4: merge Bundesliga shooting statistics
-        bundesliga_shooting = combined_team_activity[
-            combined_team_activity["competition"] == "Bundesliga"
-        ].copy()
-
-        if not bundesliga_shooting.empty:
-            self.logger.info(
-                f"Merging shooting statistics from {len(bundesliga_shooting)} Bundesliga team records"
-            )
-            bundesliga_schedule = self._merge_shooting_stats_into_schedule(
-                bundesliga_schedule, bundesliga_shooting
-            )
-        else:
-            self.logger.warning(
-                "No Bundesliga shooting statistics found - statistics will be missing"
-            )
 
         # add season information
         bundesliga_schedule["season_end_year"] = season_end_year
@@ -257,9 +232,9 @@ class FBRefScraper(BaseScraper):
     def _scrape_team_shooting_logs(
         self, team_id: str, season_string: str, team_name: str
     ) -> pd.DataFrame:
-        """Scrape shooting log data for a team (all competitions)"""
+        """Scrape shooting log data for a team (Bundesliga only)"""
         team_url_name = get_fbref_url_name(team_name)
-        url = f"https://fbref.com/en/squads/{team_id}/{season_string}/matchlogs/all_comps/shooting/{team_url_name}-Match-Logs-All-Competitions"
+        url = f"https://fbref.com/en/squads/{team_id}/{season_string}/matchlogs/c20/shooting/{team_url_name}-Match-Logs-Bundesliga"
 
         try:
             self.logger.debug(f"  Fetching: {url}")
@@ -358,37 +333,33 @@ class FBRefScraper(BaseScraper):
                         skipped_rows += 1
                         continue
 
+                    # standardise opponent name to match canonical team names
+                    opponent = standardise_team_name(opponent)
+
                     match_date = datetime.strptime(date_str, "%Y-%m-%d").date()
 
-                    # extract all relevant shooting stats and schedule info
-                    # using fbref's actual data-stat field names from the page
+                    # extract shooting stats
                     shooting_row = {
                         "date": match_date,
                         "team": team_name,
                         "opponent": opponent,
                         "venue": match_data.get("venue", ""),
-                        "competition": match_data.get("comp", ""),
+                        "competition": match_data.get("comp", "Bundesliga"),
                         "result": match_data.get("result", ""),
-                        # goals and xg
-                        "goals": self._safe_int(match_data.get("goals_for")),
-                        "goals_against": self._safe_int(
-                            match_data.get("goals_against")
-                        ),
-                        "npxg": self._safe_float(match_data.get("npxg")),
-                        # penalties
-                        "pens_made": self._safe_int(match_data.get("pens_made")),
-                        "pens_att": self._safe_int(match_data.get("pens_att")),
-                        # other shooting stats
-                        "shots": self._safe_int(match_data.get("shots")),
-                        "shots_on_target": self._safe_int(
+                        # shooting statistics
+                        "shots": self._safe_float(match_data.get("shots")),
+                        "shots_on_target": self._safe_float(
                             match_data.get("shots_on_target")
                         ),
                         "avg_shot_distance": self._safe_float(
                             match_data.get("average_shot_distance")
                         ),
-                        "shots_free_kicks": self._safe_int(
+                        "shots_free_kicks": self._safe_float(
                             match_data.get("shots_free_kicks")
                         ),
+                        "npxg": self._safe_float(match_data.get("npxg")),
+                        "pens_made": self._safe_float(match_data.get("pens_made")),
+                        "pens_att": self._safe_float(match_data.get("pens_att")),
                     }
 
                     shooting_data.append(shooting_row)
@@ -403,10 +374,10 @@ class FBRefScraper(BaseScraper):
 
             if shooting_data:
                 df = pd.DataFrame(shooting_data)
-                self.logger.info(f"  ✓ {len(df)} match records")
+                self.logger.info(f"  ✓ {len(df)} Bundesliga match records")
                 return df
             else:
-                self.logger.warning("  ✗ No valid match data extracted")
+                self.logger.warning("  ✗ No Bundesliga match data extracted")
                 return pd.DataFrame()
 
         except Exception as e:
@@ -580,6 +551,21 @@ class FBRefScraper(BaseScraper):
 
             if matches:
                 df = pd.DataFrame(matches)
+
+                # filter out playoff matches
+                valid_teams = set(get_fbref_team_ids_for_season(season_end_year).keys())
+                initial_count = len(df)
+                df = df[
+                    df["home_team"].isin(valid_teams)
+                    & df["away_team"].isin(valid_teams)
+                ]
+
+                playoff_count = initial_count - len(df)
+                if playoff_count > 0:
+                    self.logger.info(
+                        f"  Filtered out {playoff_count} playoff/non-Bundesliga matches"
+                    )
+
                 self.logger.info(f"  ✓ {len(df)} Bundesliga matches")
                 return df
             else:
@@ -628,101 +614,6 @@ class FBRefScraper(BaseScraper):
         except (ValueError, TypeError):
             return None
 
-    def _calculate_schedule_features_from_all_activity(
-        self, bundesliga_matches: pd.DataFrame, all_team_activity: pd.DataFrame
-    ) -> pd.DataFrame:
-        """Calculate schedule features for Bundesliga matches"""
-        if bundesliga_matches.empty or all_team_activity.empty:
-            return bundesliga_matches
-
-        self.logger.info(
-            "Calculating schedule features from complete team activity (all competitions)"
-        )
-
-        # ensure date columns are date type
-        bundesliga_matches["date"] = pd.to_datetime(bundesliga_matches["date"]).dt.date
-        all_team_activity["date"] = pd.to_datetime(all_team_activity["date"]).dt.date
-
-        # build a team activity lookup (all competitions, all venues)
-        team_activity_log = []
-        for _, row in all_team_activity.iterrows():
-            # each team match becomes an activity record
-            team_activity_log.append(
-                {
-                    "date": row["date"],
-                    "team": row["team"],
-                    "venue": row["venue"],  # "Home" or "Away"
-                    "competition": row["competition"],
-                }
-            )
-
-        team_activity_df = pd.DataFrame(team_activity_log)
-        team_activity_df = team_activity_df.sort_values(["team", "date"]).reset_index(
-            drop=True
-        )
-
-        # initialise feature columns
-        bundesliga_matches["home_rest_days"] = None
-        bundesliga_matches["home_consecutive_away_games"] = 0
-        bundesliga_matches["away_rest_days"] = None
-        bundesliga_matches["away_consecutive_away_games"] = 0
-
-        # calculate features for each Bundesliga match
-        for idx, match in bundesliga_matches.iterrows():
-            match_date = match["date"]
-            home_team = match["home_team"]
-            away_team = match["away_team"]
-
-            # calculate home team features
-            home_activity = team_activity_df[
-                (team_activity_df["team"] == home_team)
-                & (team_activity_df["date"] < match_date)
-            ].sort_values("date")
-
-            if len(home_activity) > 0:
-                # rest days since last match (any competition)
-                last_match = home_activity.iloc[-1]
-                rest_days = (match_date - last_match["date"]).days
-                bundesliga_matches.at[idx, "home_rest_days"] = rest_days
-
-                # count consecutive away games BEFORE this match
-                consecutive_away = 0
-                for _, prev_match in home_activity.iloc[::-1].iterrows():
-                    if prev_match["venue"] == "Away":
-                        consecutive_away += 1
-                    else:
-                        break  # stop at first home game
-                bundesliga_matches.at[idx, "home_consecutive_away_games"] = (
-                    consecutive_away
-                )
-
-            # calculate away team features
-            away_activity = team_activity_df[
-                (team_activity_df["team"] == away_team)
-                & (team_activity_df["date"] < match_date)
-            ].sort_values("date")
-
-            if len(away_activity) > 0:
-                # rest days since last match (any competition)
-                last_match = away_activity.iloc[-1]
-                rest_days = (match_date - last_match["date"]).days
-                bundesliga_matches.at[idx, "away_rest_days"] = rest_days
-
-                # count consecutive away games BEFORE this match
-                consecutive_away = 0
-                for _, prev_match in away_activity.iloc[::-1].iterrows():
-                    if prev_match["venue"] == "Away":
-                        consecutive_away += 1
-                    else:
-                        break  # stop at first home game
-                bundesliga_matches.at[idx, "away_consecutive_away_games"] = (
-                    consecutive_away
-                )
-
-        self.logger.info("Schedule features calculated from complete activity")
-        return bundesliga_matches
-
-
     def _merge_shooting_stats_into_schedule(
         self, schedule_df: pd.DataFrame, shooting_data: pd.DataFrame
     ) -> pd.DataFrame:
@@ -735,6 +626,12 @@ class FBRefScraper(BaseScraper):
         # ensure date columns are the same type
         schedule_df["date"] = pd.to_datetime(schedule_df["date"]).dt.date
         shooting_data["date"] = pd.to_datetime(shooting_data["date"]).dt.date
+
+        # track merge success
+        home_matches_found = 0
+        away_matches_found = 0
+        home_matches_missing = []
+        away_matches_missing = []
 
         # for each match in schedule, find matching shooting stats for both teams
         for idx, row in schedule_df.iterrows():
@@ -750,6 +647,7 @@ class FBRefScraper(BaseScraper):
             ]
 
             if len(home_shooting) > 0:
+                home_matches_found += 1
                 home_stats = home_shooting.iloc[0]
                 # merge shooting stats for home team
                 for col in [
@@ -763,6 +661,8 @@ class FBRefScraper(BaseScraper):
                 ]:
                     if col in home_stats:
                         schedule_df.at[idx, f"home_{col}"] = home_stats[col]
+            else:
+                home_matches_missing.append((date, home_team, away_team))
 
             # find away team's shooting stats
             away_shooting = shooting_data[
@@ -772,6 +672,7 @@ class FBRefScraper(BaseScraper):
             ]
 
             if len(away_shooting) > 0:
+                away_matches_found += 1
                 away_stats = away_shooting.iloc[0]
                 # merge shooting stats for away team
                 for col in [
@@ -785,6 +686,31 @@ class FBRefScraper(BaseScraper):
                 ]:
                     if col in away_stats:
                         schedule_df.at[idx, f"away_{col}"] = away_stats[col]
+            else:
+                away_matches_missing.append((date, away_team, home_team))
+
+        # log merge statistics
+        total_matches = len(schedule_df)
+        self.logger.info(
+            f"Merge results: {home_matches_found}/{total_matches} home matches, "
+            f"{away_matches_found}/{total_matches} away matches"
+        )
+
+        if home_matches_missing:
+            self.logger.warning(
+                f"Failed to find home stats for {len(home_matches_missing)} matches"
+            )
+            # show first 5 missing matches
+            for date, team, opp in home_matches_missing[:5]:
+                self.logger.debug(f"  Missing: {date} {team} vs {opp}")
+
+        if away_matches_missing:
+            self.logger.warning(
+                f"Failed to find away stats for {len(away_matches_missing)} matches"
+            )
+            # show first 5 missing matches
+            for date, team, opp in away_matches_missing[:5]:
+                self.logger.debug(f"  Missing: {date} {team} vs {opp}")
 
         self.logger.info("Shooting statistics merged")
         return schedule_df
@@ -884,8 +810,6 @@ class FBRefScraper(BaseScraper):
                     "shots_on_target",
                     "avg_shot_distance",
                     "shots_free_kicks",
-                    "rest_days",
-                    "consecutive_away_games",
                 ]:
                     match_record[f"home_{col}"] = home_data.get(col)
 
@@ -901,8 +825,6 @@ class FBRefScraper(BaseScraper):
                     "shots_on_target",
                     "avg_shot_distance",
                     "shots_free_kicks",
-                    "rest_days",
-                    "consecutive_away_games",
                 ]:
                     match_record[f"away_{col}"] = away_data.get(col)
 
@@ -931,7 +853,7 @@ class FBRefScraper(BaseScraper):
         return matches_df
 
     def scrape_multiple_seasons(self, start_year: int, end_year: int) -> pd.DataFrame:
-        """Scrape match data for multiple Bundesliga seasons (all competitions)"""
+        """Scrape match data for multiple Bundesliga seasons"""
         self.setup_driver()
         all_data = []
 

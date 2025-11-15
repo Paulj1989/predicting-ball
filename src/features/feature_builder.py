@@ -8,7 +8,6 @@ from .xg_features import add_rolling_npxgd, add_venue_npxgd
 from .squad_features import add_squad_value_features
 from .odds_features import add_odds_features
 from .weighted_goals import calculate_weighted_goals
-from .schedule_features import add_schedule_features
 
 
 def prepare_model_features(
@@ -16,7 +15,6 @@ def prepare_model_features(
     windows: list = [5, 10],
     include_squad_values: bool = True,
     include_odds: bool = True,
-    include_schedule: bool = True,
     include_weighted_goals: bool = True,
     verbose: bool = False,
 ) -> pd.DataFrame:
@@ -26,11 +24,10 @@ def prepare_model_features(
     Main pipeline that orchestrates all feature engineering steps:
     1. Squad value features (ratios, logs, percentiles)
     2. Betting odds features (ratios, margins)
-    3. Schedule features (rest days, consecutive away games)
-    4. Rolling npxGD statistics (5 and 10 game windows)
-    5. Venue-specific npxGD (home at home, away away)
-    6. Red card indicators
-    7. Weighted performance composite (for model fitting)
+    3. Rolling npxGD statistics (5 and 10 game windows)
+    4. Venue-specific npxGD (home at home, away away)
+    5. Red card indicators
+    6. Weighted performance composite (for model fitting)
     """
     logger = logging.getLogger(__name__)
 
@@ -69,35 +66,21 @@ def prepare_model_features(
         if verbose:
             logger.info("2. Skipping betting odds (not requested)")
 
-    # step 3: schedule features
-    if include_schedule:
-        if verbose:
-            logger.info("3. Processing schedule features")
-
-        if "home_rest_days" in df.columns and "away_rest_days" in df.columns:
-            df = add_schedule_features(df)
-        else:
-            if verbose:
-                logger.warning("   No schedule data found, skipping")
-    else:
-        if verbose:
-            logger.info("3. Skipping schedule features (not requested)")
-
-    # step 4: rolling npxGD features
+    # step 3: rolling npxGD features
     if verbose:
-        logger.info(f"4. Calculating rolling npxGD (windows: {windows})")
+        logger.info(f"3. Calculating rolling npxGD (windows: {windows})")
 
     df = add_rolling_npxgd(df, windows=windows)
 
-    # step 5: venue-specific npxGD
+    # step 4: venue-specific npxGD
     if verbose:
-        logger.info("5. Calculating venue-specific npxGD")
+        logger.info("4. Calculating venue-specific npxGD")
 
     df = add_venue_npxgd(df)
 
-    # step 6: card features
+    # step 5: card features
     if verbose:
-        logger.info("6. Adding red card indicators")
+        logger.info("5. Adding red card indicators")
 
     mask_played = df["is_played"]
     if "home_cards_red" in df.columns:
@@ -108,10 +91,10 @@ def prepare_model_features(
             df.loc[mask_played, "away_cards_red"] > 0
         ).astype(int)
 
-    # step 7: weighted goals composite
+    # step 6: weighted goals composite
     if include_weighted_goals:
         if verbose:
-            logger.info("7. Calculating weighted goals")
+            logger.info("6. Calculating weighted goals")
 
         df = calculate_weighted_goals(df)
 
@@ -143,8 +126,6 @@ def validate_features(
             "away_goals_weighted",
             "value_ratio",
             "odds_home_away_ratio",
-            "rest_days_diff",
-            "away_schedule_burden",
         ]
 
     # check for missing columns
