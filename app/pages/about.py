@@ -24,7 +24,7 @@ def render():
     - **Stage 1 (Team Strengths)** - Estimates each team's attack and defense ratings, along with home advantage, and uses a Dixon-Coles correction to reduce systematic undervaluing of low-scoring matches.
     - **Stage 2 (Match Features)** - Fixes team strengths and estimates coefficients for match-specific features, including betting odds ratios and rolling 5-game npxGD.
 
-    **Informed Priors**: The model uses informed priors to handle data limitations. Transfermarkt's squad market values serve as a proxy for team quality, translated to ratings priors (using a blend of squad values and the previous season's ratings for returning teams, and only squad values for promoted teams). A home advantage prior is estimated from historical Bundesliga data, accounting for season-to-season variance.
+    **Informed Priors**: The model uses informed priors to handle data limitations. A blend of Transfermarkt's squad market values, Club Elo's team ratings, and the model's ratings for the previous season serve as a ratings prior (for promoted teams, the prior is calculated from squad values and Elo ratings only). A home advantage prior is estimated from historical Bundesliga data, accounting for season-to-season variance.
 
     **Calibrated Uncertainty**: The model uses several mechanisms for quantifying prediction uncertainty:
 
@@ -47,6 +47,7 @@ def render():
 
     - **FBRef** - Match results, expected goals, shots, possession, and advanced statistics.
     - **Transfermarkt** - Squad market values and other squad features.
+    - **Club Elo** - Club Elo ratings at the beginning of each season.
     - **Football-Data.co.uk** - Historical betting odds from multiple bookmakers.
     - **The Odds API** - Current betting odds for upcoming fixtures.
 

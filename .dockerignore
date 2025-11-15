@@ -42,7 +42,7 @@ ENV/
 scripts/train_model.py
 scripts/run_calibration.py
 scripts/validate_model.py
-scripts/run_complete_pipeline.py
+scripts/run_model_pipeline.py
 notebooks/
 *.ipynb
 tests/

@@ -338,7 +338,7 @@ def apply_custom_styles():
         right: 0;
         background-color: white;
         border-top: 1px solid var(--border-color);
-        padding: 1rem 0;
+        padding: 0.25rem 0;
         text-align: center;
         z-index: 999;
         font-family: var(--font-sans);
