@@ -11,7 +11,7 @@ import matplotlib.colors as mcolors
 def render(projections):
     """Display the season projections page"""
     st.markdown(
-        '<h2 style="font-size: 1.8rem; text-align: center;">Bundesliga 2025/26 Season Projections</h2>',
+        '<h2 style="font-size: 1.8rem; text-align: center;">Premier League 2025/26 Season Projections</h2>',
         unsafe_allow_html=True,
     )
     st.markdown(
@@ -270,7 +270,7 @@ def _render_charts(projections):
     col1, col2 = st.columns(2)
 
     with col1:
-        st.subheader("Meisterschale Race")
+        st.subheader("Title Race")
 
         title_contenders = projections.nlargest(8, "title_prob")
 

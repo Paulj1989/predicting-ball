@@ -22,17 +22,17 @@ from ..utils.team_utils import (
 
 class FBRefScraper(BaseScraper):
     """
-    FBRef scraper for Bundesliga match data.
+    FBRef scraper for Premier League match data.
 
     Data Architecture:
-    1. Bundesliga Schedule (authoritative source for fixtures)
+    1. Premier League Schedule (authoritative source for fixtures)
     - Match dates, home/away teams, final scores
-    - Single source of truth for Bundesliga fixtures
+    - Single source of truth for Premier League fixtures
 
-    2. Bundesliga Shooting Statistics
-    - Scrapes Bundesliga-specific shooting logs for each team (/c20/ URLs)
+    2. Premier League Shooting Statistics
+    - Scrapes Premier League-specific shooting logs for each team (/c9/ URLs)
     - Performance metrics: npxg, shots, shots_on_target, penalties, etc.
-    - Merged into Bundesliga schedule for complete match records
+    - Merged into Premier League schedule for complete match records
     """
 
     def __init__(
@@ -133,33 +133,33 @@ class FBRefScraper(BaseScraper):
 
     def scrape_season(self, season_end_year: int) -> pd.DataFrame:
         """
-        Scrape complete match data for a Bundesliga season.
+        Scrape complete match data for a Premier League season.
 
         Process:
-        1. Scrape Bundesliga schedule
-        2. Scrape Bundesliga shooting statistics for each team
+        1. Scrape Premier League schedule
+        2. Scrape Premier League shooting statistics for each team
         3. Merge shooting statistics into the schedule
         """
         season_string = f"{season_end_year - 1}-{season_end_year}"
         self.logger.info(f"Scraping season {season_string}")
 
-        # step 1: scrape bundesliga schedule (authoritative source for fixtures)
-        bundesliga_schedule = self._scrape_bundesliga_schedule(season_end_year)
+        # step 1: scrape premier league schedule (authoritative source for fixtures)
+        premier_league_schedule = self._scrape_premier_league_schedule(season_end_year)
 
-        if bundesliga_schedule.empty:
-            self.logger.warning("Failed to retrieve Bundesliga schedule")
+        if premier_league_schedule.empty:
+            self.logger.warning("Failed to retrieve Premier League schedule")
             return pd.DataFrame()
 
         # polite delay after schedule scrape
         self.respect_rate_limit()
 
-        # step 2: scrape bundesliga shooting statistics
+        # step 2: scrape premier league shooting statistics
         team_ids = get_fbref_team_ids_for_season(season_end_year)
         self.logger.info(
-            f"Scraping Bundesliga shooting statistics for {len(team_ids)} teams"
+            f"Scraping Premier League shooting statistics for {len(team_ids)} teams"
         )
 
-        bundesliga_shooting = []
+        premier_league_shooting = []
         failed_teams = []
 
         for idx, (team_name, team_id) in enumerate(team_ids.items()):
@@ -170,7 +170,7 @@ class FBRefScraper(BaseScraper):
             )
 
             if not team_data.empty:
-                bundesliga_shooting.append(team_data)
+                premier_league_shooting.append(team_data)
             else:
                 failed_teams.append((team_name, team_id))
 
@@ -198,7 +198,7 @@ class FBRefScraper(BaseScraper):
                 )
 
                 if not team_data.empty:
-                    bundesliga_shooting.append(team_data)
+                    premier_league_shooting.append(team_data)
                     self.logger.info(f"    ✓ Retry successful for {team_name}")
                 else:
                     self.logger.warning(f"    ✗ Retry failed for {team_name}")
@@ -207,34 +207,34 @@ class FBRefScraper(BaseScraper):
                 if retry_num < len(failed_teams) - 1:
                     self.respect_rate_limit()
 
-        if not bundesliga_shooting:
+        if not premier_league_shooting:
             self.logger.warning("No shooting data retrieved")
             return pd.DataFrame()
 
-        # combine all bundesliga shooting data
-        combined_shooting = pd.concat(bundesliga_shooting, ignore_index=True)
+        # combine all premier league shooting data
+        combined_shooting = pd.concat(premier_league_shooting, ignore_index=True)
         self.logger.info(
-            f"Retrieved {len(combined_shooting)} Bundesliga shooting records"
+            f"Retrieved {len(combined_shooting)} Premier League shooting records"
         )
 
-        # step 3: merge bundesliga shooting statistics
-        bundesliga_schedule = self._merge_shooting_stats_into_schedule(
-            bundesliga_schedule, combined_shooting
+        # step 3: merge premier league shooting statistics
+        premier_league_schedule = self._merge_shooting_stats_into_schedule(
+            premier_league_schedule, combined_shooting
         )
 
         # add season information
-        bundesliga_schedule["season_end_year"] = season_end_year
-        bundesliga_schedule["season"] = f"{season_end_year - 1}/{season_end_year}"
+        premier_league_schedule["season_end_year"] = season_end_year
+        premier_league_schedule["season"] = f"{season_end_year - 1}/{season_end_year}"
 
-        self.logger.info(f"Completed: {len(bundesliga_schedule)} Bundesliga matches")
-        return bundesliga_schedule
+        self.logger.info(f"Completed: {len(premier_league_schedule)} Premier League matches")
+        return premier_league_schedule
 
     def _scrape_team_shooting_logs(
         self, team_id: str, season_string: str, team_name: str
     ) -> pd.DataFrame:
-        """Scrape shooting log data for a team (Bundesliga only)"""
+        """Scrape shooting log data for a team (Premier League only)"""
         team_url_name = get_fbref_url_name(team_name)
-        url = f"https://fbref.com/en/squads/{team_id}/{season_string}/matchlogs/c20/shooting/{team_url_name}-Match-Logs-Bundesliga"
+        url = f"https://fbref.com/en/squads/{team_id}/{season_string}/matchlogs/c9/shooting/{team_url_name}-Match-Logs-Premier-League"
 
         try:
             self.logger.debug(f"  Fetching: {url}")
@@ -344,7 +344,7 @@ class FBRefScraper(BaseScraper):
                         "team": team_name,
                         "opponent": opponent,
                         "venue": match_data.get("venue", ""),
-                        "competition": match_data.get("comp", "Bundesliga"),
+                        "competition": match_data.get("comp", "Premier League"),
                         "result": match_data.get("result", ""),
                         # shooting statistics
                         "shots": self._safe_float(match_data.get("shots")),
@@ -374,24 +374,24 @@ class FBRefScraper(BaseScraper):
 
             if shooting_data:
                 df = pd.DataFrame(shooting_data)
-                self.logger.info(f"  ✓ {len(df)} Bundesliga match records")
+                self.logger.info(f"  ✓ {len(df)} Premier League match records")
                 return df
             else:
-                self.logger.warning("  ✗ No Bundesliga match data extracted")
+                self.logger.warning("  ✗ No Premier League match data extracted")
                 return pd.DataFrame()
 
         except Exception as e:
             self.logger.error(f"  ✗ Error: {e}")
             return pd.DataFrame()
 
-    def _scrape_bundesliga_schedule(self, season_end_year: int) -> pd.DataFrame:
-        """Scrape Bundesliga schedule from the competition schedule page"""
+    def _scrape_premier_league_schedule(self, season_end_year: int) -> pd.DataFrame:
+        """Scrape Premier League schedule from the competition schedule page"""
         season_string = f"{season_end_year - 1}-{season_end_year}"
 
-        # construct schedule url (competition ID 20 = Bundesliga)
-        url = f"https://fbref.com/en/comps/20/{season_string}/schedule/{season_string}-Bundesliga-Scores-and-Fixtures"
+        # construct schedule url (competition ID 9 = Premier League)
+        url = f"https://fbref.com/en/comps/9/{season_string}/schedule/{season_string}-Premier-League-Scores-and-Fixtures"
 
-        self.logger.info(f"Scraping Bundesliga schedule for {season_string}")
+        self.logger.info(f"Scraping Premier League schedule for {season_string}")
 
         try:
             self.logger.debug(f"  Fetching: {url}")
@@ -445,7 +445,7 @@ class FBRefScraper(BaseScraper):
             possible_table_ids = [
                 "sched_all",
                 "schedule",
-                f"sched_{season_end_year - 1}_{season_end_year}_20_1",
+                f"sched_{season_end_year - 1}_{season_end_year}_9_1",
             ]
 
             for table_id in possible_table_ids:
@@ -534,7 +534,7 @@ class FBRefScraper(BaseScraper):
                         "away_team": standardise_team_name(away_team.strip()),
                         "home_goals": home_goals,
                         "away_goals": away_goals,
-                        "competition": "Bundesliga",
+                        "competition": "Premier League",
                         "venue": row_data.get("venue", ""),
                         "match_report": row_data.get("match_report", ""),
                     }
@@ -563,10 +563,10 @@ class FBRefScraper(BaseScraper):
                 playoff_count = initial_count - len(df)
                 if playoff_count > 0:
                     self.logger.info(
-                        f"  Filtered out {playoff_count} playoff/non-Bundesliga matches"
+                        f"  Filtered out {playoff_count} playoff/non-Premier-League matches"
                     )
 
-                self.logger.info(f"  ✓ {len(df)} Bundesliga matches")
+                self.logger.info(f"  ✓ {len(df)} Premier League matches")
                 return df
             else:
                 self.logger.warning("  ✗ No valid match data extracted from schedule")
@@ -853,7 +853,7 @@ class FBRefScraper(BaseScraper):
         return matches_df
 
     def scrape_multiple_seasons(self, start_year: int, end_year: int) -> pd.DataFrame:
-        """Scrape match data for multiple Bundesliga seasons"""
+        """Scrape match data for multiple Premier League seasons"""
         self.setup_driver()
         all_data = []
 

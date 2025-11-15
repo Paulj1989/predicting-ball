@@ -1,7 +1,7 @@
 [project]
 name = "predicting-ball"
 version = "1.0.0"
-description = "Predicting match and season outcomes in the Bundesliga (and beyond)."
+description = "Predicting match and season outcomes in the Premier League (and beyond)."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

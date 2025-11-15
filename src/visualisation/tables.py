@@ -60,7 +60,7 @@ def create_standings_table(
         .cols_align(align="center")
         .tab_style(style=[style.text(weight="bold")], locations=loc.stub())
         .tab_header(
-            title="Bundesliga 2025/26 Season Projections",
+            title="Premier League 2025/26 Season Projections",
             subtitle="10,000 Monte Carlo simulations using calibrated Poisson regression with Dixon-Coles correction and parametric bootstrapping.",
         )
         .tab_options(
@@ -127,7 +127,7 @@ def create_next_fixtures_table(
         )
         .cols_align(align="left", columns=["Home Team", "Away Team"])
         .tab_header(
-            title="Next Bundesliga Matchday Predictions",
+            title="Next Premier League Matchday Predictions",
             subtitle="Predicted probabilities using Poisson model fitted on match-level performance, squad values, and betting odds.",
         )
         .tab_options(

@@ -24,7 +24,7 @@ def render():
     - **Stage 1 (Team Strengths)** - Estimates each team's attack and defense ratings, along with home advantage, and uses a Dixon-Coles correction to reduce systematic undervaluing of low-scoring matches.
     - **Stage 2 (Match Features)** - Fixes team strengths and estimates coefficients for match-specific features, including betting odds ratios and rolling 5-game npxGD.
 
-    **Informed Priors**: The model uses informed priors to handle data limitations. A blend of Transfermarkt's squad market values, Club Elo's team ratings, and the model's ratings for the previous season serve as a ratings prior (for promoted teams, the prior is calculated from squad values and Elo ratings only). A home advantage prior is estimated from historical Bundesliga data, accounting for season-to-season variance.
+    **Informed Priors**: The model uses informed priors to handle data limitations. A blend of Transfermarkt's squad market values, Club Elo's team ratings, and the model's ratings for the previous season serve as a ratings prior (for promoted teams, the prior is calculated from squad values and Elo ratings only). A home advantage prior is estimated from historical Premier League data, accounting for season-to-season variance.
 
     **Calibrated Uncertainty**: The model uses several mechanisms for quantifying prediction uncertainty:
 
@@ -37,7 +37,7 @@ def render():
 
     #### Performance
 
-    The model has been validated on previous Bundesliga seasons using time-series cross-validation:
+    The model has been validated on previous Premier League seasons using time-series cross-validation:
 
     - **Ranked Probability Score (RPS)** - Measures accuracy of ordered outcome predictions (home/draw/away).
     - **Brier Score** - Quantifies the accuracy of probabilistic predictions, similar to mean-squared error for probabilities.

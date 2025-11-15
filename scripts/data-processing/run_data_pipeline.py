@@ -670,7 +670,7 @@ def main(
 ):
     """Execute complete data pipeline"""
     logger.info("=" * 80)
-    logger.info("BUNDESLIGA DATA PIPELINE")
+    logger.info("PREMIER LEAGUE DATA PIPELINE")
     logger.info(f"Started at: {datetime.now()}")
     logger.info(f"Mode: {'FORCE RESCRAPE' if force_rescrape else 'INCREMENTAL UPDATE'}")
     if headed:

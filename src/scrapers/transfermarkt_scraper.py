@@ -107,7 +107,7 @@ class TransfermarktScraper(BaseScraper):
     def scrape_season(self, season_end_year: int) -> pd.DataFrame:
         """Scrape squad values for a single season"""
         season_start = season_end_year - 1
-        url = f"https://www.transfermarkt.com/bundesliga/startseite/wettbewerb/L1/plus/?saison_id={season_start}"
+        url = f"https://www.transfermarkt.com/premier-league/startseite/wettbewerb/GB1/plus/?saison_id={season_start}"
 
         self.logger.info(f"Scraping season {season_start}/{season_end_year}")
 
@@ -123,7 +123,7 @@ class TransfermarktScraper(BaseScraper):
         # try each table until we find one with complete data
         for table in tables:
             data = self._parse_table(table, season_end_year)
-            if data and len(data) >= 15:  # bundesliga has 18 teams
+            if data and len(data) >= 15:  # premier league has 20 teams
                 df = pd.DataFrame(data)
                 self.logger.info(f"Scraped {len(df)} teams")
                 return df

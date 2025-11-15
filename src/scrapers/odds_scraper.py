@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class OddsScraper:
-    """Scraper for historical and current Bundesliga betting odds"""
+    """Scraper for historical and current Premier League betting odds"""
 
     def __init__(self, api_key: Optional[str] = None):
         """Initialise scraper with API key"""
@@ -28,7 +28,7 @@ class OddsScraper:
 
         self.historical_base_url = "https://www.football-data.co.uk"
         self.api_base_url = "https://api.the-odds-api.com/v4"
-        self.bundesliga_page = f"{self.historical_base_url}/germanym.php"
+        self.premier_league_page = f"{self.historical_base_url}/englandm.php"
 
     def get_historical_odds(self, seasons: Optional[List[str]] = None) -> pd.DataFrame:
         """Scrape historical odds from football-data.co.uk"""
@@ -36,7 +36,7 @@ class OddsScraper:
 
         # fetch main page to discover available seasons
         try:
-            response = requests.get(self.bundesliga_page, timeout=10)
+            response = requests.get(self.premier_league_page, timeout=10)
             response.raise_for_status()
         except Exception as e:
             logger.error(f"Failed to fetch main page: {e}")
@@ -44,13 +44,13 @@ class OddsScraper:
 
         soup = BeautifulSoup(response.content, "html.parser")
 
-        # find all bundesliga csv links
+        # find all premier league csv links
         csv_links = []
         for link in soup.find_all("a", href=True):
             href = link["href"]
 
-            # pattern: /mmz4281/YYYY/D1.csv (where YYYY is 4-digit season code)
-            if "D1.csv" in href and "mmz4281" in href:
+            # pattern: /mmz4281/YYYY/E0.csv (where YYYY is 4-digit season code)
+            if "E0.csv" in href and "mmz4281" in href:
                 # construct full url
                 full_url = (
                     f"{self.historical_base_url}/{href.lstrip('/')}"
@@ -76,7 +76,7 @@ class OddsScraper:
         if not csv_links and seasons:
             logger.info("Using direct URL construction")
             for season in seasons:
-                url = f"{self.historical_base_url}/mmz4281/{season}/D1.csv"
+                url = f"{self.historical_base_url}/mmz4281/{season}/E0.csv"
                 csv_links.append({"season": season, "url": url})
 
         # filter by requested seasons
@@ -118,10 +118,10 @@ class OddsScraper:
         odds_format: str = "decimal",
         calculate_consensus: bool = True,
     ) -> pd.DataFrame:
-        """Fetch upcoming bundesliga odds from The Odds API"""
+        """Fetch upcoming premier league odds from The Odds API"""
         logger.info("Fetching upcoming odds from The Odds API")
 
-        url = f"{self.api_base_url}/sports/soccer_germany_bundesliga/odds"
+        url = f"{self.api_base_url}/sports/soccer_epl/odds"
         params = {
             "apiKey": self.api_key,
             "regions": regions,

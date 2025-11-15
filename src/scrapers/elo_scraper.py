@@ -12,7 +12,7 @@ from ..utils.team_utils import standardise_team_name, standardise_dataframe
 
 
 class EloScraper(BaseScraper):
-    """Scraper for Club Elo ratings of German teams"""
+    """Scraper for Club Elo ratings of English teams"""
 
     def __init__(self, min_delay: float = 2.0, max_delay: float = 5.0):
         """Initialise Elo scraper"""
@@ -59,8 +59,8 @@ class EloScraper(BaseScraper):
             self.logger.error(f"Failed to fetch Elo data: {e}")
             return pd.DataFrame()
 
-    def _filter_german_teams(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Filter for teams in Germany"""
+    def _filter_english_teams(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Filter for teams in England"""
         if df.empty:
             return df
 
@@ -68,10 +68,10 @@ class EloScraper(BaseScraper):
             self.logger.warning("No country column found in Elo data")
             return df
 
-        german_teams = df.loc[df["country"] == "GER"].copy()
-        self.logger.info(f"Filtered to {len(german_teams)} German team records")
+        english_teams = df.loc[df["country"] == "ENG"].copy()
+        self.logger.info(f"Filtered to {len(english_teams)} English team records")
 
-        return german_teams
+        return english_teams
 
     def scrape_season(
         self, season_end_year: int, reference_date: Optional[str] = None
@@ -95,22 +95,22 @@ class EloScraper(BaseScraper):
             self.logger.warning(f"No Elo data found for {reference_date}")
             return pd.DataFrame()
 
-        # filter for german teams
-        german_df = self._filter_german_teams(df)
+        # filter for english teams
+        english_df = self._filter_english_teams(df)
 
-        if german_df.empty:
-            self.logger.warning("No German teams found in Elo data")
+        if english_df.empty:
+            self.logger.warning("No English teams found in Elo data")
             return pd.DataFrame()
 
         # add season information
-        german_df["season_end_year"] = season_end_year
-        german_df["season_start_year"] = season_start_year
-        german_df["reference_date"] = reference_date
+        english_df["season_end_year"] = season_end_year
+        english_df["season_start_year"] = season_start_year
+        english_df["reference_date"] = reference_date
 
         # standardise team names using centralised mapper
-        if "club" in german_df.columns:
-            german_df["team"] = german_df["club"].apply(standardise_team_name)
-            german_df["team_original_elo"] = german_df["club"]
+        if "club" in english_df.columns:
+            english_df["team"] = english_df["club"].apply(standardise_team_name)
+            english_df["team_original_elo"] = english_df["club"]
 
         # select and order relevant columns
         output_cols = [
@@ -122,11 +122,11 @@ class EloScraper(BaseScraper):
             "elo",
         ]
 
-        german_df = german_df[output_cols].copy()
+        english_df = english_df[output_cols].copy()
 
-        self.logger.info(f"Retrieved Elo ratings for {len(german_df)} German teams")
+        self.logger.info(f"Retrieved Elo ratings for {len(english_df)} English teams")
 
-        return german_df
+        return english_df
 
     def scrape_multiple_seasons(self, start_year: int, end_year: int) -> pd.DataFrame:
         """Scrape Elo ratings for multiple seasons"""
