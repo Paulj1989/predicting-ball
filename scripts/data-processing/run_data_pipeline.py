@@ -662,7 +662,7 @@ def _ensure_table_schema(
 
 
 def main(
-    start_year: int = 2021,
+    start_year: int = 2022,
     end_year: Optional[int] = None,
     force_rescrape: bool = False,
     headed: bool = False,
@@ -726,7 +726,7 @@ if __name__ == "__main__":
         python scripts/run_data_pipeline.py
 
         # Scrape specific seasons
-        python scripts/run_data_pipeline.py --start-year 2020 --end-year 2024
+        python scripts/run_data_pipeline.py --start-year 2022 --end-year 2025
 
         # Force rescrape all data
         python scripts/run_data_pipeline.py --force-rescrape
@@ -745,8 +745,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--start-year",
         type=int,
-        default=2021,
-        help="Start year for scraping (default: 2021)",
+        default=2022,
+        help="Start year for scraping (default: 2022)",
     )
     parser.add_argument(
         "--end-year",
