@@ -192,7 +192,7 @@ FBREF_TEAM_IDS = {
     "Manchester City": "b8fd03ef",
     "Manchester United": "19538871",
     "Newcastle United": "b2b47a98",
-    "Norwich City": "1df6b87e",
+    "Norwich City": "1c781004",
     "Nottingham Forest": "e4a775cb",
     "Sheffield United": "1df6b87e",
     "Southampton": "33c895d4",
@@ -369,9 +369,9 @@ PREMIER_LEAGUE_SEASONS = {
         "Everton",
         "Brentford",
         "Nottingham Forest",
-        "Ipswich Town",
-        "Southampton",
-        "Leicester City",
+        "Leeds United",
+        "Burnley",
+        "Sunderland",
     ],
 }
 
