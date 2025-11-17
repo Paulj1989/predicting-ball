@@ -54,7 +54,7 @@ contourpy==1.3.3
     # via matplotlib
 cycler==0.12.1
     # via matplotlib
-duckdb==1.4.1
+duckdb==1.4.2
     # via predicting-ball (pyproject.toml)
 faicons==0.2.2
     # via great-tables
