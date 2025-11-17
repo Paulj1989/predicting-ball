@@ -202,6 +202,7 @@ requests==2.32.5
     # via
     #   predicting-ball (pyproject.toml)
     #   streamlit
+    #   undetected-chromedriver
     #   webdriver-manager
 rpds-py==0.28.0
     # via
@@ -219,7 +220,9 @@ scipy==1.16.3
 seaborn==0.13.2
     # via predicting-ball (pyproject.toml)
 selenium==4.37.0
-    # via predicting-ball (pyproject.toml)
+    # via
+    #   predicting-ball (pyproject.toml)
+    #   undetected-chromedriver
 six==1.17.0
     # via python-dateutil
 smmap==5.0.2
@@ -286,6 +289,8 @@ typing-inspection==0.4.2
     # via pydantic
 tzdata==2025.2
     # via pandas
+undetected-chromedriver==3.5.5
+    # via predicting-ball (pyproject.toml)
 urllib3==2.5.0
     # via
     #   botocore
@@ -304,7 +309,9 @@ webdriver-manager==4.0.2
 websocket-client==1.9.0
     # via selenium
 websockets==15.0.1
-    # via uvicorn
+    # via
+    #   undetected-chromedriver
+    #   uvicorn
 wsproto==1.2.0
     # via trio-websocket
 zipp==3.23.0
