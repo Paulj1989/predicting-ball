@@ -223,6 +223,8 @@ selenium==4.37.0
     # via
     #   predicting-ball (pyproject.toml)
     #   undetected-chromedriver
+setuptools==80.9.0
+    # via predicting-ball (pyproject.toml)
 six==1.17.0
     # via python-dateutil
 smmap==5.0.2

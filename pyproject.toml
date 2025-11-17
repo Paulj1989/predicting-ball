@@ -33,6 +33,7 @@ dependencies = [
     "boto3>=1.40.55",
     "statsmodels>=0.14.5",
     "undetected-chromedriver>=3.5.5",
+    "setuptools>=80.9.0",
 ]
 
 [build-system]
