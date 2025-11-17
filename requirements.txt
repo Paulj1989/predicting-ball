@@ -113,7 +113,7 @@ matplotlib==3.10.7
     # via
     #   predicting-ball (pyproject.toml)
     #   seaborn
-narwhals==2.8.0
+narwhals==2.11.0
     # via altair
 numpy==2.3.4
     # via
