@@ -316,11 +316,11 @@ def _scrape_historical_odds(
 
 
 def _scrape_upcoming_odds(conn: duckdb.DuckDBPyConnection, scraper: OddsScraper):
-    """Scrape upcoming odds from The Odds API (both EU and UK regions)."""
+    """Scrape upcoming odds from The Odds API (both EU and UK regions)"""
     logger.info("\nUpcoming Odds (The Odds API):")
 
-    # Fetch odds from both EU region (for Pinnacle) and UK region (for UK bookmakers)
-    logger.info("  Fetching EU region odds (includes Pinnacle)...")
+    # fetch odds from both eu and uk regions
+    logger.info("  Fetching EU region odds..")
     eu_odds = scraper.get_upcoming_odds(regions="eu", calculate_consensus=False)
 
     if not eu_odds.empty:
@@ -336,7 +336,7 @@ def _scrape_upcoming_odds(conn: duckdb.DuckDBPyConnection, scraper: OddsScraper)
             f"    EU bookmakers: {', '.join(eu_bookmakers[:5])}{'...' if len(eu_bookmakers) > 5 else ''}"
         )
 
-    logger.info("  Fetching UK region odds (includes bet365, williamhill, etc.)...")
+    logger.info("  Fetching UK region odds...")
     uk_odds = scraper.get_upcoming_odds(regions="uk", calculate_consensus=False)
 
     if not uk_odds.empty:
@@ -356,11 +356,11 @@ def _scrape_upcoming_odds(conn: duckdb.DuckDBPyConnection, scraper: OddsScraper)
             "    UK region returned no data - this is expected if no UK bookmakers are available"
         )
 
-    # Merge odds from both regions
+    # merge odds from both regions
     if not eu_odds.empty and not uk_odds.empty:
         logger.info("  Merging EU and UK odds data...")
 
-        # Get base columns to keep from both
+        # get base columns to keep from both
         base_cols = ["match_id", "commence_time", "home_team", "away_team"]
 
         # Combine all unique columns, avoiding duplicates
@@ -369,13 +369,13 @@ def _scrape_upcoming_odds(conn: duckdb.DuckDBPyConnection, scraper: OddsScraper)
             if col not in base_cols and col not in all_cols:
                 all_cols.append(col)
 
-        # Start with EU odds
+        # start with eu odds
         upcoming_odds = eu_odds.copy()
 
-        # Add UK bookmaker columns if they don't exist
+        # add uk bookmaker columns if they don't exist
         for col in uk_odds.columns:
             if col not in base_cols and col not in upcoming_odds.columns:
-                # Match on match_id and add UK bookmaker data
+                # match on match_id and add uk bookmaker data
                 upcoming_odds = upcoming_odds.merge(
                     uk_odds[["match_id", col]], on="match_id", how="left"
                 )
@@ -384,12 +384,12 @@ def _scrape_upcoming_odds(conn: duckdb.DuckDBPyConnection, scraper: OddsScraper)
 
     elif not eu_odds.empty:
         logger.warning(
-            "  UK odds not available - using EU odds only (Pinnacle will be available)"
+            "  UK odds not available - using EU odds only"
         )
         upcoming_odds = eu_odds
     elif not uk_odds.empty:
         logger.warning(
-            "  EU odds not available - using UK odds only (Pinnacle may not be available)"
+            "  EU odds not available - using UK odds only"
         )
         upcoming_odds = uk_odds
     else:
@@ -397,7 +397,7 @@ def _scrape_upcoming_odds(conn: duckdb.DuckDBPyConnection, scraper: OddsScraper)
         return
 
     if not upcoming_odds.empty:
-        # Log final bookmaker count
+        # log final bookmaker count
         final_bookmakers = [
             col.replace("_h2h_home", "")
             for col in upcoming_odds.columns
