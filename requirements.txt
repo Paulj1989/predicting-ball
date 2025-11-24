@@ -78,7 +78,7 @@ htmltools==0.6.0
     #   great-tables
 httptools==0.7.1
     # via uvicorn
-idna==3.10
+idna==3.11
     # via
     #   anyio
     #   requests
