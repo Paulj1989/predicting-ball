@@ -162,7 +162,7 @@ protobuf==6.33.0
     # via streamlit
 pyarrow==22.0.0
     # via streamlit
-pydantic==2.12.0
+pydantic==2.12.4
     # via fastapi
 pydantic-core==2.41.1
     # via pydantic
