@@ -60,7 +60,7 @@ faicons==0.2.2
     # via great-tables
 fastapi==0.121.2
     # via predicting-ball (pyproject.toml)
-fonttools==4.60.0
+fonttools==4.61.0
     # via matplotlib
 gitdb==4.0.12
     # via gitpython
