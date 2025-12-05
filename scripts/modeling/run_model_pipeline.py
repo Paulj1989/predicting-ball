@@ -10,7 +10,8 @@ Execute the full modelling pipeline:
 4. Generate predictions
 
 Usage:
-    python scripts/modeling/run_model_pipeline.py [--tune]
+    python scripts/modeling/run_model_pipeline.py [--tune] [--metric rps|log_loss|brier]
+    python scripts/modeling/run_model_pipeline.py --tune --metric brier --n-trials 50
 """
 
 import sys
@@ -45,6 +46,14 @@ def parse_args():
 
     parser.add_argument(
         "--skip-validation", action="store_true", help="Skip validation step"
+    )
+
+    parser.add_argument(
+        "--metric",
+        type=str,
+        choices=["rps", "log_loss", "brier"],
+        default="rps",
+        help="Metric to optimise during tuning (default: rps)",
     )
 
     return parser.parse_args()
@@ -83,6 +92,8 @@ def main():
     train_cmd = [
         "python",
         str(modeling_dir / "train_model.py"),
+        "--metric",
+        args.metric,
     ]
 
     if args.tune:
