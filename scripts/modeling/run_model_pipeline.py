@@ -110,7 +110,9 @@ def main():
         "--model-path",
         "outputs/models/production_model.pkl",
         "--comprehensive",
-        "--outcome-specific"
+        "--outcome-specific",
+        "--metric",
+        args.metric,
     ]
 
     run_command(calibrate_cmd, "STEP 2: CALIBRATING MODEL")
@@ -126,6 +128,8 @@ def main():
             "outputs/models/production_model.pkl",
             "--calibrator-path",
             "outputs/models/calibrators.pkl",
+            "--metric",
+            args.metric,
         ]
 
         run_command(validate_cmd, "STEP 3: VALIDATING MODEL")
