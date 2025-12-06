@@ -293,7 +293,7 @@ tzdata==2025.2
     # via pandas
 undetected-chromedriver==3.5.5
     # via predicting-ball (pyproject.toml)
-urllib3==2.5.0
+urllib3==2.6.0
     # via
     #   botocore
     #   requests
