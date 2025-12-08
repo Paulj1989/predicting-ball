@@ -93,6 +93,14 @@ def parse_args():
         help="Rolling window sizes for npxGD features (default: use model's windows)",
     )
 
+    parser.add_argument(
+        "--metric",
+        type=str,
+        choices=["rps", "log_loss", "brier"],
+        default="rps",
+        help="Primary metric to report and emphasise (default: rps)",
+    )
+
     return parser.parse_args()
 
 
@@ -198,8 +206,27 @@ def main():
     )
 
     print(f"\n   Uncalibrated metrics (calibration set):")
-    print(f"     Brier: {metrics_uncal_cal['brier_score']:.4f}")
-    print(f"     RPS:   {metrics_uncal_cal.get('rps', 'N/A')}")
+
+    # emphasise selected metric
+    metric_map = {"rps": "RPS", "log_loss": "Log Loss", "brier": "Brier"}
+    metric_display = metric_map[args.metric]
+
+    if args.metric == "rps":
+        print(f"     {metric_display}: {metrics_uncal_cal.get('rps', 'N/A')} (PRIMARY)")
+        print(f"     Brier: {metrics_uncal_cal['brier_score']:.4f}")
+        print(f"     Log Loss: {metrics_uncal_cal.get('log_loss', 'N/A')}")
+    elif args.metric == "log_loss":
+        print(
+            f"     {metric_display}: {metrics_uncal_cal.get('log_loss', 'N/A')} (PRIMARY)"
+        )
+        print(f"     Brier: {metrics_uncal_cal['brier_score']:.4f}")
+        print(f"     RPS: {metrics_uncal_cal.get('rps', 'N/A')}")
+    else:  # brier
+        print(
+            f"     {metric_display}: {metrics_uncal_cal['brier_score']:.4f} (PRIMARY)"
+        )
+        print(f"     RPS: {metrics_uncal_cal.get('rps', 'N/A')}")
+        print(f"     Log Loss: {metrics_uncal_cal.get('log_loss', 'N/A')}")
 
     # check draw prediction rate
     pred_draws_cal = (np.argmax(cal_predictions, axis=1) == 1).sum()
@@ -251,10 +278,15 @@ def main():
         }
 
     # calculate calibrated metrics on calibration set
-    from src.evaluation.metrics import calculate_brier_score, calculate_rps
+    from src.evaluation.metrics import (
+        calculate_brier_score,
+        calculate_rps,
+        calculate_log_loss,
+    )
 
     brier_cal = calculate_brier_score(cal_preds_calibrated, cal_actuals)
     rps_cal = calculate_rps(cal_preds_calibrated, cal_actuals)
+    log_loss_cal = calculate_log_loss(cal_preds_calibrated, cal_actuals)
 
     # draw metrics on calibration set
     pred_draws_cal_calibrated = (np.argmax(cal_preds_calibrated, axis=1) == 1).sum()
@@ -266,10 +298,31 @@ def main():
     ).sum() / max((cal_actuals == 1).sum(), 1)
 
     print("\n   Calibrated metrics (calibration set):")
-    print(
-        f"     Brier: {brier_cal:.4f} (Δ = {brier_cal - metrics_uncal_cal['brier_score']:+.4f})"
-    )
-    print(f"     RPS:   {rps_cal:.4f}")
+
+    # emphasise selected metric with improvement
+    if args.metric == "rps":
+        rps_uncal = metrics_uncal_cal.get("rps", rps_cal)
+        print(f"     RPS: {rps_cal:.4f} (Δ = {rps_cal - rps_uncal:+.4f}) (PRIMARY)")
+        print(
+            f"     Brier: {brier_cal:.4f} (Δ = {brier_cal - metrics_uncal_cal['brier_score']:+.4f})"
+        )
+        print(f"     Log Loss: {log_loss_cal:.4f}")
+    elif args.metric == "log_loss":
+        log_loss_uncal = metrics_uncal_cal.get("log_loss", log_loss_cal)
+        print(
+            f"     Log Loss: {log_loss_cal:.4f} (Δ = {log_loss_cal - log_loss_uncal:+.4f}) (PRIMARY)"
+        )
+        print(
+            f"     Brier: {brier_cal:.4f} (Δ = {brier_cal - metrics_uncal_cal['brier_score']:+.4f})"
+        )
+        print(f"     RPS: {rps_cal:.4f}")
+    else:  # brier
+        print(
+            f"     Brier: {brier_cal:.4f} (Δ = {brier_cal - metrics_uncal_cal['brier_score']:+.4f}) (PRIMARY)"
+        )
+        rps_uncal = metrics_uncal_cal.get("rps", rps_cal)
+        print(f"     RPS: {rps_cal:.4f} (Δ = {rps_cal - rps_uncal:+.4f})")
+        print(f"     Log Loss: {log_loss_cal:.4f}")
     print(
         f"     Predicted draws: {pred_draws_cal_calibrated}/{len(cal_actuals)} ({pred_draws_cal_calibrated / len(cal_actuals):.1%})"
     )
@@ -384,8 +437,28 @@ def main():
     print(f"Holdout set: {len(holdout_data)} matches")
 
     print("\nHoldout validation (most honest assessment):")
-    print(f"  Brier improvement: {holdout_metrics['brier_improvement']:+.4f}")
-    print(f"  RPS improvement: {holdout_metrics['rps_improvement']:+.4f}")
+
+    # emphasise selected metric first
+    if args.metric == "rps":
+        print(f"  RPS improvement: {holdout_metrics['rps_improvement']:+.4f} (PRIMARY)")
+        print(f"  Brier improvement: {holdout_metrics['brier_improvement']:+.4f}")
+        print(
+            f"  Log Loss improvement: {holdout_metrics.get('log_loss_improvement', 'N/A')}"
+        )
+    elif args.metric == "log_loss":
+        print(
+            f"  Log Loss improvement: {holdout_metrics.get('log_loss_improvement', 'N/A')} (PRIMARY)"
+        )
+        print(f"  Brier improvement: {holdout_metrics['brier_improvement']:+.4f}")
+        print(f"  RPS improvement: {holdout_metrics['rps_improvement']:+.4f}")
+    else:  # brier
+        print(
+            f"  Brier improvement: {holdout_metrics['brier_improvement']:+.4f} (PRIMARY)"
+        )
+        print(f"  RPS improvement: {holdout_metrics['rps_improvement']:+.4f}")
+        print(
+            f"  Log Loss improvement: {holdout_metrics.get('log_loss_improvement', 'N/A')}"
+        )
     print(
         f"  Draw accuracy: {holdout_metrics['draw_accuracy_uncalibrated']:.1%} → {holdout_metrics['draw_accuracy_calibrated']:.1%}"
     )
@@ -404,9 +477,8 @@ def main():
         - holdout_metrics["draw_accuracy_uncalibrated"]
     ) * 100
 
-    print(
-        f"\n Draw accuracy improved by {draw_improvement:.0f}pp on holdout"
-    )
+    print(f"\n Draw accuracy improved by {draw_improvement:.0f}pp on holdout")
+
 
 if __name__ == "__main__":
     main()

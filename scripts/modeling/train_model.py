@@ -6,8 +6,8 @@ Train Final Model
 Fit production model
 
 Usage:
-    python scripts/modeling/train_model.py [--tune] [--dry-run]
-    python scripts/modeling/train_model.py --tune --n-trials 50
+    python scripts/modeling/train_model.py [--tune] [--dry-run] [--metric rps|log_loss|brier]
+    python scripts/modeling/train_model.py --tune --n-trials 50 --metric brier
     python scripts/modeling/train_model.py --prev-model outputs/models/production_model.pkl
 """
 
@@ -89,6 +89,14 @@ def parse_args():
         "--skip-prev-season",
         action="store_true",
         help="Skip extracting previous season ratings (use squad values only)",
+    )
+
+    parser.add_argument(
+        "--metric",
+        type=str,
+        choices=["rps", "log_loss", "brier"],
+        default="rps",
+        help="Metric to optimise during tuning (default: rps)",
     )
 
     return parser.parse_args()
@@ -182,10 +190,12 @@ def main():
     # HYPERPARAMETER OPTIMISATION OR LOADING
     # ========================================================================
     if args.tune:
-        print("\n3. Running full hyperparameter optimisation...")
+        print(
+            f"\n3. Running full hyperparameter optimisation (metric: {args.metric})..."
+        )
 
         hyperparams = optimise_hyperparameters(
-            all_train_data, n_trials=args.n_trials, metric="rps", verbose=True
+            all_train_data, n_trials=args.n_trials, metric=args.metric, verbose=True
         )
 
         save_hyperparameters(hyperparams, output_dir, dry_run=args.dry_run)

@@ -72,6 +72,14 @@ def parse_args():
         help="Show detailed prediction quality analysis",
     )
 
+    parser.add_argument(
+        "--metric",
+        type=str,
+        choices=["rps", "log_loss", "brier"],
+        default="rps",
+        help="Primary metric to report and emphasise (default: rps)",
+    )
+
     return parser.parse_args()
 
 
@@ -170,9 +178,9 @@ def main():
 
     if args.debug:
         # check actual prediction distributions
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("PREDICTION QUALITY ANALYSIS")
-        print("="*60)
+        print("=" * 60)
 
         for result in results:
             season = result["season"]
@@ -203,7 +211,9 @@ def main():
             for i in range(min(5, len(preds))):
                 h, d, a = preds[i]
                 actual = ["H", "D", "A"][actuals[i]]
-                print(f"    Match {i}: H={h:.3f} D={d:.3f} A={a:.3f} (actual: {actual})")
+                print(
+                    f"    Match {i}: H={h:.3f} D={d:.3f} A={a:.3f} (actual: {actual})"
+                )
 
             # check if probabilities sum to 1
             prob_sums = preds.sum(axis=1)
@@ -220,7 +230,9 @@ def main():
             )
 
             if max_draw < 0.15:
-                print(f"     WARNING: Maximum draw probability is very low ({max_draw:.3f})")
+                print(
+                    f"     WARNING: Maximum draw probability is very low ({max_draw:.3f})"
+                )
 
     if len(results) == 0:
         print("\n✗ No validation results obtained")
@@ -281,28 +293,107 @@ def main():
 
     # print summary stats
     print("\nValidation Metrics:")
+
+    metric_key_map = {"rps": "rps", "log_loss": "log_loss", "brier": "brier_score"}
+    metric_display_map = {"rps": "RPS", "log_loss": "Log Loss", "brier": "Brier"}
+
     for result in results:
         season = result["season"]
+
+        # get metrics
         rps = result["metrics"]["rps"]
-        brier = result["metrics"].get("brier_score", "N/A")
+        brier = result["metrics"].get("brier_score", None)
+        log_loss = result["metrics"].get("log_loss", None)
+
+        # get primary metric
+        primary_key = metric_key_map[args.metric]
+        primary_value = result["metrics"].get(primary_key, "N/A")
 
         baseline_info = ""
-        if result.get("baseline_metrics"):
-            baseline_rps = result["baseline_metrics"]["rps"]
-            improvement = (baseline_rps - rps) / baseline_rps * 100
-            baseline_info = f" (vs baseline: {improvement:+.1f}%)"
+        if result.get("baseline_metrics") and args.metric in [
+            "rps",
+            "log_loss",
+            "brier",
+        ]:
+            baseline_key = (
+                "rps" if args.metric == "rps" else metric_key_map[args.metric]
+            )
+            if baseline_key in result["baseline_metrics"]:
+                baseline_value = result["baseline_metrics"][baseline_key]
+                if isinstance(primary_value, (int, float)) and isinstance(
+                    baseline_value, (int, float)
+                ):
+                    improvement = (
+                        (baseline_value - primary_value) / baseline_value * 100
+                    )
+                    baseline_info = f" (vs baseline: {improvement:+.1f}%)"
 
-        print(f"  Season {season}: RPS={rps:.4f}, Brier={brier}{baseline_info}")
+        # format based on selected metric
+        if args.metric == "rps":
+            print(
+                f"  Season {season}: RPS={rps:.4f} (PRIMARY), Brier={brier if brier is not None else 'N/A'}, Log Loss={log_loss if log_loss is not None else 'N/A'}{baseline_info}"
+            )
+        elif args.metric == "log_loss":
+            print(
+                f"  Season {season}: Log Loss={log_loss if log_loss is not None else 'N/A'} (PRIMARY), Brier={brier if brier is not None else 'N/A'}, RPS={rps:.4f}{baseline_info}"
+            )
+        else:  # brier
+            print(
+                f"  Season {season}: Brier={brier if brier is not None else 'N/A'} (PRIMARY), RPS={rps:.4f}, Log Loss={log_loss if log_loss is not None else 'N/A'}{baseline_info}"
+            )
 
     # calculate average performance
-    avg_rps = np.mean([r["metrics"]["rps"] for r in results])
-    print(f"\nAverage RPS: {avg_rps:.4f}")
+    print("\nAverage Performance:")
 
+    # calculate averages for all metrics
+    avg_rps = np.mean([r["metrics"]["rps"] for r in results])
+    avg_brier = np.mean(
+        [
+            r["metrics"].get("brier_score", 0)
+            for r in results
+            if r["metrics"].get("brier_score") is not None
+        ]
+    )
+    avg_log_loss = np.mean(
+        [
+            r["metrics"].get("log_loss", 0)
+            for r in results
+            if r["metrics"].get("log_loss") is not None
+        ]
+    )
+
+    # display based on selected metric
+    if args.metric == "rps":
+        print(f"  RPS: {avg_rps:.4f} (PRIMARY)")
+        print(f"  Brier: {avg_brier:.4f}")
+        print(f"  Log Loss: {avg_log_loss:.4f}")
+    elif args.metric == "log_loss":
+        print(f"  Log Loss: {avg_log_loss:.4f} (PRIMARY)")
+        print(f"  Brier: {avg_brier:.4f}")
+        print(f"  RPS: {avg_rps:.4f}")
+    else:  # brier
+        print(f"  Brier: {avg_brier:.4f} (PRIMARY)")
+        print(f"  RPS: {avg_rps:.4f}")
+        print(f"  Log Loss: {avg_log_loss:.4f}")
+
+    # baseline comparison for primary metric
     if all(r.get("baseline_metrics") for r in results):
-        avg_baseline = np.mean([r["baseline_metrics"]["rps"] for r in results])
-        improvement = (avg_baseline - avg_rps) / avg_baseline * 100
-        print(f"Baseline RPS: {avg_baseline:.4f}")
-        print(f"Improvement: {improvement:+.1f}%")
+        primary_key = metric_key_map[args.metric]
+        if all(primary_key in r.get("baseline_metrics", {}) for r in results):
+            avg_baseline = np.mean(
+                [r["baseline_metrics"][primary_key] for r in results]
+            )
+
+            if args.metric == "rps":
+                avg_primary = avg_rps
+            elif args.metric == "log_loss":
+                avg_primary = avg_log_loss
+            else:
+                avg_primary = avg_brier
+
+            improvement = (avg_baseline - avg_primary) / avg_baseline * 100
+            print(f"\n  Baseline {metric_display_map[args.metric]}: {avg_baseline:.4f}")
+            print(f"  Improvement: {improvement:+.1f}%")
 
     # print calibrator info if used
     if calibrators:

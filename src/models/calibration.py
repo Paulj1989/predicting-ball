@@ -625,6 +625,7 @@ def validate_calibration_on_holdout(
         "rps_improvement": rps_uncal - rps_cal,
         "log_loss_uncalibrated": log_loss_uncal,
         "log_loss_calibrated": log_loss_cal,
+        "log_loss_improvement": log_loss_uncal - log_loss_cal,
         "accuracy_uncalibrated": acc_uncal,
         "accuracy_calibrated": acc_cal,
         "draw_accuracy_uncalibrated": draw_acc_uncal,

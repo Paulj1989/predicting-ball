@@ -11,6 +11,9 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
 import logging
 from typing import Optional, Dict, List
+import re
+import subprocess
+import platform
 
 from .base_scraper import BaseScraper
 from ..utils.team_utils import (
@@ -43,6 +46,94 @@ class FBRefScraper(BaseScraper):
         self.headless = headless
         self.driver = None
 
+    def _get_chrome_version(self) -> Optional[int]:
+        """
+        Detect installed Chrome version and return major version number.
+
+        Returns:
+            Major version number (e.g., 142) or None if detection fails
+        """
+        try:
+            system = platform.system()
+
+            if system == "Darwin":  # macos
+                cmd = [
+                    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+                    "--version",
+                ]
+            elif system == "Linux":
+                # try common chrome locations
+                chrome_paths = [
+                    "/usr/bin/google-chrome",
+                    "/usr/bin/chromium-browser",
+                    "/usr/bin/chromium",
+                ]
+                cmd = None
+                for path in chrome_paths:
+                    try:
+                        subprocess.run(
+                            [path, "--version"],
+                            capture_output=True,
+                            timeout=5,
+                            check=True,
+                        )
+                        cmd = [path, "--version"]
+                        break
+                    except (FileNotFoundError, subprocess.SubprocessError):
+                        continue
+
+                if cmd is None:
+                    self.logger.warning("Chrome executable not found on Linux")
+                    return None
+            elif system == "Windows":
+                import winreg
+
+                try:
+                    # try to get chrome version from windows registry
+                    key_path = r"SOFTWARE\Google\Chrome\BLBeacon"
+                    key = winreg.OpenKey(
+                        winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ
+                    )
+                    version, _ = winreg.QueryValueEx(key, "version")
+                    winreg.CloseKey(key)
+
+                    # extract major version
+                    match = re.search(r"(\d+)\.", version)
+                    if match:
+                        major_version = int(match.group(1))
+                        self.logger.info(f"Detected Chrome version: {major_version}")
+                        return major_version
+                except Exception as e:
+                    self.logger.debug(
+                        f"Failed to get Chrome version from registry: {e}"
+                    )
+
+                # fallback to command line
+                cmd = [
+                    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                    "--version",
+                ]
+            else:
+                self.logger.warning(f"Unsupported platform: {system}")
+                return None
+
+            # run command to get version
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+
+            if result.returncode == 0:
+                version_output = result.stdout.strip()
+                # extract version number (e.g., "Google Chrome 142.0.7444.176")
+                match = re.search(r"(\d+)\.\d+\.\d+\.\d+", version_output)
+                if match:
+                    major_version = int(match.group(1))
+                    self.logger.info(f"Detected Chrome version: {major_version}")
+                    return major_version
+
+        except Exception as e:
+            self.logger.warning(f"Failed to detect Chrome version: {e}")
+
+        return None
+
     def setup_driver(self):
         """
         Configure and initialise undetected Chrome WebDriver.
@@ -50,86 +141,158 @@ class FBRefScraper(BaseScraper):
         Uses undetected_chromedriver for better cloudflare bypass.
         Supports both headless and headed modes.
         """
-        chrome_options = uc.ChromeOptions()
-
-        # configure headless mode (default for automated pipelines)
-        if self.headless:
-            chrome_options.add_argument("--headless=new")
-            self.logger.info("Using headless mode")
-        else:
-            self.logger.info("Using headed mode (visible browser)")
-
-        # core arguments
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--window-size=1920,1080")
-        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-
-        # additional arguments
-        chrome_options.add_argument("--disable-web-security")
-        chrome_options.add_argument("--disable-site-isolation-trials")
-        chrome_options.add_argument(
-            "--disable-features=IsolateOrigins,site-per-process"
-        )
-        chrome_options.add_argument("--disable-software-rasterizer")
-        chrome_options.add_argument("--disable-gpu")
-
-        # realistic user agent (updated to match current chrome)
-        chrome_options.add_argument(
-            "user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-        )
-
-        # browser preferences
-        prefs = {
-            "profile.default_content_setting_values.notifications": 2,
-            "profile.default_content_settings.popups": 0,
-            "credentials_enable_service": False,
-            "profile.password_manager_enabled": False,
-        }
-        chrome_options.add_experimental_option("prefs", prefs)
-
-        # initialise undetected chrome
-        self.driver = uc.Chrome(
-            options=chrome_options,
-            use_subprocess=True,
-            version_main=None,
-            driver_executable_path=None,
-            headless=self.headless,
-        )
-
-        # give browser time to fully initialise (especially important in headed mode)
-        time.sleep(1)
-
-        # override navigator.webdriver property
-        # wrap in try-except to handle timing issues in headed mode
-        try:
-            self.driver.execute_cdp_cmd(
-                "Page.addScriptToEvaluateOnNewDocument",
-                {
-                    "source": """
-                    Object.defineProperty(navigator, 'webdriver', {
-                        get: () => undefined
-                    });
-                    Object.defineProperty(navigator, 'plugins', {
-                        get: () => [1, 2, 3, 4, 5]
-                    });
-                    Object.defineProperty(navigator, 'languages', {
-                        get: () => ['en-US', 'en']
-                    });
-                    window.chrome = {
-                        runtime: {}
-                    };
-                """
-                },
+        # detect installed chrome version to ensure chromedriver compatibility
+        chrome_version = self._get_chrome_version()
+        if chrome_version:
+            self.logger.info(
+                f"Using Chrome version {chrome_version} for driver initialization"
             )
-        except Exception as e:
-            # cdp command may fail in some environments, log but continue
-            self.logger.warning(f"Could not set CDP commands: {e}")
-            self.logger.warning("Continuing without navigator property overrides")
+        else:
+            self.logger.warning(
+                "Could not detect Chrome version, will let undetected_chromedriver auto-detect"
+            )
 
-        mode = "headless" if self.headless else "headed"
-        self.logger.info(f"Undetected Chrome driver initialised ({mode} mode)")
+        # try multiple initialisation approaches
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            try:
+                self.logger.info(
+                    f"Driver initialization attempt {attempt}/{max_attempts}"
+                )
+
+                chrome_options = uc.ChromeOptions()
+
+                # configure headless mode (default for automated pipelines)
+                if self.headless:
+                    # use older headless mode for better compatibility
+                    chrome_options.add_argument("--headless")
+                    self.logger.info("Using headless mode")
+                else:
+                    self.logger.info("Using headed mode (visible browser)")
+
+                # core arguments - minimal set to avoid crashes
+                chrome_options.add_argument("--no-sandbox")
+                chrome_options.add_argument("--disable-dev-shm-usage")
+                chrome_options.add_argument("--window-size=1920,1080")
+                chrome_options.add_argument(
+                    "--disable-blink-features=AutomationControlled"
+                )
+
+                # only add these in headless mode to avoid crashes
+                if self.headless:
+                    chrome_options.add_argument("--disable-gpu")
+                    chrome_options.add_argument("--disable-software-rasterizer")
+
+                # realistic user agent (updated to match current chrome)
+                chrome_options.add_argument(
+                    "user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+                )
+
+                # browser preferences
+                prefs = {
+                    "profile.default_content_setting_values.notifications": 2,
+                    "profile.default_content_settings.popups": 0,
+                    "credentials_enable_service": False,
+                    "profile.password_manager_enabled": False,
+                }
+                chrome_options.add_experimental_option("prefs", prefs)
+
+                # initialise undetected chrome
+                # try with use_subprocess=True first (more stable), then False if it fails
+                use_subprocess = attempt == 1
+
+                self.driver = uc.Chrome(
+                    options=chrome_options,
+                    use_subprocess=use_subprocess,
+                    version_main=chrome_version,
+                    driver_executable_path=None,
+                    headless=self.headless,
+                )
+
+                # give browser time to fully initialise
+                # longer wait for first attempt and headed mode
+                if attempt == 1:
+                    wait_time = 5 if not self.headless else 3
+                else:
+                    wait_time = 3 if not self.headless else 2
+
+                self.logger.debug(f"Waiting {wait_time}s for browser initialization...")
+                time.sleep(wait_time)
+
+                # verify browser is still running
+                try:
+                    # simple check to ensure browser is responsive
+                    _ = self.driver.current_url
+                    self.logger.debug("Browser verified as running")
+                except Exception as e:
+                    self.logger.warning(
+                        f"Browser not responsive after initialization: {e}"
+                    )
+                    # clean up failed driver
+                    try:
+                        self.driver.quit()
+                    except:
+                        pass
+                    raise
+
+                # override navigator.webdriver property
+                # wrap in try-except to handle timing issues
+                try:
+                    self.driver.execute_cdp_cmd(
+                        "Page.addScriptToEvaluateOnNewDocument",
+                        {
+                            "source": """
+                            Object.defineProperty(navigator, 'webdriver', {
+                                get: () => undefined
+                            });
+                            Object.defineProperty(navigator, 'plugins', {
+                                get: () => [1, 2, 3, 4, 5]
+                            });
+                            Object.defineProperty(navigator, 'languages', {
+                                get: () => ['en-US', 'en']
+                            });
+                            window.chrome = {
+                                runtime: {}
+                            };
+                        """
+                        },
+                    )
+                except Exception as e:
+                    # cdp command may fail in some environments, log but continue
+                    self.logger.warning(f"Could not set CDP commands: {e}")
+                    self.logger.warning(
+                        "Continuing without navigator property overrides"
+                    )
+
+                mode = "headless" if self.headless else "headed"
+                self.logger.info(f"Undetected Chrome driver initialised ({mode} mode)")
+
+                # if we got here, initialization was successful
+                return
+
+            except Exception as e:
+                self.logger.warning(f"Attempt {attempt} failed: {e}")
+
+                # clean up
+                if hasattr(self, "driver") and self.driver:
+                    try:
+                        self.driver.quit()
+                    except:
+                        pass
+                    self.driver = None
+
+                # if this was the last attempt, raise the error
+                if attempt == max_attempts:
+                    self.logger.error("All driver initialization attempts failed")
+                    raise RuntimeError(
+                        f"Failed to initialize Chrome driver after {max_attempts} attempts"
+                    ) from e
+
+                # wait before retrying
+                retry_wait = 2 * attempt
+                self.logger.info(f"Waiting {retry_wait}s before retry...")
+                time.sleep(retry_wait)
 
     def scrape_season(self, season_end_year: int) -> pd.DataFrame:
         """
