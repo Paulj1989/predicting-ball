@@ -12,7 +12,7 @@ from ..models.dixon_coles import calculate_match_probabilities_dixon_coles
 def get_next_round_fixtures(
     current_season: pd.DataFrame, matchday_window_days: int = 4
 ) -> Optional[pd.DataFrame]:
-    """Get next round of unplayed fixtures"""
+    """Get next round of unplayed fixtures, ensuring no team plays multiple games"""
     future_fixtures = current_season[current_season["is_played"] == False].copy()
 
     if len(future_fixtures) == 0:
@@ -22,11 +22,27 @@ def get_next_round_fixtures(
     earliest_date = future_fixtures["date"].min()
     matchday_window = pd.Timedelta(days=matchday_window_days)
 
+    # Get fixtures within the time window
     next_fixtures = future_fixtures[
         future_fixtures["date"] <= (earliest_date + matchday_window)
-    ]
+    ].sort_values("date")
 
-    return next_fixtures.sort_values("date")
+    # Filter to ensure no team appears multiple times
+    # Keep earliest fixture for each team
+    teams_seen = set()
+    valid_fixtures = []
+
+    for idx, fixture in next_fixtures.iterrows():
+        home_team = fixture["home_team"]
+        away_team = fixture["away_team"]
+
+        # Only include if neither team has been seen yet
+        if home_team not in teams_seen and away_team not in teams_seen:
+            valid_fixtures.append(idx)
+            teams_seen.add(home_team)
+            teams_seen.add(away_team)
+
+    return next_fixtures.loc[valid_fixtures]
 
 
 def predict_single_match(
