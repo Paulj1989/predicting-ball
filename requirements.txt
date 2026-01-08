@@ -36,7 +36,7 @@ bs4==0.0.2
     # via predicting-ball (pyproject.toml)
 cachetools==6.2.1
     # via streamlit
-certifi==2025.10.5
+certifi==2025.11.12
     # via
     #   requests
     #   selenium
