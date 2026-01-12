@@ -208,7 +208,7 @@ rpds-py==0.29.0
     # via
     #   jsonschema
     #   referencing
-s3transfer==0.14.0
+s3transfer==0.16.0
     # via boto3
 scikit-learn==1.7.2
     # via predicting-ball (pyproject.toml)
