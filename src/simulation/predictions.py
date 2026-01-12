@@ -4,9 +4,13 @@ import numpy as np
 import pandas as pd
 from scipy.stats import poisson
 from typing import Optional, Dict, Any
+import logging
+from datetime import datetime, timezone
 
 from ..models.poisson import calculate_lambdas, calculate_lambdas_single
 from ..models.dixon_coles import calculate_match_probabilities_dixon_coles
+
+logger = logging.getLogger(__name__)
 
 
 def get_next_round_fixtures(
@@ -19,16 +23,42 @@ def get_next_round_fixtures(
         return None
 
     future_fixtures["date"] = pd.to_datetime(future_fixtures["date"])
+
+    # filter out games with dates in the past
+    # use timezone-aware datetime for accurate comparison
+    now = pd.Timestamp.now(tz="UTC").tz_localize(None)
+
+    # check for possibly postponed games (past dates with no score)
+    postponed_mask = future_fixtures["date"] < now
+    if postponed_mask.any():
+        postponed_games = future_fixtures[postponed_mask]
+        logger.warning(
+            f"Found {len(postponed_games)} unplayed game(s) with past dates "
+            f"(likely postponed). These will be excluded from predictions:"
+        )
+        for _, game in postponed_games.iterrows():
+            logger.warning(
+                f"  - {game['date'].strftime('%Y-%m-%d')}: "
+                f"{game['home_team']} vs {game['away_team']}"
+            )
+
+    # filter to only future fixtures
+    future_fixtures = future_fixtures[~postponed_mask].copy()
+
+    if len(future_fixtures) == 0:
+        logger.info("No upcoming fixtures found after filtering postponed games")
+        return None
+
     earliest_date = future_fixtures["date"].min()
     matchday_window = pd.Timedelta(days=matchday_window_days)
 
-    # Get fixtures within the time window
+    # get fixtures within the time window
     next_fixtures = future_fixtures[
         future_fixtures["date"] <= (earliest_date + matchday_window)
     ].sort_values("date")
 
-    # Filter to ensure no team appears multiple times
-    # Keep earliest fixture for each team
+    # filter to ensure no team appears multiple times
+    # keep earliest fixture for each team
     teams_seen = set()
     valid_fixtures = []
 
@@ -36,7 +66,7 @@ def get_next_round_fixtures(
         home_team = fixture["home_team"]
         away_team = fixture["away_team"]
 
-        # Only include if neither team has been seen yet
+        # only include if neither team has been seen yet
         if home_team not in teams_seen and away_team not in teams_seen:
             valid_fixtures.append(idx)
             teams_seen.add(home_team)
