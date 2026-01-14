@@ -90,7 +90,7 @@ class DataProcessor:
 
         Operations:
         - Standardise team names
-        - Extract raw odds (Pinnacle)
+        - Extract raw odds (Pinnacle closing odds)
         - Rename columns for consistency
         """
         # standardise team names
@@ -99,17 +99,42 @@ class DataProcessor:
         # convert date to datetime
         df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
 
-        # use pinnacle odds as primary (sharp bookmaker)
-        odds_cols = ["PSH", "PSD", "PSA"]
-        if all(col in df.columns for col in odds_cols):
-            # extract raw odds
+        # use closing odds for validation (final market assessment)
+        # priority: Pinnacle closing > Betfair Exchange closing > Pinnacle opening
+        pinnacle_closing = ["PSCH", "PSCD", "PSCA"]
+        betfair_closing = ["BFECH", "BFECD", "BFECA"]
+        pinnacle_opening = ["PSH", "PSD", "PSA"]
+
+        if all(col in df.columns for col in pinnacle_closing):
+            # prefer pinnacle closing odds (sharpest market)
+            df["home_odds"] = df["PSCH"]
+            df["draw_odds"] = df["PSCD"]
+            df["away_odds"] = df["PSCA"]
+            self.logger.info(
+                f"Processed {len(df)} historical odds records (Pinnacle closing)"
+            )
+        elif all(col in df.columns for col in betfair_closing):
+            # fallback to betfair exchange closing odds (still sharp, still closing)
+            df["home_odds"] = df["BFECH"]
+            df["draw_odds"] = df["BFECD"]
+            df["away_odds"] = df["BFECA"]
+            self.logger.info(
+                f"Processed {len(df)} historical odds records (Betfair Exchange closing)"
+            )
+            self.logger.warning(
+                "Using Betfair closing odds - Pinnacle closing not available"
+            )
+        elif all(col in df.columns for col in pinnacle_opening):
+            # last resort: pinnacle opening odds
             df["home_odds"] = df["PSH"]
             df["draw_odds"] = df["PSD"]
             df["away_odds"] = df["PSA"]
-
-            self.logger.info(f"Processed {len(df)} historical odds records (Pinnacle)")
+            self.logger.info(
+                f"Processed {len(df)} historical odds records (Pinnacle opening)"
+            )
+            self.logger.warning("Using opening odds - no closing odds available")
         else:
-            self.logger.warning("Pinnacle odds columns not found")
+            self.logger.warning("No suitable odds columns found")
 
         return df
 
