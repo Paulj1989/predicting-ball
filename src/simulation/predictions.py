@@ -25,11 +25,11 @@ def get_next_round_fixtures(
     future_fixtures["date"] = pd.to_datetime(future_fixtures["date"])
 
     # filter out games with dates in the past
-    # use timezone-aware datetime for accurate comparison
-    now = pd.Timestamp.now(tz="UTC").tz_localize(None)
+    # compare against start of today so games scheduled for today are included
+    today = pd.Timestamp.now().normalize()  # start of today (00:00:00)
 
     # check for possibly postponed games (past dates with no score)
-    postponed_mask = future_fixtures["date"] < now
+    postponed_mask = future_fixtures["date"].dt.normalize() < today
     if postponed_mask.any():
         postponed_games = future_fixtures[postponed_mask]
         logger.warning(
