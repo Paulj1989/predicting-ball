@@ -48,15 +48,15 @@ def parse_args():
     parser.add_argument(
         "--calibration-fraction",
         type=float,
-        default=0.3,
-        help="Fraction of data to use for calibration (default: 0.3)",
+        default=0.2,
+        help="Fraction of data to use for calibration (default: 0.2)",
     )
 
     parser.add_argument(
         "--holdout-fraction",
         type=float,
-        default=0.15,
-        help="Fraction of data to use for holdout validation (default: 0.15)",
+        default=0.2,
+        help="Fraction of data to use for holdout validation (default: 0.2)",
     )
 
     parser.add_argument(
