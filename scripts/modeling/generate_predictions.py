@@ -210,7 +210,10 @@ def main():
     # ========================================================================
     print("\n6. Predicting next fixtures...")
 
-    from src.simulation.predictions import get_next_round_fixtures
+    from src.simulation.predictions import (
+        get_next_round_fixtures,
+        get_all_future_fixtures,
+    )
 
     next_fixtures = get_next_round_fixtures(current_season)
 
@@ -224,9 +227,25 @@ def main():
         print("   No upcoming fixtures found")
 
     # ========================================================================
+    # PREDICT ALL FUTURE FIXTURES
+    # ========================================================================
+    print("\n7. Predicting all future fixtures...")
+
+    all_fixtures = get_all_future_fixtures(current_season)
+
+    if all_fixtures is not None and len(all_fixtures) > 0:
+        all_predictions = predict_next_fixtures(
+            all_fixtures, model["params"], calibrators=calibrators
+        )
+        print(f"   ✓ {len(all_predictions)} fixtures predicted")
+    else:
+        all_predictions = None
+        print("   No future fixtures found")
+
+    # ========================================================================
     # SAVE OUTPUTS
     # ========================================================================
-    print("\n7. Saving outputs...")
+    print("\n8. Saving outputs...")
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -246,10 +265,15 @@ def main():
         next_predictions.to_csv(output_dir / "next_fixtures.csv", index=False)
         print("   ✓ Saved: next_fixtures.csv")
 
+    # save all future fixtures csv
+    if all_predictions is not None:
+        all_predictions.to_csv(output_dir / "all_future_fixtures.csv", index=False)
+        print("   ✓ Saved: all_future_fixtures.csv")
+
     # ========================================================================
     # CREATE VISUALISATIONS
     # ========================================================================
-    print("\n8. Creating visualisations...")
+    print("\n9. Creating visualisations...")
 
     # standings table
     try:

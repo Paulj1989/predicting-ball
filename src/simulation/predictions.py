@@ -4,75 +4,64 @@ import numpy as np
 import pandas as pd
 from scipy.stats import poisson
 from typing import Optional, Dict, Any
-import logging
-from datetime import datetime, timezone
 
 from ..models.poisson import calculate_lambdas, calculate_lambdas_single
 from ..models.dixon_coles import calculate_match_probabilities_dixon_coles
-
-logger = logging.getLogger(__name__)
 
 
 def get_next_round_fixtures(
     current_season: pd.DataFrame, matchday_window_days: int = 4
 ) -> Optional[pd.DataFrame]:
-    """Get next round of unplayed fixtures, ensuring no team plays multiple games"""
+    """Get next round of unplayed fixtures
+
+    Ensures one matchday = one game per team by collecting matches until
+    all teams have played once (typically 10 matches for 20 teams).
+    Falls back to time-based window if team-based logic doesn't work.
+    """
     future_fixtures = current_season[current_season["is_played"] == False].copy()
 
     if len(future_fixtures) == 0:
         return None
 
     future_fixtures["date"] = pd.to_datetime(future_fixtures["date"])
+    future_fixtures = future_fixtures.sort_values("date")
 
-    # filter out games with dates in the past
-    # compare against start of today so games scheduled for today are included
-    today = pd.Timestamp.now().normalize()  # start of today (00:00:00)
+    # track teams that have already played in this matchday
+    teams_playing = set()
+    next_fixtures = []
 
-    # check for possibly postponed games (past dates with no score)
-    postponed_mask = future_fixtures["date"].dt.normalize() < today
-    if postponed_mask.any():
-        postponed_games = future_fixtures[postponed_mask]
-        logger.warning(
-            f"Found {len(postponed_games)} unplayed game(s) with past dates "
-            f"(likely postponed). These will be excluded from predictions:"
-        )
-        for _, game in postponed_games.iterrows():
-            logger.warning(
-                f"  - {game['date'].strftime('%Y-%m-%d')}: "
-                f"{game['home_team']} vs {game['away_team']}"
-            )
+    for idx, match in future_fixtures.iterrows():
+        home_team = match["home_team"]
+        away_team = match["away_team"]
 
-    # filter to only future fixtures
-    future_fixtures = future_fixtures[~postponed_mask].copy()
+        # if either team has already played, this is a different matchday
+        if home_team in teams_playing or away_team in teams_playing:
+            break
 
-    if len(future_fixtures) == 0:
-        logger.info("No upcoming fixtures found after filtering postponed games")
+        # add this match and mark both teams as playing
+        next_fixtures.append(match)
+        teams_playing.add(home_team)
+        teams_playing.add(away_team)
+
+    if len(next_fixtures) == 0:
         return None
 
-    earliest_date = future_fixtures["date"].min()
-    matchday_window = pd.Timedelta(days=matchday_window_days)
+    return pd.DataFrame(next_fixtures).reset_index(drop=True)
 
-    # get fixtures within the time window
-    next_fixtures = future_fixtures[
-        future_fixtures["date"] <= (earliest_date + matchday_window)
-    ].sort_values("date")
 
-    # filter to ensure no team appears multiple times
-    # keep earliest fixture for each team
-    teams_seen = set()
-    valid_fixtures = []
+def get_all_future_fixtures(
+    current_season: pd.DataFrame,
+) -> Optional[pd.DataFrame]:
+    """Get all unplayed fixtures for the current season"""
+    future_fixtures = current_season[current_season["is_played"] == False].copy()
 
-    for idx, fixture in next_fixtures.iterrows():
-        home_team = fixture["home_team"]
-        away_team = fixture["away_team"]
+    if len(future_fixtures) == 0:
+        return None
 
-        # only include if neither team has been seen yet
-        if home_team not in teams_seen and away_team not in teams_seen:
-            valid_fixtures.append(idx)
-            teams_seen.add(home_team)
-            teams_seen.add(away_team)
+    future_fixtures["date"] = pd.to_datetime(future_fixtures["date"])
+    future_fixtures = future_fixtures.sort_values("date")
 
-    return next_fixtures.loc[valid_fixtures]
+    return future_fixtures.reset_index(drop=True)
 
 
 def predict_single_match(
