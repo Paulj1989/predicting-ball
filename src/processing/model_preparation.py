@@ -10,7 +10,7 @@ from src.features.feature_builder import prepare_model_features
 
 
 def prepare_bundesliga_data(
-    db_path: str = "data/club_football.duckdb",
+    db_path: str = "data/pb.duckdb",
     windows: list = [5, 10],
     verbose: bool = False,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -18,7 +18,7 @@ def prepare_bundesliga_data(
     Load data and engineer features for modeling.
 
     Pipeline:
-    1. Load integrated data from database
+    1. Load match features from database (models.match_features)
     2. Add basic derived fields (points, total_goals)
     3. Build all features via feature builder
     4. Split into historic vs current season
@@ -34,15 +34,16 @@ def prepare_bundesliga_data(
     """
     logger = logging.getLogger(__name__)
 
-    # load integrated data from database
+    # load match features from database (Bundesliga only)
     with duckdb.connect(db_path) as con:
         df = con.execute("""
-            SELECT * FROM processed.integrated_data
+            SELECT * FROM models.match_features
+            WHERE competition = 'Bundesliga'
             ORDER BY date
         """).df()
 
     if df.empty:
-        raise ValueError("No data found in processed.integrated_data")
+        raise ValueError("No data found in models.match_features")
 
     # prepare base dataframe
     df = df.copy()

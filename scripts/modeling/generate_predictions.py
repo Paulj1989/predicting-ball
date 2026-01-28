@@ -3,20 +3,30 @@
 Generate Predictions
 ====================
 
-Generate season projections and next match predictions.
+Generate season projections and match predictions, then upload to DO Spaces.
 
 Usage:
     python scripts/modeling/generate_predictions.py --model-path outputs/models/production_model.pkl
+    python scripts/modeling/generate_predictions.py --model-path outputs/models/production_model.pkl --dry-run
 """
 
 import argparse
+import json
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from src.io.model_io import load_calibrators, load_model
+from src.io.spaces import (
+    INCOMING_PREFIX,
+    SERVING_PREFIX,
+    get_public_url,
+    upload_dataframe_as_parquet,
+    upload_pickle,
+)
 from src.processing.model_preparation import prepare_bundesliga_data
 from src.simulation import (
     create_final_summary,
@@ -25,7 +35,6 @@ from src.simulation import (
     predict_next_fixtures,
     simulate_remaining_season_calibrated,
 )
-from src.visualisation import create_next_fixtures_table, create_standings_table
 
 
 def parse_args():
@@ -60,13 +69,6 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--output-dir",
-        type=str,
-        default="outputs/predictions",
-        help="Directory for prediction outputs (default: outputs/predictions)",
-    )
-
-    parser.add_argument(
         "--seed",
         type=int,
         default=42,
@@ -81,7 +83,322 @@ def parse_args():
         help="Rolling window sizes for npxGD features (default: use model's windows)",
     )
 
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Generate files locally without uploading to DO Spaces",
+    )
+
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="outputs/predictions",
+        help="Local output directory for dry-run mode (default: outputs/predictions)",
+    )
+
     return parser.parse_args()
+
+
+def create_matches_dataframe(
+    all_predictions: pd.DataFrame,
+    all_fixtures: pd.DataFrame,
+    next_fixtures: pd.DataFrame | None,
+) -> pd.DataFrame:
+    """Create the latest_buli_matches.parquet DataFrame by merging predictions with fixtures"""
+    if all_predictions is None or len(all_predictions) == 0:
+        return pd.DataFrame()
+
+    # merge predictions with original fixtures to get date, match_id, etc.
+    # predictions have: home_team, away_team, expected_goals_*, probabilities
+    # fixtures have: date, match_id, home_team, away_team, etc.
+    df = all_predictions.copy()
+
+    if all_fixtures is not None and len(all_fixtures) > 0:
+        # select fixture columns to merge
+        fixture_cols = ["home_team", "away_team"]
+        if "date" in all_fixtures.columns:
+            fixture_cols.append("date")
+        if "match_id" in all_fixtures.columns:
+            fixture_cols.append("match_id")
+        if "matchweek" in all_fixtures.columns:
+            fixture_cols.append("matchweek")
+        if "kickoff_time" in all_fixtures.columns:
+            fixture_cols.append("kickoff_time")
+
+        fixtures_subset = all_fixtures[fixture_cols].copy()
+
+        # merge on home_team and away_team
+        df = df.merge(
+            fixtures_subset,
+            on=["home_team", "away_team"],
+            how="left",
+        )
+
+    # determine next round matches
+    if next_fixtures is not None and len(next_fixtures) > 0:
+        # create set of (home_team, away_team) tuples for next round
+        next_matches = set(
+            zip(next_fixtures["home_team"], next_fixtures["away_team"])
+        )
+        df["is_next_round"] = df.apply(
+            lambda row: (row["home_team"], row["away_team"]) in next_matches,
+            axis=1,
+        )
+    else:
+        # if no next_fixtures, mark the earliest date as next round
+        if "date" in df.columns:
+            min_date = df["date"].min()
+            df["is_next_round"] = df["date"] == min_date
+        else:
+            df["is_next_round"] = False
+
+    # ensure optional columns exist (nullable)
+    if "kickoff_time" not in df.columns:
+        df["kickoff_time"] = None
+    if "matchweek" not in df.columns:
+        df["matchweek"] = None
+
+    # select and order columns
+    output_cols = [
+        "match_id",
+        "date",
+        "matchweek",
+        "kickoff_time",
+        "home_team",
+        "away_team",
+        "expected_goals_home",
+        "expected_goals_away",
+        "home_win",
+        "draw",
+        "away_win",
+        "most_likely_score",
+        "is_next_round",
+    ]
+
+    # only include columns that exist
+    available_cols = [col for col in output_cols if col in df.columns]
+    return df[available_cols]
+
+
+def create_projections_dataframe(
+    summary: pd.DataFrame,
+    model_params: dict,
+    current_standings: dict,
+) -> pd.DataFrame:
+    """Create the latest_buli_projections.parquet DataFrame with team ratings and standings"""
+    df = summary.copy()
+
+    # add team ratings from model params
+    # model params has interpretable ratings: attack_rating, defense_rating, overall_rating
+    # these are z-scores scaled to approximately [-1, 1] with defense flipped (positive = good)
+    attack_ratings = model_params.get("attack_rating", {})
+    defense_ratings = model_params.get("defense_rating", {})
+    overall_ratings = model_params.get("overall_rating", {})
+
+    df["attack_rating"] = df["team"].map(lambda t: attack_ratings.get(t, 0.0))
+    df["defense_rating"] = df["team"].map(lambda t: defense_ratings.get(t, 0.0))
+    df["overall_rating"] = df["team"].map(lambda t: overall_ratings.get(t, 0.0))
+
+    # add current standings info (current_standings is a dict, not DataFrame)
+    if current_standings is not None and len(current_standings) > 0:
+        df["current_points"] = df["team"].map(
+            lambda t: current_standings.get(t, {}).get("points", 0)
+        )
+        df["current_gd"] = df["team"].map(
+            lambda t: current_standings.get(t, {}).get("goal_diff", 0)
+        )
+        df["matches_played"] = df["team"].map(
+            lambda t: current_standings.get(t, {}).get("games_played", 0)
+        )
+
+    # select and order columns
+    output_cols = [
+        "team",
+        "projected_points",
+        "projected_gd",
+        "attack_rating",
+        "defense_rating",
+        "overall_rating",
+        "title_prob",
+        "ucl_prob",
+        "relegation_prob",
+        "current_points",
+        "current_gd",
+        "matches_played",
+    ]
+
+    # only include columns that exist
+    available_cols = [col for col in output_cols if col in df.columns]
+    return df[available_cols]
+
+
+def create_run_snapshot(
+    all_predictions: pd.DataFrame,
+    all_fixtures: pd.DataFrame,
+    model_params: dict,
+    model: dict,
+    calibrators: dict | None,
+    run_timestamp: datetime,
+) -> pd.DataFrame:
+    """
+    Create the buli_run_{timestamp}.parquet snapshot for pbdb ingestion.
+
+    Denormalized structure with one row per match prediction, plus metadata.
+    """
+    if all_predictions is None or len(all_predictions) == 0:
+        return pd.DataFrame()
+
+    df = all_predictions.copy()
+
+    # merge with fixtures to get date, match_id, etc.
+    if all_fixtures is not None and len(all_fixtures) > 0:
+        fixture_cols = ["home_team", "away_team"]
+        if "date" in all_fixtures.columns:
+            fixture_cols.append("date")
+        if "match_id" in all_fixtures.columns:
+            fixture_cols.append("match_id")
+        if "matchweek" in all_fixtures.columns:
+            fixture_cols.append("matchweek")
+        if "kickoff_time" in all_fixtures.columns:
+            fixture_cols.append("kickoff_time")
+
+        fixtures_subset = all_fixtures[fixture_cols].copy()
+        df = df.merge(fixtures_subset, on=["home_team", "away_team"], how="left")
+
+    # add team ratings for home and away teams
+    # model params has interpretable ratings: attack_rating, defense_rating, overall_rating
+    # these are z-scores scaled to approximately [-1, 1] with defense flipped (positive = good)
+    attack_ratings = model_params.get("attack_rating", {})
+    defense_ratings = model_params.get("defense_rating", {})
+    overall_ratings = model_params.get("overall_rating", {})
+
+    df["home_attack_rating"] = df["home_team"].map(lambda t: attack_ratings.get(t, 0.0))
+    df["home_defense_rating"] = df["home_team"].map(lambda t: defense_ratings.get(t, 0.0))
+    df["home_overall_rating"] = df["home_team"].map(lambda t: overall_ratings.get(t, 0.0))
+
+    df["away_attack_rating"] = df["away_team"].map(lambda t: attack_ratings.get(t, 0.0))
+    df["away_defense_rating"] = df["away_team"].map(lambda t: defense_ratings.get(t, 0.0))
+    df["away_overall_rating"] = df["away_team"].map(lambda t: overall_ratings.get(t, 0.0))
+
+    # add run metadata (same for all rows)
+    run_id = run_timestamp.strftime("%Y%m%d_%H%M%S")
+    df["run_id"] = run_id
+    df["run_timestamp"] = run_timestamp
+    df["model_version"] = model.get("trained_at", run_timestamp).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
+
+    # add hyperparameters as JSON string
+    hyperparams = model.get("hyperparams", {})
+    df["hyperparameters_json"] = json.dumps(hyperparams)
+
+    # add validation metrics placeholder (could be filled from validation reports)
+    validation_metrics = {
+        "note": "Validation metrics to be added when available",
+    }
+    df["validation_metrics_json"] = json.dumps(validation_metrics)
+
+    # add calibration metrics if available
+    calibration_metrics = {}
+    if calibrators:
+        calibration_metrics = {
+            "method": calibrators.get("calibration_method", "unknown"),
+            "brier_uncalibrated": calibrators.get("brier_uncalibrated_holdout"),
+            "brier_calibrated": calibrators.get("brier_calibrated_holdout"),
+            "rps_improvement": calibrators.get("rps_improvement_holdout"),
+        }
+    df["calibration_metrics_json"] = json.dumps(calibration_metrics)
+
+    # ensure kickoff_time column exists
+    if "kickoff_time" not in df.columns:
+        df["kickoff_time"] = None
+
+    return df
+
+
+def upload_to_spaces(
+    matches_df: pd.DataFrame,
+    projections_df: pd.DataFrame,
+    snapshot_df: pd.DataFrame,
+    model: dict,
+    calibrators: dict | None,
+    model_path: str,
+    calibrator_path: str | None,
+    run_timestamp: datetime,
+) -> dict:
+    """
+    Upload all artifacts to DO Spaces.
+
+    Returns dict with URLs for uploaded files.
+    """
+    urls = {}
+
+    # upload matches parquet (public)
+    if len(matches_df) > 0:
+        key = f"{SERVING_PREFIX}latest_buli_matches.parquet"
+        upload_dataframe_as_parquet(matches_df, key, public=True)
+        urls["matches"] = get_public_url(key)
+        print(f"   Uploaded: {key}")
+
+    # upload projections parquet (public)
+    if len(projections_df) > 0:
+        key = f"{SERVING_PREFIX}latest_buli_projections.parquet"
+        upload_dataframe_as_parquet(projections_df, key, public=True)
+        urls["projections"] = get_public_url(key)
+        print(f"   Uploaded: {key}")
+
+    # upload model pkl (public)
+    key = f"{SERVING_PREFIX}buli_model.pkl"
+    upload_pickle(model, key, public=True)
+    urls["model"] = get_public_url(key)
+    print(f"   Uploaded: {key}")
+
+    # upload calibrators pkl (public) if available
+    if calibrators:
+        key = f"{SERVING_PREFIX}buli_calibrators.pkl"
+        upload_pickle(calibrators, key, public=True)
+        urls["calibrators"] = get_public_url(key)
+        print(f"   Uploaded: {key}")
+
+    # upload run snapshot (private)
+    if len(snapshot_df) > 0:
+        timestamp_str = run_timestamp.strftime("%Y%m%d_%H%M%S")
+        key = f"{INCOMING_PREFIX}buli_run_{timestamp_str}.parquet"
+        upload_dataframe_as_parquet(snapshot_df, key, public=False)
+        urls["snapshot"] = key
+        print(f"   Uploaded: {key}")
+
+    return urls
+
+
+def save_local_outputs(
+    matches_df: pd.DataFrame,
+    projections_df: pd.DataFrame,
+    snapshot_df: pd.DataFrame,
+    model: dict,
+    calibrators: dict | None,
+    output_dir: Path,
+    run_timestamp: datetime,
+):
+    """Save outputs locally for dry-run mode."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if len(matches_df) > 0:
+        matches_df.to_parquet(output_dir / "latest_buli_matches.parquet", index=False)
+        print(f"   Saved: {output_dir / 'latest_buli_matches.parquet'}")
+
+    if len(projections_df) > 0:
+        projections_df.to_parquet(
+            output_dir / "latest_buli_projections.parquet", index=False
+        )
+        print(f"   Saved: {output_dir / 'latest_buli_projections.parquet'}")
+
+    if len(snapshot_df) > 0:
+        timestamp_str = run_timestamp.strftime("%Y%m%d_%H%M%S")
+        snapshot_df.to_parquet(
+            output_dir / f"buli_run_{timestamp_str}.parquet", index=False
+        )
+        print(f"   Saved: {output_dir / f'buli_run_{timestamp_str}.parquet'}")
 
 
 def main():
@@ -90,7 +407,11 @@ def main():
 
     print("=" * 70)
     print("GENERATING PREDICTIONS")
+    if args.dry_run:
+        print("(DRY RUN - no upload to DO Spaces)")
     print("=" * 70)
+
+    run_timestamp = datetime.now()
 
     # set random seed for reproducibility
     np.random.seed(args.seed)
@@ -101,7 +422,7 @@ def main():
     print("\n1. Loading model...")
     model = load_model(args.model_path)
 
-    print(f"   ✓ Model loaded: {args.model_path}")
+    print(f"   Model loaded: {args.model_path}")
 
     # get model details safely
     n_teams = len(model.get("teams", model.get("params", {}).get("teams", [])))
@@ -116,7 +437,7 @@ def main():
     if args.calibrator_path:
         print(f"   Loading calibrators: {args.calibrator_path}")
         calibrators = load_calibrators(args.calibrator_path)
-        print("   ✓ Calibrators loaded")
+        print("   Calibrators loaded")
 
     # ========================================================================
     # LOAD DATA
@@ -129,7 +450,7 @@ def main():
 
     # verify weighted goals exists
     if "home_goals_weighted" not in historic_data.columns:
-        print("\n   ✗ Error: home_goals_weighted not found in data")
+        print("\n   Error: home_goals_weighted not found in data")
         print(
             "   Make sure prepare_bundesliga_data includes weighted goals calculation"
         )
@@ -167,7 +488,7 @@ def main():
         verbose=True,
     )
 
-    print(f"   ✓ Bootstrap complete: {len(bootstrap_params)} samples")
+    print(f"   Bootstrap complete: {len(bootstrap_params)} samples")
 
     # ========================================================================
     # SIMULATE REMAINING SEASON
@@ -187,7 +508,7 @@ def main():
             seed=args.seed,
         )
 
-        print("   ✓ Simulation complete")
+        print("   Simulation complete")
     else:
         print("   Skipping simulation (no remaining fixtures)")
         # create empty results structure
@@ -203,94 +524,104 @@ def main():
 
     summary = create_final_summary(results, model["params"], teams, current_standings)
 
-    print(f"   ✓ Projections created for {len(summary)} teams")
+    print(f"   Projections created for {len(summary)} teams")
 
     # ========================================================================
-    # PREDICT NEXT FIXTURES
+    # PREDICT FIXTURES
     # ========================================================================
-    print("\n6. Predicting next fixtures...")
+    print("\n6. Predicting fixtures...")
 
     from src.simulation.predictions import (
-        get_next_round_fixtures,
         get_all_future_fixtures,
+        get_next_round_fixtures,
     )
 
     next_fixtures = get_next_round_fixtures(current_season)
+    all_fixtures = get_all_future_fixtures(current_season)
+
+    next_predictions = None
+    all_predictions = None
 
     if next_fixtures is not None and len(next_fixtures) > 0:
         next_predictions = predict_next_fixtures(
             next_fixtures, model["params"], calibrators=calibrators
         )
-        print(f"   ✓ {len(next_predictions)} fixtures predicted")
-    else:
-        next_predictions = None
-        print("   No upcoming fixtures found")
-
-    # ========================================================================
-    # PREDICT ALL FUTURE FIXTURES
-    # ========================================================================
-    print("\n7. Predicting all future fixtures...")
-
-    all_fixtures = get_all_future_fixtures(current_season)
+        print(f"   Next matchday: {len(next_predictions)} fixtures")
 
     if all_fixtures is not None and len(all_fixtures) > 0:
         all_predictions = predict_next_fixtures(
             all_fixtures, model["params"], calibrators=calibrators
         )
-        print(f"   ✓ {len(all_predictions)} fixtures predicted")
+        print(f"   All future: {len(all_predictions)} fixtures")
+
+    # ========================================================================
+    # CREATE OUTPUT DATAFRAMES
+    # ========================================================================
+    print("\n7. Creating output DataFrames...")
+
+    matches_df = create_matches_dataframe(all_predictions, all_fixtures, next_fixtures)
+    print(f"   Matches DataFrame: {len(matches_df)} rows")
+
+    projections_df = create_projections_dataframe(
+        summary, model["params"], current_standings
+    )
+    print(f"   Projections DataFrame: {len(projections_df)} rows")
+
+    snapshot_df = create_run_snapshot(
+        all_predictions, all_fixtures, model["params"], model, calibrators, run_timestamp
+    )
+    print(f"   Snapshot DataFrame: {len(snapshot_df)} rows")
+
+    # ========================================================================
+    # UPLOAD OR SAVE
+    # ========================================================================
+    if args.dry_run:
+        print("\n8. Saving outputs locally (dry-run)...")
+        output_dir = Path(args.output_dir)
+        save_local_outputs(
+            matches_df,
+            projections_df,
+            snapshot_df,
+            model,
+            calibrators,
+            output_dir,
+            run_timestamp,
+        )
     else:
-        all_predictions = None
-        print("   No future fixtures found")
-
-    # ========================================================================
-    # SAVE OUTPUTS
-    # ========================================================================
-    print("\n8. Saving outputs...")
-
-    output_dir = Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    figures_dir = Path("outputs/figures")
-    figures_dir.mkdir(parents=True, exist_ok=True)
-
-    tables_dir = Path("outputs/tables")
-    tables_dir.mkdir(parents=True, exist_ok=True)
-
-    # save projections csv
-    summary.to_csv(output_dir / "season_projections.csv", index=False)
-    print("   ✓ Saved: season_projections.csv")
-
-    # save next fixtures csv
-    if next_predictions is not None:
-        next_predictions.to_csv(output_dir / "next_fixtures.csv", index=False)
-        print("   ✓ Saved: next_fixtures.csv")
-
-    # save all future fixtures csv
-    if all_predictions is not None:
-        all_predictions.to_csv(output_dir / "all_future_fixtures.csv", index=False)
-        print("   ✓ Saved: all_future_fixtures.csv")
-
-    # ========================================================================
-    # CREATE VISUALISATIONS
-    # ========================================================================
-    print("\n9. Creating visualisations...")
-
-    # standings table
-    try:
-        create_standings_table(summary, save_path=str(tables_dir / "standings_table"))
-        print("   ✓ Created: standings table")
-    except Exception as e:
-        print(f"   Could not create standings table: {e}")
-
-    # next fixtures table
-    if next_predictions is not None:
+        print("\n8. Uploading to DO Spaces...")
         try:
-            create_next_fixtures_table(
-                next_predictions, save_path=str(tables_dir / "next_fixtures_table")
+            urls = upload_to_spaces(
+                matches_df,
+                projections_df,
+                snapshot_df,
+                model,
+                calibrators,
+                args.model_path,
+                args.calibrator_path,
+                run_timestamp,
             )
-            print("   ✓ Created: next fixtures table")
+            print("\n   Public URLs:")
+            if "matches" in urls:
+                print(f"   - Matches: {urls['matches']}")
+            if "projections" in urls:
+                print(f"   - Projections: {urls['projections']}")
+            if "model" in urls:
+                print(f"   - Model: {urls['model']}")
+            if "calibrators" in urls:
+                print(f"   - Calibrators: {urls['calibrators']}")
         except Exception as e:
-            print(f"   Could not create next fixtures table: {e}")
+            print(f"\n   ERROR uploading to DO Spaces: {e}")
+            print("   Falling back to local save...")
+            output_dir = Path(args.output_dir)
+            save_local_outputs(
+                matches_df,
+                projections_df,
+                snapshot_df,
+                model,
+                calibrators,
+                output_dir,
+                run_timestamp,
+            )
 
     # ========================================================================
     # DISPLAY RESULTS
@@ -357,20 +688,22 @@ def main():
     print("\n" + "=" * 70)
     print("PREDICTIONS COMPLETE")
     print("=" * 70)
-    print("\nOutputs saved to:")
-    print(f"  CSV files: {output_dir}")
-    print(f"  Figures: {figures_dir}")
-    print(f"  Tables: {tables_dir}")
+
+    if args.dry_run:
+        print(f"\nDry-run outputs saved to: {args.output_dir}")
+    else:
+        print("\nOutputs uploaded to DO Spaces:")
+        print("  - serving/latest_buli_matches.parquet (public)")
+        print("  - serving/latest_buli_projections.parquet (public)")
+        print("  - serving/buli_model.pkl (public)")
+        if calibrators:
+            print("  - serving/buli_calibrators.pkl (public)")
+        print(f"  - incoming/buli_run_{run_timestamp.strftime('%Y%m%d_%H%M%S')}.parquet")
 
     if calibrators:
-        print("\n✓ Predictions were calibrated")
+        print("\nPredictions were calibrated")
     else:
-        print("\n No calibrators applied (use --calibrator-path to enable)")
-
-    print("\nGenerated visualisations:")
-    print("  - Standings table")
-    if next_predictions is not None:
-        print("  - Next fixtures table")
+        print("\nNo calibrators applied (use --calibrator-path to enable)")
 
 
 if __name__ == "__main__":

@@ -4,14 +4,16 @@ Run Model Pipeline
 =====================
 
 Execute the full modelling pipeline:
-1. Train model
-2. Run calibration
-3. Validate
-4. Generate predictions
+1. (Optional) Download fresh database from DO Spaces
+2. Train model
+3. Run calibration
+4. Validate
+5. Generate predictions
 
 Usage:
     python scripts/modeling/run_model_pipeline.py [--tune] [--metric rps|log_loss|brier]
     python scripts/modeling/run_model_pipeline.py --tune --metric brier --n-trials 50
+    python scripts/modeling/run_model_pipeline.py --refresh-db  # Pull fresh data first
 """
 
 import sys
@@ -23,6 +25,12 @@ from pathlib import Path
 def parse_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(description="Run complete modelling pipeline")
+
+    parser.add_argument(
+        "--refresh-db",
+        action="store_true",
+        help="Download fresh database from DO Spaces before running",
+    )
 
     parser.add_argument(
         "--tune",
@@ -81,10 +89,22 @@ def main():
 
     # get the modeling directory
     modeling_dir = Path(__file__).parent
+    automation_dir = modeling_dir.parent / "automation"
 
     print("=" * 70)
     print("RUNNING COMPLETE PIPELINE")
     print("=" * 70)
+
+    # ========================================================================
+    # STEP 0 - DOWNLOAD DATABASE (OPTIONAL)
+    # ========================================================================
+    if args.refresh_db:
+        download_cmd = [
+            "python",
+            str(automation_dir / "download_db.py"),
+        ]
+
+        run_command(download_cmd, "STEP 0: DOWNLOADING DATABASE FROM DO SPACES")
 
     # ========================================================================
     # STEP 1 - TRAIN MODEL

@@ -10,43 +10,95 @@ from ..models.dixon_coles import calculate_match_probabilities_dixon_coles
 
 
 def get_next_round_fixtures(
-    current_season: pd.DataFrame, matchday_window_days: int = 4
+    current_season: pd.DataFrame,
+    full_matchday_size: int = 9,
+    rearranged_threshold: int = 5,
 ) -> Optional[pd.DataFrame]:
-    """Get next round of unplayed fixtures
+    """Get next round of unplayed fixtures, including rearranged games.
 
-    Ensures one matchday = one game per team by collecting matches until
-    all teams have played once (typically 10 matches for 20 teams).
-    Falls back to time-based window if team-based logic doesn't work.
+    Uses the matchweek column to identify the upcoming round and any
+    rearranged games from earlier matchweeks.
+
+    Logic:
+    1. Find the next matchweek (lowest matchweek with a full set of unplayed games)
+    2. Get all games from that matchweek
+    3. Find any rearranged games (earlier matchweeks) occurring before/during it
+    4. If rearranged games > threshold, show only rearranged games as their own round
+    5. Otherwise, combine rearranged games with the main matchweek
     """
-    future_fixtures = current_season[current_season["is_played"] == False].copy()
+    # filter to unplayed fixtures
+    if "is_played" in current_season.columns:
+        future_fixtures = current_season[current_season["is_played"] == False].copy()
+    else:
+        # fall back to checking for null goals
+        future_fixtures = current_season[current_season["home_goals"].isna()].copy()
 
     if len(future_fixtures) == 0:
         return None
 
     future_fixtures["date"] = pd.to_datetime(future_fixtures["date"])
-    future_fixtures = future_fixtures.sort_values("date")
+    future_fixtures = future_fixtures.sort_values(["date", "matchweek"])
 
-    # track teams that have already played in this matchday
-    teams_playing = set()
-    next_fixtures = []
+    # check if matchweek column exists
+    if "matchweek" not in future_fixtures.columns:
+        # fall back to date-based logic
+        return _get_next_fixtures_by_date(future_fixtures, full_matchday_size)
 
-    for idx, match in future_fixtures.iterrows():
-        home_team = match["home_team"]
-        away_team = match["away_team"]
+    # count games per matchweek
+    matchweek_counts = future_fixtures.groupby("matchweek").size()
 
-        # if either team has already played, this is a different matchday
-        if home_team in teams_playing or away_team in teams_playing:
+    # find the next full matchweek (lowest matchweek with full_matchday_size games)
+    full_matchweeks = matchweek_counts[matchweek_counts >= full_matchday_size]
+
+    if len(full_matchweeks) == 0:
+        # no full matchweeks remaining, return all remaining fixtures
+        return future_fixtures.sort_values(["date", "matchweek"]).reset_index(drop=True)
+
+    next_matchweek = full_matchweeks.index.min()
+
+    # get fixtures for the next matchweek
+    matchweek_fixtures = future_fixtures[
+        future_fixtures["matchweek"] == next_matchweek
+    ]
+    matchweek_end_date = matchweek_fixtures["date"].max()
+
+    # find rearranged games: earlier matchweeks occurring up to the end of next matchweek
+    rearranged = future_fixtures[
+        (future_fixtures["matchweek"] < next_matchweek)
+        & (future_fixtures["date"] <= matchweek_end_date)
+    ]
+
+    # if many rearranged games, show them as their own round
+    if len(rearranged) > rearranged_threshold:
+        return rearranged.sort_values(["date", "matchweek"]).reset_index(drop=True)
+
+    # combine rearranged games with matchweek fixtures
+    combined = pd.concat([rearranged, matchweek_fixtures], ignore_index=True)
+    return combined.sort_values(["date", "matchweek"]).reset_index(drop=True)
+
+
+def _get_next_fixtures_by_date(
+    future_fixtures: pd.DataFrame,
+    min_matchday_size: int,
+) -> Optional[pd.DataFrame]:
+    """Fallback: get next fixtures by date when matchweek is unavailable."""
+    # group by date and count fixtures per date
+    date_counts = future_fixtures.groupby(future_fixtures["date"].dt.date).size()
+
+    # find the first date that looks like a real matchday
+    matchday_date = None
+    for date, count in date_counts.items():
+        if count >= min_matchday_size:
+            matchday_date = date
             break
 
-        # add this match and mark both teams as playing
-        next_fixtures.append(match)
-        teams_playing.add(home_team)
-        teams_playing.add(away_team)
+    # if no date has enough fixtures, fall back to earliest date
+    if matchday_date is None:
+        matchday_date = date_counts.index[0]
 
-    if len(next_fixtures) == 0:
-        return None
-
-    return pd.DataFrame(next_fixtures).reset_index(drop=True)
+    return future_fixtures[
+        future_fixtures["date"].dt.date == matchday_date
+    ].reset_index(drop=True)
 
 
 def get_all_future_fixtures(
