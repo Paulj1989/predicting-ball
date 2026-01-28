@@ -185,7 +185,7 @@ python-dotenv==1.2.1
     #   predicting-ball (pyproject.toml)
     #   uvicorn
     #   webdriver-manager
-python-multipart==0.0.20
+python-multipart==0.0.22
     # via predicting-ball (pyproject.toml)
 pytz==2025.2
     # via pandas
