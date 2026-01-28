@@ -3,17 +3,35 @@
 import streamlit as st
 import pandas as pd
 from pathlib import Path
+from zoneinfo import ZoneInfo
 import sys
 
 # add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from streamlit_js_eval import streamlit_js_eval
 from app.styles.custom_css import apply_custom_styles
 from app.pages import projections, team_strengths, fixtures, about
 from app.components import render_footer, umami_tracker
 
 # DO Spaces public URL base
 DO_SPACES_BASE_URL = "https://ball-bucket.lon1.digitaloceanspaces.com/serving"
+
+
+def _detect_user_timezone():
+    """Detect user timezone from browser and cache in session state"""
+    if "user_timezone" in st.session_state:
+        return
+
+    try:
+        tz_name = streamlit_js_eval(
+            js_expressions="Intl.DateTimeFormat().resolvedOptions().timeZone",
+            key="user_timezone_js",
+        )
+        if tz_name:
+            st.session_state.user_timezone = ZoneInfo(tz_name)
+    except Exception:
+        pass
 
 
 @st.cache_data
@@ -30,6 +48,9 @@ def load_predictions():
 
 def main():
     """Main application entry point"""
+
+    # detect timezone early (before visible content) to avoid layout issues
+    _detect_user_timezone()
 
     # inject analytics tracker
     umami_tracker()

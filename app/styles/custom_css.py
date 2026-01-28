@@ -311,9 +311,9 @@ def apply_custom_styles():
         font-weight: 500;
         color: var(--dark-gray);
         text-align: right;
-        border-right: 4px solid var(--dark-gray);
-        padding-right: 1rem;
-        margin: 2rem 0 1rem 0;
+        # border-right: 4px solid var(--dark-gray);
+        # padding-right: 1rem;
+        margin: 1rem 0 1rem 0;
     }
 
     /* Dividers */

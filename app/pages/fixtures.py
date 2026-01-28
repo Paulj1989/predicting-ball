@@ -3,7 +3,61 @@
 import streamlit as st
 import pandas as pd
 import altair as alt
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from app.components.probability_bar import create_probability_bar
+
+
+# kickoff times in database are stored in UTC
+SOURCE_TIMEZONE = ZoneInfo("UTC")
+
+
+def _get_user_timezone() -> ZoneInfo:
+    """Get user timezone from session state, fallback to UTC"""
+    return st.session_state.get("user_timezone", SOURCE_TIMEZONE)
+
+
+def _convert_kickoff_time(date_val, time_val, target_tz: ZoneInfo) -> str | None:
+    """
+    Convert kickoff time from source timezone to target timezone.
+
+    Returns formatted time string (HH:MM TZ) or None if conversion fails.
+    """
+    if not time_val or pd.isna(time_val):
+        return None
+
+    try:
+        # parse date
+        if isinstance(date_val, str):
+            date_obj = datetime.strptime(date_val, "%Y-%m-%d").date()
+        else:
+            date_obj = pd.to_datetime(date_val).date()
+
+        # parse time (handles both HH:MM and HH:MM:SS)
+        time_str = str(time_val)
+        if len(time_str.split(":")) == 2:
+            time_obj = datetime.strptime(time_str, "%H:%M").time()
+        else:
+            time_obj = datetime.strptime(time_str, "%H:%M:%S").time()
+
+        # combine and localize to source timezone
+        dt_source = datetime.combine(date_obj, time_obj)
+        dt_source = dt_source.replace(tzinfo=SOURCE_TIMEZONE)
+
+        # convert to target timezone
+        dt_target = dt_source.astimezone(target_tz)
+
+        # get timezone abbreviation
+        tz_abbrev = dt_target.strftime("%Z")
+
+        return f"{dt_target.strftime('%H:%M')} {tz_abbrev}"
+    except Exception:
+        # fallback: just strip seconds if present
+        time_str = str(time_val)
+        if ":" in time_str:
+            parts = time_str.split(":")
+            return f"{parts[0]}:{parts[1]}"
+        return None
 
 
 def render(fixtures):
@@ -34,7 +88,9 @@ def render(fixtures):
         unsafe_allow_html=True,
     )
 
-    _render_match_cards(next_fixtures)
+    user_tz = _get_user_timezone()
+
+    _render_match_cards(next_fixtures, user_tz)
     st.subheader("Matchday Overview")
     _render_matchday_chart(next_fixtures)
 
@@ -66,7 +122,7 @@ def _sort_fixtures(fixtures: pd.DataFrame) -> pd.DataFrame:
     return df.reset_index(drop=True)
 
 
-def _render_match_cards(fixtures):
+def _render_match_cards(fixtures, user_tz: ZoneInfo):
     """Render individual match prediction cards"""
     # group by date if available for better visual organization
     if "date" in fixtures.columns:
@@ -83,19 +139,26 @@ def _render_match_cards(fixtures):
             )
             date_fixtures = fixtures[fixtures["date_str"] == date_str]
             for idx, match in date_fixtures.iterrows():
-                _render_single_match(match)
+                _render_single_match(match, user_tz)
     else:
         for idx, match in fixtures.iterrows():
-            _render_single_match(match)
+            _render_single_match(match, user_tz)
 
 
-def _render_single_match(match):
+def _render_single_match(match, user_tz: ZoneInfo):
     """Render a single match card"""
     with st.container():
-        # show kickoff time if available
-        kickoff_time = match.get("kickoff_time")
-        if kickoff_time and pd.notna(kickoff_time):
-            st.markdown(f"**{kickoff_time}**")
+        # convert and format kickoff time
+        kickoff_display = _convert_kickoff_time(
+            match.get("date"), match.get("kickoff_time"), user_tz
+        )
+
+        # show kickoff time aligned right if available
+        if kickoff_display:
+            st.markdown(
+                f'<div style="text-align: right; margin-bottom: 0.5rem;"><strong>{kickoff_display}</strong></div>',
+                unsafe_allow_html=True,
+            )
 
         col1, col2, col3 = st.columns([2, 1, 2])
 
