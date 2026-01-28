@@ -24,7 +24,7 @@ except ImportError:
     pass
 
 
-# Path prefixes for DO Spaces
+# path prefixes for DO Spaces
 SERVING_PREFIX = "serving/"
 INCOMING_PREFIX = "incoming/"
 DATABASE_PREFIX = "database/"
@@ -120,7 +120,7 @@ def upload_bytes(
 
 
 def upload_dataframe_as_parquet(
-    df: Any,  # pandas DataFrame
+    df: Any,
     remote_key: str,
     public: bool = False,
 ) -> str:
