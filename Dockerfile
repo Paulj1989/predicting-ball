@@ -27,10 +27,6 @@ COPY --from=builder --chown=streamlit:streamlit /root/.local /home/streamlit/.lo
 COPY --chown=streamlit:streamlit run.py ./
 COPY --chown=streamlit:streamlit app/ ./app/
 COPY --chown=streamlit:streamlit src/ ./src/
-COPY --chown=streamlit:streamlit outputs/models/ ./outputs/models/
-COPY --chown=streamlit:streamlit outputs/predictions/ ./outputs/predictions/
-COPY --chown=streamlit:streamlit outputs/tables/ ./outputs/tables/
-# COPY --chown=streamlit:streamlit data/ ./data/
 COPY --chown=streamlit:streamlit .streamlit/ ./.streamlit/
 
 # Switch to non-root user
