@@ -83,7 +83,7 @@ idna==3.11
     #   anyio
     #   requests
     #   trio
-importlib-metadata==8.7.0
+importlib-metadata==8.7.1
     # via great-tables
 importlib-resources==6.5.2
     # via great-tables
