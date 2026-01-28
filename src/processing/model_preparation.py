@@ -50,6 +50,10 @@ def prepare_bundesliga_data(
     df["date"] = pd.to_datetime(df["date"])
     df["is_played"] = df["home_goals"].notna()
 
+    # rename time column to kickoff_time for consistency
+    if "time" in df.columns:
+        df = df.rename(columns={"time": "kickoff_time"})
+
     # add basic match features
     if verbose:
         logger.info("Adding basic match features")
