@@ -219,7 +219,7 @@ streamlit==1.53.1
     #   predicting-ball (pyproject.toml)
     #   streamlit-aggrid
     #   streamlit-js-eval
-streamlit-aggrid==1.2.1
+streamlit-aggrid==1.2.1.post2
     # via predicting-ball (pyproject.toml)
 streamlit-js-eval==1.0.0
     # via predicting-ball (pyproject.toml)
