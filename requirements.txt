@@ -264,7 +264,7 @@ watchdog==6.0.0
     # via predicting-ball (pyproject.toml)
 watchfiles==1.1.1
     # via uvicorn
-websockets==15.0.1
+websockets==16.0
     # via uvicorn
 zipp==3.23.0
     # via importlib-metadata
