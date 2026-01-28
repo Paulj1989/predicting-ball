@@ -21,7 +21,7 @@ def validate_update():
 
     # Check database
     print("\n1. Checking database...")
-    db_path = Path("data/club_football.duckdb")
+    db_path = Path("data/pb.duckdb")
 
     if not db_path.exists():
         errors.append("Database file not found")
@@ -31,7 +31,7 @@ def validate_update():
         try:
             # Check we have recent matches
             latest_match = con.execute("""
-                SELECT MAX(date) FROM raw.match_logs_fbref
+                SELECT MAX(date)::DATE FROM models.match_features
             """).fetchone()[0]
 
             if latest_match:

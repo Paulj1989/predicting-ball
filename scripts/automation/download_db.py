@@ -33,8 +33,8 @@ def download_database():
         aws_secret_access_key=spaces_secret,
     )
 
-    remote_path = "database/club_football.duckdb"
-    local_path = "data/club_football.duckdb"
+    remote_path = "database/pb.duckdb"
+    local_path = "data/pb.duckdb"
 
     Path(local_path).parent.mkdir(parents=True, exist_ok=True)
 

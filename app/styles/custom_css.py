@@ -304,6 +304,18 @@ def apply_custom_styles():
         background-color: var(--primary-color) !important;
     }
 
+    /* Date headers for fixture grouping */
+    .date-header {
+        font-family: var(--font-serif) !important;
+        font-size: 1.5rem;
+        font-weight: 500;
+        color: var(--dark-gray);
+        text-align: right;
+        border-right: 4px solid var(--dark-gray);
+        padding-right: 1rem;
+        margin: 2rem 0 1rem 0;
+    }
+
     /* Dividers */
     hr {
         border: none;
