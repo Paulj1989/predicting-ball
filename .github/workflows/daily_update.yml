@@ -78,7 +78,7 @@ jobs:
           python scripts/modeling/validate_model.py \
             --model-path outputs/models/production_model.pkl \
             --calibrator-path outputs/models/calibrators.pkl \
-            --output-pkl outputs/validation/metrics.pkl
+            --output-json outputs/validation/metrics.json
 
       - name: Generate predictions and upload to DO Spaces
         env:
@@ -90,7 +90,7 @@ jobs:
           python scripts/modeling/generate_predictions.py \
             --model-path outputs/models/production_model.pkl \
             --calibrator-path outputs/models/calibrators.pkl \
-            --validation-metrics outputs/validation/metrics.pkl \
+            --validation-metrics outputs/validation/metrics.json \
             --n-bootstrap 250 \
             --n-simulations 10000
 

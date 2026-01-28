@@ -12,7 +12,6 @@ Usage:
 
 import argparse
 import json
-import pickle
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -94,7 +93,7 @@ def parse_args():
         "--validation-metrics",
         type=str,
         default=None,
-        help="Path to validation metrics pickle file (from validate_model.py)",
+        help="Path to validation metrics JSON file (from validate_model.py)",
     )
 
     parser.add_argument(
@@ -301,7 +300,7 @@ def create_run_snapshot(
     hyperparams = model.get("hyperparams", {})
     df["hyperparameters_json"] = json.dumps(hyperparams)
 
-    # add validation metrics
+    # add validation metrics (already native python types from validate_model.py)
     if validation_metrics:
         df["validation_metrics_json"] = json.dumps(validation_metrics)
     else:
@@ -438,8 +437,8 @@ def main():
     validation_metrics = None
     if args.validation_metrics:
         try:
-            with open(args.validation_metrics, "rb") as f:
-                validation_metrics = pickle.load(f)
+            with open(args.validation_metrics, "r") as f:
+                validation_metrics = json.load(f)
             print(f"   Loaded validation metrics from: {args.validation_metrics}")
         except Exception as e:
             print(f"   Warning: Could not load validation metrics: {e}")

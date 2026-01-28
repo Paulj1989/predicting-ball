@@ -10,7 +10,7 @@ Usage:
 """
 
 import sys
-import pickle
+import json
 import argparse
 from pathlib import Path
 
@@ -82,10 +82,10 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--output-pkl",
+        "--output-json",
         type=str,
         default=None,
-        help="Path to save validation metrics as pickle (for pipeline integration)",
+        help="Path to save validation metrics as JSON (for pipeline integration)",
     )
 
     return parser.parse_args()
@@ -409,9 +409,23 @@ def main():
     else:
         print("\n No calibrators applied (use --calibrator-path to enable)")
 
-    # save metrics as pickle if requested
-    if args.output_pkl:
-        metrics_output = {
+    # save metrics as JSON if requested
+    if args.output_json:
+        # convert numpy types to native python types
+        def to_native(obj):
+            if isinstance(obj, dict):
+                return {k: to_native(v) for k, v in obj.items()}
+            if isinstance(obj, list):
+                return [to_native(v) for v in obj]
+            if isinstance(obj, (np.integer, np.int64)):
+                return int(obj)
+            if isinstance(obj, (np.floating, np.float64)):
+                return float(obj)
+            if isinstance(obj, np.ndarray):
+                return obj.tolist()
+            return obj
+
+        metrics_output = to_native({
             "test_seasons": test_seasons,
             "per_season": [
                 {
@@ -431,13 +445,13 @@ def main():
                 "log_loss": avg_log_loss,
             },
             "calibrated": calibrators is not None,
-        }
+        })
 
-        pkl_path = Path(args.output_pkl)
-        pkl_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(pkl_path, "wb") as f:
-            pickle.dump(metrics_output, f)
-        print(f"\nValidation metrics saved to: {pkl_path}")
+        json_path = Path(args.output_json)
+        json_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(json_path, "w") as f:
+            json.dump(metrics_output, f, indent=2)
+        print(f"\nValidation metrics saved to: {json_path}")
 
 
 if __name__ == "__main__":
