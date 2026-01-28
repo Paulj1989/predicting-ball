@@ -10,7 +10,7 @@ Usage:
 """
 
 import sys
-import json
+import pickle
 import argparse
 from pathlib import Path
 
@@ -82,10 +82,10 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--output-json",
+        "--output-pkl",
         type=str,
         default=None,
-        help="Path to save validation metrics as JSON (for pipeline integration)",
+        help="Path to save validation metrics as pickle (for pipeline integration)",
     )
 
     return parser.parse_args()
@@ -409,8 +409,8 @@ def main():
     else:
         print("\n No calibrators applied (use --calibrator-path to enable)")
 
-    # save metrics as JSON if requested
-    if args.output_json:
+    # save metrics as pickle if requested
+    if args.output_pkl:
         metrics_output = {
             "test_seasons": test_seasons,
             "per_season": [
@@ -433,11 +433,11 @@ def main():
             "calibrated": calibrators is not None,
         }
 
-        json_path = Path(args.output_json)
-        json_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(json_path, "w") as f:
-            json.dump(metrics_output, f, indent=2)
-        print(f"\nValidation metrics saved to: {json_path}")
+        pkl_path = Path(args.output_pkl)
+        pkl_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(pkl_path, "wb") as f:
+            pickle.dump(metrics_output, f)
+        print(f"\nValidation metrics saved to: {pkl_path}")
 
 
 if __name__ == "__main__":
