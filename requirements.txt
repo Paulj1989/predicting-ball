@@ -137,7 +137,7 @@ pandas==2.3.3
     #   streamlit-aggrid
 patsy==1.0.2
     # via statsmodels
-pillow==11.3.0
+pillow==12.1.0
     # via
     #   predicting-ball (pyproject.toml)
     #   matplotlib
