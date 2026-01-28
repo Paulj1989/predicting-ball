@@ -209,6 +209,9 @@ __marimo__/
 # Data
 data/
 
+# Outputs
+outputs/
+
 # DuckDB
 *.duckdb
 
@@ -218,8 +221,3 @@ CLAUDE.md
 .claudeignore
 
 .DS_Store
-
-betting/
-
-# Outputs (served from DO Spaces, local only for debugging)
-outputs/
