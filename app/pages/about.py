@@ -45,7 +45,7 @@ def render():
 
     #### Data Sources
 
-    - **FBRef** - Match results, expected goals, shots, possession, and advanced statistics.
+    - **Opta Analyst** - Match results, expected goals, shots, possession, and advanced statistics.
     - **Transfermarkt** - Squad market values and other squad features.
     - **Club Elo** - Club Elo ratings at the beginning of each season.
     - **Football-Data.co.uk** - Historical betting odds from multiple bookmakers.
