@@ -212,6 +212,14 @@ data/
 # DuckDB
 *.duckdb
 
+# Claude Code
+.claude/
+CLAUDE.md
+.claudeignore
+
 .DS_Store
 
 betting/
+
+# Outputs (served from DO Spaces, local only for debugging)
+outputs/
