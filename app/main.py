@@ -11,32 +11,21 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from app.styles.custom_css import apply_custom_styles
 from app.pages import projections, team_strengths, fixtures, about
 from app.components import render_footer, umami_tracker
-from src.io.model_io import load_model
+
+# DO Spaces public URL base
+DO_SPACES_BASE_URL = "https://ball-bucket.lon1.digitaloceanspaces.com/serving"
 
 
 @st.cache_data
 def load_predictions():
-    """Load pre-generated predictions from CSV files"""
+    """Load predictions from DO Spaces (public Parquet files)"""
     try:
-        proj = pd.read_csv("outputs/predictions/season_projections.csv")
-        fix = pd.read_csv("outputs/predictions/next_fixtures.csv")
+        proj = pd.read_parquet(f"{DO_SPACES_BASE_URL}/latest_buli_projections.parquet")
+        fix = pd.read_parquet(f"{DO_SPACES_BASE_URL}/latest_buli_matches.parquet")
         return proj, fix
-    except FileNotFoundError:
-        st.error(
-            "Prediction files not found. Please run generate_predictions.py first."
-        )
+    except Exception as e:
+        st.error(f"Failed to load predictions from DO Spaces: {e}")
         return None, None
-
-
-@st.cache_resource
-def load_trained_model():
-    """Load the trained model for team ratings"""
-    try:
-        model = load_model("outputs/models/production_model.pkl")
-        return model
-    except FileNotFoundError:
-        st.warning("Model file not found. Some visualisations may be unavailable.")
-        return None
 
 
 def main():
@@ -50,7 +39,6 @@ def main():
 
     # load data
     proj_data, fix_data = load_predictions()
-    model = load_trained_model()
 
     if proj_data is None:
         st.stop()
@@ -72,7 +60,7 @@ def main():
         projections.render(proj_data)
 
     with tab2:
-        team_strengths.render(model, proj_data)
+        team_strengths.render(None, proj_data)
 
     with tab3:
         fixtures.render(fix_data)

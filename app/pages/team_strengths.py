@@ -16,11 +16,16 @@ def render(model, projections):
         unsafe_allow_html=True,
     )
 
-    if model is None:
-        st.error("Model data not available")
+    if projections is None or len(projections) == 0:
+        st.error("Projections data not available")
         return
 
-    params = model["params"]
+    # check if required rating columns exist
+    required_cols = ["attack_rating", "defense_rating", "overall_rating"]
+    missing_cols = [col for col in required_cols if col not in projections.columns]
+    if missing_cols:
+        st.error(f"Missing rating columns: {missing_cols}")
+        return
 
     # team selector
     teams = sorted(projections["team"].unique())
@@ -28,9 +33,9 @@ def render(model, projections):
 
     _render_team_metrics(selected_team, projections)
     st.markdown("---")
-    _render_comparison_charts(selected_team, teams, params)
+    _render_comparison_charts(selected_team, projections)
     st.markdown("---")
-    _render_top_performers(teams, params)
+    _render_top_performers(projections)
 
 
 def _render_team_metrics(selected_team, projections):
@@ -51,19 +56,15 @@ def _render_team_metrics(selected_team, projections):
         st.metric("Projected Points", f"{team_data['projected_points']:.0f}")
 
 
-def _render_comparison_charts(selected_team, teams, params):
+def _render_comparison_charts(selected_team, projections):
     """Render league-wide comparison charts"""
     col1, col2 = st.columns(2)
 
-    # prepare ratings data
-    ratings_df = pd.DataFrame(
-        {
-            "team": teams,
-            "attack": [params["attack_rating"].get(t, 0) for t in teams],
-            "defense": [params["defense_rating"].get(t, 0) for t in teams],
-            "overall": [params["overall_rating"].get(t, 0) for t in teams],
-        }
-    )
+    # prepare ratings data from projections
+    ratings_df = projections[
+        ["team", "attack_rating", "defense_rating", "overall_rating"]
+    ].copy()
+    ratings_df.columns = ["team", "attack", "defense", "overall"]
     ratings_df["is_selected"] = ratings_df["team"] == selected_team
 
     # calculate symmetric axis limits
@@ -154,18 +155,14 @@ def _render_comparison_charts(selected_team, teams, params):
         st.altair_chart(bars, use_container_width=True)
 
 
-def _render_top_performers(teams, params):
+def _render_top_performers(projections):
     """Render top performers table"""
     st.subheader("Top Performers by Category")
 
-    ratings_df = pd.DataFrame(
-        {
-            "team": teams,
-            "attack": [params["attack_rating"].get(t, 0) for t in teams],
-            "defense": [params["defense_rating"].get(t, 0) for t in teams],
-            "overall": [params["overall_rating"].get(t, 0) for t in teams],
-        }
-    )
+    ratings_df = projections[
+        ["team", "attack_rating", "defense_rating", "overall_rating"]
+    ].copy()
+    ratings_df.columns = ["team", "attack", "defense", "overall"]
 
     col1, col2, col3 = st.columns(3)
 
