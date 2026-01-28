@@ -2,7 +2,7 @@
 #    uv pip compile pyproject.toml --output-file requirements.txt
 alembic==1.18.1
     # via optuna
-altair==5.5.0
+altair==6.0.0
     # via
     #   predicting-ball (pyproject.toml)
     #   streamlit
