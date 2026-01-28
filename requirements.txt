@@ -144,7 +144,7 @@ pillow==11.3.0
     #   streamlit
 protobuf==6.33.4
     # via streamlit
-pyarrow==22.0.0
+pyarrow==23.0.0
     # via streamlit
 pydantic==2.12.5
     # via fastapi
