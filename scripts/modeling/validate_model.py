@@ -10,6 +10,7 @@ Usage:
 """
 
 import sys
+import json
 import argparse
 from pathlib import Path
 
@@ -78,6 +79,13 @@ def parse_args():
         choices=["rps", "log_loss", "brier"],
         default="rps",
         help="Primary metric to report and emphasise (default: rps)",
+    )
+
+    parser.add_argument(
+        "--output-json",
+        type=str,
+        default=None,
+        help="Path to save validation metrics as JSON (for pipeline integration)",
     )
 
     return parser.parse_args()
@@ -400,6 +408,36 @@ def main():
         print("\n Predictions were calibrated")
     else:
         print("\n No calibrators applied (use --calibrator-path to enable)")
+
+    # save metrics as JSON if requested
+    if args.output_json:
+        metrics_output = {
+            "test_seasons": test_seasons,
+            "per_season": [
+                {
+                    "season": r["season"],
+                    "n_matches": r["n_matches"],
+                    "rps": r["metrics"]["rps"],
+                    "brier_score": r["metrics"].get("brier_score"),
+                    "log_loss": r["metrics"].get("log_loss"),
+                    "accuracy": r["metrics"].get("accuracy"),
+                    "baseline_rps": r.get("baseline_metrics", {}).get("rps"),
+                }
+                for r in results
+            ],
+            "average": {
+                "rps": avg_rps,
+                "brier_score": avg_brier,
+                "log_loss": avg_log_loss,
+            },
+            "calibrated": calibrators is not None,
+        }
+
+        json_path = Path(args.output_json)
+        json_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(json_path, "w") as f:
+            json.dump(metrics_output, f, indent=2)
+        print(f"\nValidation metrics saved to: {json_path}")
 
 
 if __name__ == "__main__":

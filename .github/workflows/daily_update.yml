@@ -73,6 +73,13 @@ jobs:
             --comprehensive \
             --outcome-specific
 
+      - name: Run validation
+        run: |
+          python scripts/modeling/validate_model.py \
+            --model-path outputs/models/production_model.pkl \
+            --calibrator-path outputs/models/calibrators.pkl \
+            --output-json outputs/validation/metrics.json
+
       - name: Generate predictions and upload to DO Spaces
         env:
           DO_SPACES_KEY: ${{ secrets.DO_SPACES_KEY }}
@@ -83,8 +90,9 @@ jobs:
           python scripts/modeling/generate_predictions.py \
             --model-path outputs/models/production_model.pkl \
             --calibrator-path outputs/models/calibrators.pkl \
-            --n-bootstrap 500 \
-            --n-simulations 100000
+            --validation-metrics outputs/validation/metrics.json \
+            --n-bootstrap 250 \
+            --n-simulations 10000
 
       - name: Create job summary
         if: always()
@@ -97,9 +105,10 @@ jobs:
           echo "Predictions and model artifacts uploaded to DO Spaces:" >> $GITHUB_STEP_SUMMARY
           echo "- \`serving/latest_buli_matches.parquet\` (public)" >> $GITHUB_STEP_SUMMARY
           echo "- \`serving/latest_buli_projections.parquet\` (public)" >> $GITHUB_STEP_SUMMARY
-          echo "- \`serving/buli_model.pkl\` (public)" >> $GITHUB_STEP_SUMMARY
-          echo "- \`serving/buli_calibrators.pkl\` (public)" >> $GITHUB_STEP_SUMMARY
-          echo "- \`incoming/buli_run_*.parquet\` (private snapshot)" >> $GITHUB_STEP_SUMMARY
+          echo "- \`serving/buli_model.pkl\` (private)" >> $GITHUB_STEP_SUMMARY
+          echo "- \`serving/buli_calibrators.pkl\` (private)" >> $GITHUB_STEP_SUMMARY
+          echo "- \`incoming/buli_run_*.parquet\` (for pbdb ingestion)" >> $GITHUB_STEP_SUMMARY
+          echo "- \`incoming/buli_projections_*.parquet\` (for pbdb ingestion)" >> $GITHUB_STEP_SUMMARY
 
       - name: Create issue on failure
         if: failure()

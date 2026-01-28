@@ -90,6 +90,13 @@ def parse_args():
     )
 
     parser.add_argument(
+        "--validation-metrics",
+        type=str,
+        default=None,
+        help="Path to validation metrics JSON file (from validate_model.py)",
+    )
+
+    parser.add_argument(
         "--output-dir",
         type=str,
         default="outputs/predictions",
@@ -239,6 +246,7 @@ def create_run_snapshot(
     model: dict,
     calibrators: dict | None,
     run_timestamp: datetime,
+    validation_metrics: dict | None = None,
 ) -> pd.DataFrame:
     """
     Create the buli_run_{timestamp}.parquet snapshot for pbdb ingestion.
@@ -292,20 +300,21 @@ def create_run_snapshot(
     hyperparams = model.get("hyperparams", {})
     df["hyperparameters_json"] = json.dumps(hyperparams)
 
-    # add validation metrics placeholder (could be filled from validation reports)
-    validation_metrics = {
-        "note": "Validation metrics to be added when available",
-    }
-    df["validation_metrics_json"] = json.dumps(validation_metrics)
+    # add validation metrics
+    if validation_metrics:
+        df["validation_metrics_json"] = json.dumps(validation_metrics)
+    else:
+        df["validation_metrics_json"] = json.dumps(
+            {"note": "No validation metrics provided"}
+        )
 
     # add calibration metrics if available
     calibration_metrics = {}
     if calibrators:
         calibration_metrics = {
             "method": calibrators.get("calibration_method", "unknown"),
-            "brier_uncalibrated": calibrators.get("brier_uncalibrated_holdout"),
-            "brier_calibrated": calibrators.get("brier_calibrated_holdout"),
             "rps_improvement": calibrators.get("rps_improvement_holdout"),
+            "brier_improvement": calibrators.get("brier_improvement_holdout"),
         }
     df["calibration_metrics_json"] = json.dumps(calibration_metrics)
 
@@ -347,25 +356,33 @@ def upload_to_spaces(
         urls["projections"] = get_public_url(key)
         print(f"   Uploaded: {key}")
 
-    # upload model pkl (public)
+    # upload model pkl (private)
     key = f"{SERVING_PREFIX}buli_model.pkl"
-    upload_pickle(model, key, public=True)
-    urls["model"] = get_public_url(key)
+    upload_pickle(model, key, public=False)
+    urls["model"] = key
     print(f"   Uploaded: {key}")
 
-    # upload calibrators pkl (public) if available
+    # upload calibrators pkl (private) if available
     if calibrators:
         key = f"{SERVING_PREFIX}buli_calibrators.pkl"
-        upload_pickle(calibrators, key, public=True)
-        urls["calibrators"] = get_public_url(key)
+        upload_pickle(calibrators, key, public=False)
+        urls["calibrators"] = key
         print(f"   Uploaded: {key}")
 
-    # upload run snapshot (private)
+    # upload run snapshot (private) for pbdb ingestion
     if len(snapshot_df) > 0:
         timestamp_str = run_timestamp.strftime("%Y%m%d_%H%M%S")
         key = f"{INCOMING_PREFIX}buli_run_{timestamp_str}.parquet"
         upload_dataframe_as_parquet(snapshot_df, key, public=False)
         urls["snapshot"] = key
+        print(f"   Uploaded: {key}")
+
+    # upload projections snapshot (private) for pbdb ingestion
+    if len(projections_df) > 0:
+        timestamp_str = run_timestamp.strftime("%Y%m%d_%H%M%S")
+        key = f"{INCOMING_PREFIX}buli_projections_{timestamp_str}.parquet"
+        upload_dataframe_as_parquet(projections_df, key, public=False)
+        urls["projections_snapshot"] = key
         print(f"   Uploaded: {key}")
 
     return urls
@@ -415,6 +432,16 @@ def main():
 
     # set random seed for reproducibility
     np.random.seed(args.seed)
+
+    # load validation metrics if provided
+    validation_metrics = None
+    if args.validation_metrics:
+        try:
+            with open(args.validation_metrics, "r") as f:
+                validation_metrics = json.load(f)
+            print(f"   Loaded validation metrics from: {args.validation_metrics}")
+        except Exception as e:
+            print(f"   Warning: Could not load validation metrics: {e}")
 
     # ========================================================================
     # LOAD MODEL
@@ -568,7 +595,13 @@ def main():
     print(f"   Projections DataFrame: {len(projections_df)} rows")
 
     snapshot_df = create_run_snapshot(
-        all_predictions, all_fixtures, model["params"], model, calibrators, run_timestamp
+        all_predictions,
+        all_fixtures,
+        model["params"],
+        model,
+        calibrators,
+        run_timestamp,
+        validation_metrics,
     )
     print(f"   Snapshot DataFrame: {len(snapshot_df)} rows")
 
@@ -695,10 +728,12 @@ def main():
         print("\nOutputs uploaded to DO Spaces:")
         print("  - serving/latest_buli_matches.parquet (public)")
         print("  - serving/latest_buli_projections.parquet (public)")
-        print("  - serving/buli_model.pkl (public)")
+        print("  - serving/buli_model.pkl (private)")
         if calibrators:
-            print("  - serving/buli_calibrators.pkl (public)")
-        print(f"  - incoming/buli_run_{run_timestamp.strftime('%Y%m%d_%H%M%S')}.parquet")
+            print("  - serving/buli_calibrators.pkl (private)")
+        timestamp_str = run_timestamp.strftime('%Y%m%d_%H%M%S')
+        print(f"  - incoming/buli_run_{timestamp_str}.parquet (for pbdb)")
+        print(f"  - incoming/buli_projections_{timestamp_str}.parquet (for pbdb)")
 
     if calibrators:
         print("\nPredictions were calibrated")

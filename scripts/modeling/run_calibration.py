@@ -378,9 +378,8 @@ def main():
         "holdout_data_size": len(holdout_data),
         "brier_uncalibrated_cal": metrics_uncal_cal["brier_score"],
         "brier_calibrated_cal": brier_cal,
-        "brier_uncalibrated_holdout": holdout_metrics["brier_uncalibrated"],
-        "brier_calibrated_holdout": holdout_metrics["brier_calibrated"],
         "rps_improvement_holdout": holdout_metrics["rps_improvement"],
+        "brier_improvement_holdout": holdout_metrics["brier_improvement"],
         "draw_accuracy_improvement_holdout": holdout_metrics["draw_accuracy_calibrated"]
         - holdout_metrics["draw_accuracy_uncalibrated"],
         "windows": windows,
