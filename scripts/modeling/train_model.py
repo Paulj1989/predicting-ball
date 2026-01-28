@@ -46,8 +46,8 @@ def parse_args():
     parser.add_argument(
         "--n-trials",
         type=int,
-        default=30,
-        help="Number of Optuna trials for hyperparameter optimisation (default: 30)",
+        default=50,
+        help="Number of Optuna trials for hyperparameter optimisation (default: 50)",
     )
 
     parser.add_argument(
