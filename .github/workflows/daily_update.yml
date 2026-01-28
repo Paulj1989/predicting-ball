@@ -2,7 +2,7 @@ name: Daily Model Update
 
 on:
   schedule:
-    - cron: '0 9 * * *'  # Every Day at 9:00 UTC
+    - cron: '0 4 * * *'  # Daily at 4:00 UTC
   workflow_dispatch:
     inputs:
       force_tune:
