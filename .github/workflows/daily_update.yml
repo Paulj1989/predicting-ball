@@ -32,10 +32,7 @@ jobs:
         uses: astral-sh/setup-uv@v3
 
       - name: Install dependencies
-        run: |
-          uv pip install --system -r requirements.txt
-          uv pip install --system boto3 pyarrow
-          uv pip install --system -e .
+        run: uv pip install --system -e .
 
       - name: Download DuckDB from DO Spaces
         env:
