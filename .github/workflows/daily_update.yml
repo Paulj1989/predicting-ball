@@ -57,6 +57,15 @@ jobs:
             echo "Regular week - fast training only"
           fi
 
+      - name: Download previous model for hyperparameters
+        if: steps.check_tuning.outputs.tune != 'true'
+        env:
+          DO_SPACES_KEY: ${{ secrets.DO_SPACES_KEY }}
+          DO_SPACES_SECRET: ${{ secrets.DO_SPACES_SECRET }}
+          DO_SPACE_NAME: ${{ secrets.DO_SPACE_NAME }}
+          DO_SPACE_REGION: ${{ secrets.DO_SPACE_REGION }}
+        run: python scripts/automation/download_db.py --model-only
+
       - name: Train model
         run: |
           mkdir -p outputs/models

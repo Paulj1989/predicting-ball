@@ -21,7 +21,7 @@ def get_default_hyperparameters() -> Dict[str, float]:
 
 def optimise_hyperparameters(
     train_val_data: pd.DataFrame,
-    n_trials: int = 30,
+    n_trials: int = 50,
     n_jobs: int = -1,
     metric: str = "rps",
     use_two_stage: bool = True,
@@ -137,6 +137,6 @@ def optimise_hyperparameters(
         elif study.best_params["rho"] > -0.08:
             print("    -> Weak draw correction")
         else:
-            print("    -> Typical Bundesliga draw correction")
+            print("    -> Typical draw correction")
 
     return study.best_params

@@ -102,33 +102,25 @@ def parse_args():
     return parser.parse_args()
 
 
-def load_previous_hyperparameters(output_dir: Path) -> dict:
-    """Load previously optimised hyperparameters"""
-    params_path = output_dir / "best_hyperparams.pkl"
+def load_previous_hyperparameters(model_dir: Path) -> dict:
+    """Load previously optimised hyperparameters from existing model"""
+    # check for production model (local or downloaded from DO Spaces)
+    model_path = model_dir / "production_model.pkl"
+    if not model_path.exists():
+        model_path = model_dir / "buli_model.pkl"
 
-    if params_path.exists():
-        with open(params_path, "rb") as f:
-            saved_params = pickle.load(f)
-        return saved_params
+    if model_path.exists():
+        with open(model_path, "rb") as f:
+            model_data = pickle.load(f)
+
+        if "hyperparams" in model_data:
+            return {
+                "hyperparams": model_data["hyperparams"],
+                "optimised_at": model_data.get("trained_at", "unknown"),
+                "source": str(model_path),
+            }
 
     return None
-
-
-def save_hyperparameters(hyperparams: dict, output_dir: Path, dry_run: bool = False):
-    """Save optimised hyperparameters for future use"""
-    if not dry_run:
-        params_path = output_dir / "best_hyperparams.pkl"
-
-        save_data = {
-            "hyperparams": hyperparams,
-            "optimised_at": datetime.now(),
-            "note": "Use these for weekly training without --tune flag",
-        }
-
-        with open(params_path, "wb") as f:
-            pickle.dump(save_data, f)
-
-        print(f"   Hyperparameters saved: {params_path}")
 
 
 def main():
@@ -198,25 +190,24 @@ def main():
             all_train_data, n_trials=args.n_trials, metric=args.metric, verbose=True
         )
 
-        save_hyperparameters(hyperparams, output_dir, dry_run=args.dry_run)
-
     else:
         print("\n3. Loading hyperparameters...")
 
-        # always check production directory for best params
+        # load from existing model (production_model.pkl or buli_model.pkl)
         prod_dir = Path("outputs/models")
         previous_params = load_previous_hyperparameters(prod_dir)
 
         if previous_params:
             hyperparams = previous_params["hyperparams"]
             optimised_date = previous_params.get("optimised_at", "unknown")
-            print("   Loaded previously optimised hyperparameters")
-            print(f"   Optimised at: {optimised_date}")
+            source_file = previous_params.get("source", "unknown")
+            print(f"   Loaded hyperparameters from: {source_file}")
+            print(f"   Model trained at: {optimised_date}")
             print("\n   Using hyperparameters:")
             for key, val in hyperparams.items():
                 print(f"      {key}: {val}")
         else:
-            print("   No previously optimised hyperparameters found")
+            print("   No existing model found in outputs/models/")
             print("   Using default hyperparameters (consider running with --tune)")
             hyperparams = get_default_hyperparameters()
             print("\n   Default hyperparameters:")

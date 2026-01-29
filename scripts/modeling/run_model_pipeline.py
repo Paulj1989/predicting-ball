@@ -4,7 +4,7 @@ Run Model Pipeline
 =====================
 
 Execute the full modelling pipeline:
-1. (Optional) Download fresh database from DO Spaces
+1. (Optional) Download fresh database/model from DO Spaces
 2. Train model
 3. Run calibration
 4. Validate
@@ -13,7 +13,9 @@ Execute the full modelling pipeline:
 Usage:
     python scripts/modeling/run_model_pipeline.py [--tune] [--metric rps|log_loss|brier]
     python scripts/modeling/run_model_pipeline.py --tune --metric brier --n-trials 50
-    python scripts/modeling/run_model_pipeline.py --refresh-db  # Pull fresh data first
+    python scripts/modeling/run_model_pipeline.py --refresh-db  # Pull fresh database
+    python scripts/modeling/run_model_pipeline.py --refresh-model  # Pull model (for hyperparameters)
+    python scripts/modeling/run_model_pipeline.py --refresh  # Pull both database and model
 """
 
 import sys
@@ -33,6 +35,18 @@ def parse_args():
     )
 
     parser.add_argument(
+        "--refresh-model",
+        action="store_true",
+        help="Download model artifacts from DO Spaces (for hyperparameters)",
+    )
+
+    parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Download both database and model artifacts from DO Spaces",
+    )
+
+    parser.add_argument(
         "--tune",
         action="store_true",
         help="Optimise hyperparameters (takes longer)",
@@ -41,8 +55,8 @@ def parse_args():
     parser.add_argument(
         "--n-trials",
         type=int,
-        default=30,
-        help="Number of hyperparameter optimisation trials (default: 30)",
+        default=50,
+        help="Number of hyperparameter optimisation trials (default: 50)",
     )
 
     parser.add_argument(
@@ -96,15 +110,27 @@ def main():
     print("=" * 70)
 
     # ========================================================================
-    # STEP 0 - DOWNLOAD DATABASE (OPTIONAL)
+    # STEP 0 - DOWNLOAD FROM DO SPACES (OPTIONAL)
     # ========================================================================
-    if args.refresh_db:
+    refresh_db = args.refresh_db or args.refresh
+    refresh_model = args.refresh_model or args.refresh
+
+    if refresh_db:
         download_cmd = [
             "python",
             str(automation_dir / "download_db.py"),
         ]
 
-        run_command(download_cmd, "STEP 0: DOWNLOADING DATABASE FROM DO SPACES")
+        run_command(download_cmd, "STEP 0a: DOWNLOADING DATABASE FROM DO SPACES")
+
+    if refresh_model:
+        download_model_cmd = [
+            "python",
+            str(automation_dir / "download_db.py"),
+            "--model-only",
+        ]
+
+        run_command(download_model_cmd, "STEP 0b: DOWNLOADING MODEL FROM DO SPACES")
 
     # ========================================================================
     # STEP 1 - TRAIN MODEL
