@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY pyproject.toml ./
 RUN uv pip compile pyproject.toml --output-file requirements.txt && \
-    uv pip install --no-cache --user -r requirements.txt
+    pip install --no-cache-dir --user -r requirements.txt
 
 FROM python:3.12-slim
 
