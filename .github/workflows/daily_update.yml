@@ -2,7 +2,7 @@ name: Daily Model Update
 
 on:
   schedule:
-    - cron: '0 4 * * *'  # Daily at 4:00 UTC
+    - cron: '0 4 * * *'
   workflow_dispatch:
     inputs:
       force_tune:
@@ -20,6 +20,8 @@ jobs:
   update-model:
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    outputs:
+      tune_status: ${{ steps.check_tuning.outputs.tune }}
 
     steps:
       - name: Checkout repository
@@ -44,19 +46,36 @@ jobs:
           DO_SPACE_REGION: ${{ secrets.DO_SPACE_REGION }}
         run: python scripts/automation/download_db.py
 
-      - name: Determine if hyperparameter tuning needed
+      - name: Check Tuning Cache
+        id: cache-tuning
+        uses: actions/cache@v4
+        with:
+          path: tuning_marker.txt
+          key: tuning-timestamp-${{ github.run_id }}
+          restore-keys: tuning-timestamp-
+
+      - name: Determine tuning status
         id: check_tuning
         run: |
-          DAY_OF_MONTH=$(date +%d)
-          if [ "$DAY_OF_MONTH" -le 7 ] || [ "${{ inputs.force_tune }}" = "true" ]; then
-            echo "tune=true" >> $GITHUB_OUTPUT
-            echo "First week of month or forced - will run hyperparameter tuning"
-          else
-            echo "tune=false" >> $GITHUB_OUTPUT
-            echo "Regular week - fast training only"
+          NOW=$(date +%s)
+          TUNE_NEEDED="true"
+
+          if [ -f "tuning_marker.txt" ]; then
+            LAST_TUNE=$(cat tuning_marker.txt)
+            if [ $(( NOW - LAST_TUNE )) -lt 2592000 ]; then
+              TUNE_NEEDED="false"
+            fi
           fi
 
-      - name: Download previous model for hyperparameters
+          if [ "${{ inputs.force_tune }}" = "true" ]; then
+            TUNE_NEEDED="true"
+          fi
+
+          echo "tune=$TUNE_NEEDED" >> $GITHUB_OUTPUT
+          [ "$TUNE_NEEDED" = "true" ] && echo "$NOW" > tuning_marker.txt
+          echo "Tuning requirement: $TUNE_NEEDED"
+
+      - name: Download previous model
         if: steps.check_tuning.outputs.tune != 'true'
         env:
           DO_SPACES_KEY: ${{ secrets.DO_SPACES_KEY }}
@@ -68,27 +87,23 @@ jobs:
       - name: Train model
         run: |
           mkdir -p outputs/models
-          if [ "${{ steps.check_tuning.outputs.tune }}" = "true" ]; then
-            python scripts/modeling/train_model.py --tune
-          else
-            python scripts/modeling/train_model.py
-          fi
+          CMD="python scripts/modeling/train_model.py"
+          [ "${{ steps.check_tuning.outputs.tune }}" = "true" ] && CMD="$CMD --tune"
+          $CMD
 
-      - name: Run calibration
+      - name: Calibrate and Validate
         run: |
           python scripts/modeling/run_calibration.py \
             --model-path outputs/models/production_model.pkl \
             --comprehensive \
             --outcome-specific
 
-      - name: Run validation
-        run: |
           python scripts/modeling/validate_model.py \
             --model-path outputs/models/production_model.pkl \
             --calibrator-path outputs/models/calibrators.pkl \
             --output-json outputs/validation/metrics.json
 
-      - name: Generate predictions and upload to DO Spaces
+      - name: Generate predictions and upload
         env:
           DO_SPACES_KEY: ${{ secrets.DO_SPACES_KEY }}
           DO_SPACES_SECRET: ${{ secrets.DO_SPACES_SECRET }}
@@ -102,36 +117,84 @@ jobs:
             --n-bootstrap 250 \
             --n-simulations 10000
 
-      - name: Deploy app
-        uses: digitalocean/app_action/deploy@v2
-        with:
-          token: ${{ secrets.DO_ACCESS_TOKEN }}
-
-      - name: Create job summary
-        if: always()
-        run: |
-          echo "## Weekly Update Summary" >> $GITHUB_STEP_SUMMARY
-          echo "**Date**: $(date)" >> $GITHUB_STEP_SUMMARY
-          echo "**Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Outputs" >> $GITHUB_STEP_SUMMARY
-          echo "Predictions and model artifacts uploaded to DO Spaces:" >> $GITHUB_STEP_SUMMARY
-          echo "- \`serving/latest_buli_matches.parquet\` (public)" >> $GITHUB_STEP_SUMMARY
-          echo "- \`serving/latest_buli_projections.parquet\` (public)" >> $GITHUB_STEP_SUMMARY
-          echo "- \`serving/buli_model.pkl\` (private)" >> $GITHUB_STEP_SUMMARY
-          echo "- \`serving/buli_calibrators.pkl\` (private)" >> $GITHUB_STEP_SUMMARY
-          echo "- \`incoming/buli_run_*.parquet\` (for pbdb ingestion)" >> $GITHUB_STEP_SUMMARY
-          echo "- \`incoming/buli_projections_*.parquet\` (for pbdb ingestion)" >> $GITHUB_STEP_SUMMARY
-
-      - name: Create issue on failure
+      - name: Notify Training failure
         if: failure()
         uses: actions/github-script@v7
         with:
           script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              title: `Weekly Update Failed - ${new Date().toLocaleDateString()}`,
-              body: `Automated weekly update failed.\n\n**Run**: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              title: `Model Update Failed: ${new Date().toLocaleDateString()}`,
+              body: `Update failed at the training stage. [View Logs](${runUrl})`,
               labels: ['automation', 'bug']
-            })
+            });
+
+  deploy:
+    needs: update-model
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DO_ACCESS_TOKEN }}
+
+      - name: Trigger deployment
+        id: deploy
+        uses: digitalocean/app_action/deploy@v2
+        with:
+          token: ${{ secrets.DO_ACCESS_TOKEN }}
+
+      - name: Verify deployment
+        run: |
+          APP_ID=$(echo '${{ steps.deploy.outputs.app }}' | jq -r '.id')
+          DEPLOY_ID=$(echo '${{ steps.deploy.outputs.app }}' | jq -r '.pending_deployment.id // .active_deployment.id')
+
+          echo "Monitoring App $APP_ID, Deployment $DEPLOY_ID"
+
+          while true; do
+            PHASE=$(doctl apps get-deployment $APP_ID $DEPLOY_ID --format Phase --no-header)
+            echo "Current Phase: $PHASE"
+            [ "$PHASE" = "ACTIVE" ] && exit 0
+            if [[ "$PHASE" =~ ^(ERROR|CANCELED|FAILED)$ ]]; then
+              echo "Deployment failed."
+              exit 1
+            fi
+            sleep 30
+          done
+
+      - name: Notify Deployment failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Deployment Failed: ${new Date().toLocaleDateString()}`,
+              body: `Training succeeded, but deployment failed. [View Logs](${runUrl})`,
+              labels: ['automation', 'deployment']
+            });
+
+  report:
+    needs: [update-model, deploy]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create job summary
+        env:
+          URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          echo "## Pipeline Summary: $(date +'%Y-%m-%d')" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "| :--- | :--- |" >> $GITHUB_STEP_SUMMARY
+          echo "| Model Update | ${{ needs.update-model.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| App Deployment | ${{ needs.deploy.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tuning Performed**: ${{ needs.update-model.outputs.tune_status }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Workflow Link**: [View Run]($URL)" >> $GITHUB_STEP_SUMMARY
