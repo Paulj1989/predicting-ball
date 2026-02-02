@@ -10,16 +10,18 @@ on:
         type: boolean
         default: false
 
-permissions:
-  contents: read
-  issues: write
-  id-token: write
-  deployments: write
+# cancel previous runs
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   update-model:
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    permissions:
+      contents: read
+      issues: write
     outputs:
       tune_status: ${{ steps.check_tuning.outputs.tune }}
 
@@ -38,7 +40,7 @@ jobs:
       - name: Install dependencies
         run: uv pip install --system -e .
 
-      - name: Download DuckDB from DO Spaces
+      - name: Download DuckDB
         env:
           DO_SPACES_KEY: ${{ secrets.DO_SPACES_KEY }}
           DO_SPACES_SECRET: ${{ secrets.DO_SPACES_SECRET }}
@@ -46,11 +48,12 @@ jobs:
           DO_SPACE_REGION: ${{ secrets.DO_SPACE_REGION }}
         run: python scripts/automation/download_db.py
 
-      - name: Check Tuning Cache
+      - name: Check tuning cache
         id: cache-tuning
         uses: actions/cache@v4
         with:
           path: tuning_marker.txt
+          # uses a unique key per run but restores the most recent version
           key: tuning-timestamp-${{ github.run_id }}
           restore-keys: tuning-timestamp-
 
@@ -60,6 +63,7 @@ jobs:
           NOW=$(date +%s)
           TUNE_NEEDED="true"
 
+          # check if 30 days have passed since the last cached timestamp
           if [ -f "tuning_marker.txt" ]; then
             LAST_TUNE=$(cat tuning_marker.txt)
             if [ $(( NOW - LAST_TUNE )) -lt 2592000 ]; then
@@ -72,8 +76,9 @@ jobs:
           fi
 
           echo "tune=$TUNE_NEEDED" >> $GITHUB_OUTPUT
+          # update the marker only if a tune is actually being performed
           [ "$TUNE_NEEDED" = "true" ] && echo "$NOW" > tuning_marker.txt
-          echo "Tuning requirement: $TUNE_NEEDED"
+          echo "Tuning: $TUNE_NEEDED"
 
       - name: Download previous model
         if: steps.check_tuning.outputs.tune != 'true'
@@ -91,13 +96,12 @@ jobs:
           [ "${{ steps.check_tuning.outputs.tune }}" = "true" ] && CMD="$CMD --tune"
           $CMD
 
-      - name: Calibrate and Validate
+      - name: Calibrate and validate
         run: |
           python scripts/modeling/run_calibration.py \
             --model-path outputs/models/production_model.pkl \
             --comprehensive \
             --outcome-specific
-
           python scripts/modeling/validate_model.py \
             --model-path outputs/models/production_model.pkl \
             --calibrator-path outputs/models/calibrators.pkl \
@@ -117,7 +121,7 @@ jobs:
             --n-bootstrap 250 \
             --n-simulations 10000
 
-      - name: Notify Training failure
+      - name: Notify training failure
         if: failure()
         uses: actions/github-script@v7
         with:
@@ -134,6 +138,10 @@ jobs:
   deploy:
     needs: update-model
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      deployments: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -151,14 +159,16 @@ jobs:
 
       - name: Verify deployment
         run: |
+          # extract metadata from the deployment step to monitor progress
           APP_ID=$(echo '${{ steps.deploy.outputs.app }}' | jq -r '.id')
           DEPLOY_ID=$(echo '${{ steps.deploy.outputs.app }}' | jq -r '.pending_deployment.id // .active_deployment.id')
 
           echo "Monitoring App $APP_ID, Deployment $DEPLOY_ID"
 
+          # poll the DigitalOcean API until the app is active or has failed
           while true; do
             PHASE=$(doctl apps get-deployment $APP_ID $DEPLOY_ID --format Phase --no-header)
-            echo "Current Phase: $PHASE"
+            echo "Phase: $PHASE"
             [ "$PHASE" = "ACTIVE" ] && exit 0
             if [[ "$PHASE" =~ ^(ERROR|CANCELED|FAILED)$ ]]; then
               echo "Deployment failed."
@@ -167,7 +177,7 @@ jobs:
             sleep 30
           done
 
-      - name: Notify Deployment failure
+      - name: Notify deployment failure
         if: failure()
         uses: actions/github-script@v7
         with:
@@ -196,5 +206,5 @@ jobs:
           echo "| Model Update | ${{ needs.update-model.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| App Deployment | ${{ needs.deploy.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Tuning Performed**: ${{ needs.update-model.outputs.tune_status }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tuning**: ${{ needs.update-model.outputs.tune_status }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Workflow Link**: [View Run]($URL)" >> $GITHUB_STEP_SUMMARY
