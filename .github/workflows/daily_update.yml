@@ -100,6 +100,11 @@ jobs:
             --n-bootstrap 250 \
             --n-simulations 10000
 
+      - name: Deploy app
+        uses: digitalocean/app_action/deploy@v2
+        with:
+          token: ${{ secrets.DO_ACCESS_TOKEN }}
+
       - name: Create job summary
         if: always()
         run: |
