@@ -13,6 +13,8 @@ on:
 permissions:
   contents: read
   issues: write
+  id-token: write
+  deployments: write
 
 jobs:
   update-model:
