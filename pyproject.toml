@@ -32,6 +32,12 @@ dependencies = [
     "setuptools>=80.9.0",
 ]
 
+[tool.uv]
+environments = [
+    "sys_platform == 'linux'",
+    "sys_platform == 'darwin'"
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
