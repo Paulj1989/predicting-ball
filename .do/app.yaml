@@ -1,19 +1,19 @@
-name: predicting-ball
+name: balls-app
 region: lon
 
 services:
-  - name: web
+  - name: predicting-ball
     github:
-      repo: paulj1989/predicting-ball
+      repo: Paulj1989/predicting-ball
       branch: main
       deploy_on_push: true
 
-    dockerfile_path: Dockerfile
-
+    dockerfile_path: /Dockerfile
+    source_dir: /
     http_port: 8501
 
-    instance_count: 2
-    instance_size_slug: basic-xs
+    instance_count: 1
+    instance_size_slug: apps-s-1vcpu-0.5gb
 
     routes:
       - path: /
@@ -31,11 +31,9 @@ services:
       - key: STREAMLIT_SERVER_PORT
         value: "8501"
         scope: RUN_TIME
-
       - key: STREAMLIT_SERVER_ADDRESS
         value: "0.0.0.0"
         scope: RUN_TIME
-
       - key: STREAMLIT_SERVER_ENABLE_CORS
         value: "false"
         scope: RUN_TIME
