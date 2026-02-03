@@ -38,6 +38,11 @@ services:
         value: "false"
         scope: RUN_TIME
 
+domains:
+  - domain: predicting-ball.co.uk
+    type: PRIMARY
+    zone: predicting-ball.co.uk
+
 alerts:
   - rule: DEPLOYMENT_FAILED
   - rule: DOMAIN_FAILED
