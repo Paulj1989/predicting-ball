@@ -15,9 +15,6 @@ services:
     instance_count: 1
     instance_size_slug: apps-s-1vcpu-0.5gb
 
-    routes:
-      - path: /
-
     health_check:
       http_path: /_stcore/health
       port: 8501
@@ -29,14 +26,22 @@ services:
 
     envs:
       - key: STREAMLIT_SERVER_PORT
+        scope: RUN_TIME
         value: "8501"
-        scope: RUN_TIME
       - key: STREAMLIT_SERVER_ADDRESS
-        value: "0.0.0.0"
         scope: RUN_TIME
+        value: 0.0.0.0
       - key: STREAMLIT_SERVER_ENABLE_CORS
-        value: "false"
         scope: RUN_TIME
+        value: "false"
+
+ingress:
+  rules:
+    - component:
+        name: predicting-ball
+      match:
+        path:
+          prefix: /
 
 domains:
   - domain: predicting-ball.co.uk
