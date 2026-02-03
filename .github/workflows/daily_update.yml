@@ -142,6 +142,7 @@ jobs:
       contents: read
       id-token: write
       deployments: write
+      issues: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
