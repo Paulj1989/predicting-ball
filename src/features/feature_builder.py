@@ -7,6 +7,7 @@ from typing import Optional
 from .xg_features import add_rolling_npxgd, add_venue_npxgd
 from .squad_features import add_squad_value_features
 from .odds_features import add_odds_features
+from .odds_imputation import impute_missing_odds
 from .weighted_goals import calculate_weighted_goals
 
 
@@ -52,12 +53,22 @@ def prepare_model_features(
         if verbose:
             logger.info("1. Skipping squad values (not requested)")
 
-    # step 2: odds features
+    # step 2: odds features (with imputation for missing pinnacle odds)
     if include_odds:
         if verbose:
             logger.info("2. Processing betting odds")
 
-        if "home_odds" in df.columns and "away_odds" in df.columns:
+        # check for new multi-bookmaker columns (pinnacle_*, bet365_*, market_avg_*)
+        has_multi_bookmaker = "pinnacle_home_odds" in df.columns
+        # check for legacy single-source columns (home_odds, away_odds)
+        has_legacy = "home_odds" in df.columns and "away_odds" in df.columns
+
+        if has_multi_bookmaker:
+            # impute missing pinnacle odds using bet365/market_avg
+            df = impute_missing_odds(df)
+            df = add_odds_features(df)
+        elif has_legacy:
+            # legacy path: odds already in expected format
             df = add_odds_features(df)
         else:
             if verbose:
