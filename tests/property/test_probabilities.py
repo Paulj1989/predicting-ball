@@ -81,9 +81,9 @@ class TestProbabilityInvariants:
         )
 
         # home and away should be very close for equal teams
-        assert (
-            abs(home - away) < 0.02
-        ), f"Asymmetric probabilities for equal teams: home={home}, away={away}"
+        assert abs(home - away) < 0.02, (
+            f"Asymmetric probabilities for equal teams: home={home}, away={away}"
+        )
 
     @given(
         st.floats(min_value=1.0, max_value=3.0),
