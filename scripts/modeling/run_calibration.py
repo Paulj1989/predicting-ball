@@ -12,29 +12,28 @@ Usage:
     python scripts/modeling/run_calibration.py --model-path outputs/models/production_model.pkl --outcome-specific
 """
 
-import sys
 import argparse
+import sys
 from pathlib import Path
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
-from src.models.calibration import (
-    fit_temperature_scaler,
-    apply_temperature_scaling,
-    fit_outcome_specific_temperatures,
-    apply_outcome_specific_scaling,
-    validate_calibration_on_holdout,
-    calibrate_dispersion_for_coverage,
-    calibrate_model_comprehensively,
-)
 from src.evaluation import (
-    evaluate_model_comprehensive,
     create_calibration_report,
+    evaluate_model_comprehensive,
+)
+from src.io.model_io import load_model, save_calibrators
+from src.models.calibration import (
+    apply_outcome_specific_scaling,
+    apply_temperature_scaling,
+    calibrate_model_comprehensively,
+    fit_outcome_specific_temperatures,
+    fit_temperature_scaler,
+    validate_calibration_on_holdout,
 )
 from src.processing.model_preparation import prepare_bundesliga_data
 from src.validation.splits import create_calibration_split
-from src.io.model_io import load_model, save_calibrators
 
 
 def parse_args():
@@ -153,7 +152,7 @@ def main():
         sys.exit(1)
 
     # use all available data
-    current_played = current_season[current_season["is_played"] == True].copy()
+    current_played = current_season[current_season["is_played"]].copy()
     all_data = pd.concat([historic_data, current_played], ignore_index=True)
 
     print(f"   Total matches: {len(all_data)}")
@@ -199,13 +198,13 @@ def main():
     )
 
     # holdout set predictions
-    metrics_uncal_holdout, holdout_predictions, holdout_actuals = (
+    _metrics_uncal_holdout, holdout_predictions, holdout_actuals = (
         evaluate_model_comprehensive(
             model["params"], holdout_data, use_dixon_coles=True
         )
     )
 
-    print(f"\n   Uncalibrated metrics (calibration set):")
+    print("\n   Uncalibrated metrics (calibration set):")
 
     # emphasise selected metric
     metric_map = {"rps": "RPS", "log_loss": "Log Loss", "brier": "Brier"}
@@ -280,8 +279,8 @@ def main():
     # calculate calibrated metrics on calibration set
     from src.evaluation.metrics import (
         calculate_brier_score,
-        calculate_rps,
         calculate_log_loss,
+        calculate_rps,
     )
 
     brier_cal = calculate_brier_score(cal_preds_calibrated, cal_actuals)
@@ -405,7 +404,7 @@ def main():
     )
 
     try:
-        report = create_calibration_report(
+        create_calibration_report(
             holdout_preds_calibrated,
             holdout_actuals,
             model_name="Calibrated Model (Holdout Set)",

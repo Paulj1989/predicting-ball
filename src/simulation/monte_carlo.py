@@ -1,14 +1,15 @@
 # src/simulation/monte_carlo.py
 
+from typing import Any
+
 import numpy as np
 import pandas as pd
-from typing import Dict, Tuple, Optional, Any, List
 
-from .sampling import sample_goals_calibrated
 from ..models.poisson import calculate_lambdas
+from .sampling import sample_goals_calibrated
 
 
-def get_current_standings(played_matches: pd.DataFrame) -> Dict[str, Dict[str, int]]:
+def get_current_standings(played_matches: pd.DataFrame) -> dict[str, dict[str, int]]:
     """Calculate current league standings from played matches"""
     if len(played_matches) == 0:
         return {}
@@ -57,11 +58,11 @@ def get_current_standings(played_matches: pd.DataFrame) -> Dict[str, Dict[str, i
 
 def simulate_remaining_season_calibrated(
     future_fixtures: pd.DataFrame,
-    bootstrap_params: List[Dict[str, Any]],
-    current_standings: Dict[str, Dict[str, int]],
+    bootstrap_params: list[dict[str, Any]],
+    current_standings: dict[str, dict[str, int]],
     n_simulations: int = 100000,
-    seed: Optional[int] = None,
-) -> Tuple[Dict[str, np.ndarray], List[str]]:
+    seed: int | None = None,
+) -> tuple[dict[str, np.ndarray], list[str]] | tuple[None, None]:
     """
     Simulate remaining fixtures using calibrated goal distributions.
 
@@ -113,7 +114,7 @@ def simulate_remaining_season_calibrated(
             [team_to_idx[t] for t in future_fixtures["away_team"]], dtype=int
         )
 
-        n_matches = len(future_fixtures)
+        len(future_fixtures)
 
         # initialise results storage
         results = {
@@ -189,10 +190,10 @@ def simulate_remaining_season_calibrated(
 
 
 def create_final_summary(
-    results: Dict[str, np.ndarray],
-    params: Dict[str, Any],
-    teams: List[str],
-    current_standings: Dict[str, Dict[str, int]],
+    results: dict[str, np.ndarray],
+    params: dict[str, Any],
+    teams: list[str],
+    current_standings: dict[str, dict[str, int]],
 ) -> pd.DataFrame:
     """Create final summary table from simulation results"""
     n_simulations = len(results["points"])

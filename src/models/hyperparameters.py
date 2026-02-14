@@ -1,15 +1,15 @@
 # src/models/hyperparameters.py
 
+
 import numpy as np
-import pandas as pd
 import optuna
+import pandas as pd
 from optuna.pruners import MedianPruner
 from optuna.samplers import TPESampler
 from sklearn.model_selection import TimeSeriesSplit
-from typing import Dict
 
 
-def get_default_hyperparameters() -> Dict[str, float]:
+def get_default_hyperparameters() -> dict[str, float]:
     """Get default hyperparameters for the model"""
     return {
         "time_decay": 0.005,
@@ -26,7 +26,7 @@ def optimise_hyperparameters(
     metric: str = "rps",
     use_two_stage: bool = True,
     verbose: bool = False,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """
     Optimise hyperparameters using time-series cross-validation.
 

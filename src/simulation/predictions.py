@@ -1,19 +1,19 @@
 # src/simulation/predictions.py
 
-import numpy as np
+from typing import Any
+
 import pandas as pd
 from scipy.stats import poisson
-from typing import Optional, Dict, Any
 
-from ..models.poisson import calculate_lambdas, calculate_lambdas_single
 from ..models.dixon_coles import calculate_match_probabilities_dixon_coles
+from ..models.poisson import calculate_lambdas_single
 
 
 def get_next_round_fixtures(
     current_season: pd.DataFrame,
     full_matchday_size: int = 9,
     rearranged_threshold: int = 5,
-) -> Optional[pd.DataFrame]:
+) -> pd.DataFrame | None:
     """Get next round of unplayed fixtures, including rearranged games.
 
     Uses the matchweek column to identify the upcoming round and any
@@ -28,7 +28,7 @@ def get_next_round_fixtures(
     """
     # filter to unplayed fixtures
     if "is_played" in current_season.columns:
-        future_fixtures = current_season[current_season["is_played"] == False].copy()
+        future_fixtures = current_season[not current_season["is_played"]].copy()
     else:
         # fall back to checking for null goals
         future_fixtures = current_season[current_season["home_goals"].isna()].copy()
@@ -57,9 +57,7 @@ def get_next_round_fixtures(
     next_matchweek = full_matchweeks.index.min()
 
     # get fixtures for the next matchweek
-    matchweek_fixtures = future_fixtures[
-        future_fixtures["matchweek"] == next_matchweek
-    ]
+    matchweek_fixtures = future_fixtures[future_fixtures["matchweek"] == next_matchweek]
     matchweek_end_date = matchweek_fixtures["date"].max()
 
     # find rearranged games: earlier matchweeks occurring up to the end of next matchweek
@@ -80,7 +78,7 @@ def get_next_round_fixtures(
 def _get_next_fixtures_by_date(
     future_fixtures: pd.DataFrame,
     min_matchday_size: int,
-) -> Optional[pd.DataFrame]:
+) -> pd.DataFrame | None:
     """Fallback: get next fixtures by date when matchweek is unavailable."""
     # group by date and count fixtures per date
     date_counts = future_fixtures.groupby(future_fixtures["date"].dt.date).size()
@@ -103,9 +101,9 @@ def _get_next_fixtures_by_date(
 
 def get_all_future_fixtures(
     current_season: pd.DataFrame,
-) -> Optional[pd.DataFrame]:
+) -> pd.DataFrame | None:
     """Get all unplayed fixtures for the current season"""
-    future_fixtures = current_season[current_season["is_played"] == False].copy()
+    future_fixtures = current_season[not current_season["is_played"]].copy()
 
     if len(future_fixtures) == 0:
         return None
@@ -119,13 +117,13 @@ def get_all_future_fixtures(
 def predict_single_match(
     home_team: str,
     away_team: str,
-    params: Dict[str, Any],
+    params: dict[str, Any],
     home_log_odds_ratio: float = 0.0,
     home_npxgd_w5: float = 0.0,
     away_npxgd_w5: float = 0.0,
     max_goals: int = 8,
     use_dixon_coles: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Generate predictions for a single match"""
 
     lambda_h, lambda_a = calculate_lambdas_single(
@@ -188,11 +186,11 @@ def predict_single_match(
 
 
 def predict_match_probabilities(
-    params: Dict[str, Any],
+    params: dict[str, Any],
     match_data: pd.Series,
     max_goals: int = 8,
     use_dixon_coles: bool = True,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """Predict outcome probabilities for a single match"""
     # extract match information
     home_team = match_data["home_team"]
@@ -233,17 +231,17 @@ def predict_match_probabilities(
 
 def predict_next_fixtures(
     fixtures: pd.DataFrame,
-    params: Dict[str, Any],
-    calibrators: Optional[Any] = None,
+    params: dict[str, Any],
+    calibrators: Any | None = None,
     use_dixon_coles: bool = True,
-) -> Optional[pd.DataFrame]:
+) -> pd.DataFrame | None:
     """Generate predictions for multiple fixtures"""
     if fixtures is None or len(fixtures) == 0:
         return None
 
     predictions = []
 
-    for idx, match in fixtures.iterrows():
+    for _idx, match in fixtures.iterrows():
         home_team = match["home_team"]
         away_team = match["away_team"]
 

@@ -1,11 +1,13 @@
 # src/features/xg_features.py
 
-import pandas as pd
+
 import numpy as np
-from typing import List
+import pandas as pd
 
 
-def add_rolling_npxgd(df: pd.DataFrame, windows: List[int] = [5, 10]) -> pd.DataFrame:
+def add_rolling_npxgd(
+    df: pd.DataFrame, windows: list[int] | None = None
+) -> pd.DataFrame:
     """
     Add rolling npxGD (non-penalty xG difference) statistics.
     Calculates mean npxGD over specified windows for each team, respecting season boundaries.
@@ -20,6 +22,8 @@ def add_rolling_npxgd(df: pd.DataFrame, windows: List[int] = [5, 10]) -> pd.Data
     - First game of season uses previous season's average npxGD (or 0.0 if unavailable)
     - Expanding window: games 1-N use 1-N games until reaching window size
     """
+    if windows is None:
+        windows = [5, 10]
     df = df.sort_values("date").copy()
 
     # initialise columns
@@ -44,7 +48,7 @@ def add_rolling_npxgd(df: pd.DataFrame, windows: List[int] = [5, 10]) -> pd.Data
 
 
 def _calculate_and_merge_team_npxgd(
-    df: pd.DataFrame, played_df: pd.DataFrame, team: str, windows: List[int]
+    df: pd.DataFrame, played_df: pd.DataFrame, team: str, windows: list[int]
 ) -> pd.DataFrame:
     """Calculate and merge rolling npxGD statistics for a single team"""
     # get all matches with npxg data for this team
@@ -216,7 +220,7 @@ def _calculate_venue_npxgd_stats(
 
     team_home_matches = season_df[season_df["home_team"] == team].sort_values("date")
 
-    for i, (idx, match) in enumerate(team_home_matches.iterrows()):
+    for i, (idx, _match) in enumerate(team_home_matches.iterrows()):
         if i == 0:
             # first home game: use previous season's home average
             df.at[idx, "home_venue_npxgd_per_game"] = prev_home_avg
@@ -234,7 +238,7 @@ def _calculate_venue_npxgd_stats(
 
     team_away_matches = season_df[season_df["away_team"] == team].sort_values("date")
 
-    for i, (idx, match) in enumerate(team_away_matches.iterrows()):
+    for i, (idx, _match) in enumerate(team_away_matches.iterrows()):
         if i == 0:
             # first away game: use previous season's away average
             df.at[idx, "away_venue_npxgd_per_game"] = prev_away_avg

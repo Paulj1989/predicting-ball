@@ -1,9 +1,9 @@
 # src/visualisation/tables.py
 
+
 import numpy as np
 import pandas as pd
-from great_tables import GT, style, loc
-from typing import Optional
+from great_tables import GT, loc, style
 
 
 def format_probability(prob: float) -> str:
@@ -20,7 +20,7 @@ def format_probability(prob: float) -> str:
 
 def create_standings_table(
     summary: pd.DataFrame,
-    save_path: Optional[str] = None,
+    save_path: str | None = None,
     table_width: str = "1200px",
 ) -> GT:
     """Create formatted league standings table using great_tables"""
@@ -81,7 +81,7 @@ def create_standings_table(
 
 def create_next_fixtures_table(
     predictions: pd.DataFrame,
-    save_path: Optional[str] = None,
+    save_path: str | None = None,
     table_width: str = "1000px",
 ) -> GT:
     """Create formatted table for next fixtures using great_tables"""
@@ -148,7 +148,7 @@ def create_next_fixtures_table(
 
 def create_comparison_table(
     models_dict: dict,
-    save_path: Optional[str] = None,
+    save_path: str | None = None,
     table_width: str = "800px",
 ) -> GT:
     """Create model comparison table using great_tables"""
@@ -193,7 +193,7 @@ def create_comparison_table(
 def create_team_ratings_table(
     params: dict,
     top_n: int = 18,
-    save_path: Optional[str] = None,
+    save_path: str | None = None,
     table_width: str = "800px",
 ) -> GT:
     """Create table showing team ratings (attack, defense, overall)"""
@@ -248,7 +248,7 @@ def create_team_ratings_table(
 
 def create_validation_summary_table(
     validation_results: list,
-    save_path: Optional[str] = None,
+    save_path: str | None = None,
     table_width: str = "1000px",
 ) -> GT:
     """Create validation summary table showing per-season metrics"""

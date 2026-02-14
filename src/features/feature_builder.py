@@ -1,19 +1,19 @@
 # src/features/feature_builder.py
 
-import pandas as pd
 import logging
-from typing import Optional
 
-from .xg_features import add_rolling_npxgd, add_venue_npxgd
-from .squad_features import add_squad_value_features
+import pandas as pd
+
 from .odds_features import add_odds_features
 from .odds_imputation import impute_missing_odds
+from .squad_features import add_squad_value_features
 from .weighted_goals import calculate_weighted_goals
+from .xg_features import add_rolling_npxgd, add_venue_npxgd
 
 
 def prepare_model_features(
     df: pd.DataFrame,
-    windows: list = [5, 10],
+    windows: list | None = None,
     include_squad_values: bool = True,
     include_odds: bool = True,
     include_weighted_goals: bool = True,
@@ -30,6 +30,8 @@ def prepare_model_features(
     5. Red card indicators
     6. Weighted performance composite (for model fitting)
     """
+    if windows is None:
+        windows = [5, 10]
     logger = logging.getLogger(__name__)
 
     if verbose:
@@ -119,9 +121,7 @@ def prepare_model_features(
     return df
 
 
-def validate_features(
-    df: pd.DataFrame, required_columns: Optional[list] = None
-) -> dict:
+def validate_features(df: pd.DataFrame, required_columns: list | None = None) -> dict:
     """Validate all model features"""
     if required_columns is None:
         required_columns = [

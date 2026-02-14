@@ -18,9 +18,9 @@ Usage:
     python scripts/modeling/run_model_pipeline.py --refresh  # Pull both database and model
 """
 
-import sys
 import argparse
 import subprocess
+import sys
 from pathlib import Path
 
 

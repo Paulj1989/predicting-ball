@@ -1,19 +1,20 @@
 # src/evaluation/baselines.py
 
+from typing import Any
+
 import numpy as np
 import pandas as pd
-from typing import Dict, Optional
 
 from .metrics import (
-    calculate_rps,
     calculate_brier_score,
     calculate_log_loss,
+    calculate_rps,
 )
 
 
 def evaluate_implied_odds_baseline(
     data: pd.DataFrame, verbose: bool = False
-) -> Optional[Dict[str, float]]:
+) -> dict[str, float] | None:
     """
     Evaluate implied odds as a baseline model.
 
@@ -151,8 +152,8 @@ def evaluate_implied_odds_baseline(
 
 
 def evaluate_odds_only_model(
-    test_data: pd.DataFrame, params: Dict[str, any]
-) -> Optional[Dict[str, float]]:
+    test_data: pd.DataFrame, params: dict[str, Any]
+) -> dict[str, float] | None:
     """Evaluate model that uses only betting odds (no team strengths)"""
     if params is None or not params.get("success", False):
         return None
@@ -165,10 +166,8 @@ def evaluate_odds_only_model(
     return metrics
 
 
-
-
 def create_baseline_comparison_table(
-    model_metrics: Dict[str, float], test_data: pd.DataFrame, verbose: bool = True
+    model_metrics: dict[str, float], test_data: pd.DataFrame, verbose: bool = True
 ) -> pd.DataFrame:
     """Create comprehensive baseline comparison table"""
     results = {

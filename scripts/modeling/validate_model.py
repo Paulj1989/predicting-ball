@@ -9,22 +9,22 @@ Usage:
     python scripts/modeling/validate_model.py --model-path outputs/models/production_model.pkl
 """
 
-import sys
-import json
 import argparse
+import json
+import sys
 from pathlib import Path
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
+from src.io.model_io import load_model
+from src.processing.model_preparation import prepare_bundesliga_data
 from src.validation import (
+    analyse_performance_by_team,
+    analyse_prediction_errors,
     backtest_multiple_seasons,
     create_validation_report,
-    analyse_prediction_errors,
-    analyse_performance_by_team,
 )
-from src.processing.model_preparation import prepare_bundesliga_data
-from src.io.model_io import load_model
 
 
 def parse_args():
@@ -145,7 +145,7 @@ def main():
         sys.exit(1)
 
     # combine all data
-    current_played = current_season[current_season["is_played"] == True].copy()
+    current_played = current_season[current_season["is_played"]].copy()
     all_data = pd.concat([historic_data, current_played], ignore_index=True)
 
     print(f"   Total matches available: {len(all_data)}")
@@ -257,9 +257,7 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # create validation report
-    report = create_validation_report(
-        results, save_path=output_dir / "validation_report.csv"
-    )
+    create_validation_report(results, save_path=output_dir / "validation_report.csv")
     print("   ✓ Validation report saved")
 
     # analyse errors for most recent season
@@ -269,7 +267,7 @@ def main():
 
     season_data = all_data[all_data["season_end_year"] == most_recent_result["season"]]
 
-    error_analysis = analyse_prediction_errors(
+    analyse_prediction_errors(
         most_recent_result["predictions"],
         most_recent_result["actuals"],
         season_data,
@@ -328,8 +326,8 @@ def main():
             )
             if baseline_key in result["baseline_metrics"]:
                 baseline_value = result["baseline_metrics"][baseline_key]
-                if isinstance(primary_value, (int, float)) and isinstance(
-                    baseline_value, (int, float)
+                if isinstance(primary_value, int | float) and isinstance(
+                    baseline_value, int | float
                 ):
                     improvement = (
                         (baseline_value - primary_value) / baseline_value * 100
@@ -417,35 +415,37 @@ def main():
                 return {k: to_native(v) for k, v in obj.items()}
             if isinstance(obj, list):
                 return [to_native(v) for v in obj]
-            if isinstance(obj, (np.integer, np.int64)):
+            if isinstance(obj, np.integer):
                 return int(obj)
-            if isinstance(obj, (np.floating, np.float64)):
+            if isinstance(obj, np.floating):
                 return float(obj)
             if isinstance(obj, np.ndarray):
                 return obj.tolist()
             return obj
 
-        metrics_output = to_native({
-            "test_seasons": test_seasons,
-            "per_season": [
-                {
-                    "season": r["season"],
-                    "n_matches": r["n_matches"],
-                    "rps": r["metrics"]["rps"],
-                    "brier_score": r["metrics"].get("brier_score"),
-                    "log_loss": r["metrics"].get("log_loss"),
-                    "accuracy": r["metrics"].get("accuracy"),
-                    "baseline_rps": r.get("baseline_metrics", {}).get("rps"),
-                }
-                for r in results
-            ],
-            "average": {
-                "rps": avg_rps,
-                "brier_score": avg_brier,
-                "log_loss": avg_log_loss,
-            },
-            "calibrated": calibrators is not None,
-        })
+        metrics_output = to_native(
+            {
+                "test_seasons": test_seasons,
+                "per_season": [
+                    {
+                        "season": r["season"],
+                        "n_matches": r["n_matches"],
+                        "rps": r["metrics"]["rps"],
+                        "brier_score": r["metrics"].get("brier_score"),
+                        "log_loss": r["metrics"].get("log_loss"),
+                        "accuracy": r["metrics"].get("accuracy"),
+                        "baseline_rps": r.get("baseline_metrics", {}).get("rps"),
+                    }
+                    for r in results
+                ],
+                "average": {
+                    "rps": avg_rps,
+                    "brier_score": avg_brier,
+                    "log_loss": avg_log_loss,
+                },
+                "calibrated": calibrators is not None,
+            }
+        )
 
         json_path = Path(args.output_json)
         json_path.parent.mkdir(parents=True, exist_ok=True)

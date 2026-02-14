@@ -1,7 +1,7 @@
 # src/features/squad_features.py
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 
 def add_squad_value_features(df: pd.DataFrame) -> pd.DataFrame:

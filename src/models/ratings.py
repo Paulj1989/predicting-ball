@@ -1,10 +1,11 @@
 # src/models/ratings.py
 
+from typing import Any
+
 import numpy as np
-from typing import Dict, Any
 
 
-def create_interpretable_ratings(params: Dict[str, Any]) -> Dict[str, Dict[str, float]]:
+def create_interpretable_ratings(params: dict[str, Any]) -> dict[str, dict[str, float]]:
     """
     Transform ratings to interpretable Z-score scales (approx [-1, 1]).
 
@@ -38,7 +39,7 @@ def create_interpretable_ratings(params: Dict[str, Any]) -> Dict[str, Dict[str, 
     }
 
 
-def add_interpretable_ratings_to_params(params: Dict[str, Any]) -> Dict[str, Any]:
+def add_interpretable_ratings_to_params(params: dict[str, Any]) -> dict[str, Any]:
     """
     Add interpretable ratings to params dict (in-place and return).
     """

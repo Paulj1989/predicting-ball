@@ -8,10 +8,10 @@ Pinnacle odds. Falls back to single-predictor models when only one source
 is available.
 """
 
-import pandas as pd
-import numpy as np
 import logging
-from typing import Dict, Optional, Tuple
+
+import numpy as np
+import pandas as pd
 from sklearn.linear_model import LinearRegression
 
 
@@ -28,7 +28,11 @@ def impute_missing_odds(df: pd.DataFrame) -> pd.DataFrame:
     # check for required source columns
     pinnacle_cols = ["pinnacle_home_odds", "pinnacle_draw_odds", "pinnacle_away_odds"]
     bet365_cols = ["bet365_home_odds", "bet365_draw_odds", "bet365_away_odds"]
-    market_avg_cols = ["market_avg_home_odds", "market_avg_draw_odds", "market_avg_away_odds"]
+    market_avg_cols = [
+        "market_avg_home_odds",
+        "market_avg_draw_odds",
+        "market_avg_away_odds",
+    ]
 
     has_pinnacle = all(col in df.columns for col in pinnacle_cols)
     has_bet365 = all(col in df.columns for col in bet365_cols)
@@ -40,7 +44,9 @@ def impute_missing_odds(df: pd.DataFrame) -> pd.DataFrame:
         return df
 
     if not has_bet365 and not has_market_avg:
-        logger.warning("No predictor columns (bet365/market_avg) found, copying Pinnacle directly")
+        logger.warning(
+            "No predictor columns (bet365/market_avg) found, copying Pinnacle directly"
+        )
         df["home_odds"] = df["pinnacle_home_odds"]
         df["draw_odds"] = df["pinnacle_draw_odds"]
         df["away_odds"] = df["pinnacle_away_odds"]
@@ -55,7 +61,7 @@ def impute_missing_odds(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def fit_imputation_models(df: pd.DataFrame) -> Dict[str, Dict]:
+def fit_imputation_models(df: pd.DataFrame) -> dict[str, dict]:
     """
     Fit linear models for each odds type.
 
@@ -86,7 +92,9 @@ def fit_imputation_models(df: pd.DataFrame) -> Dict[str, Dict]:
 
         if has_bet365 and has_market_avg:
             # full model with both predictors
-            mask_full = mask_pinnacle & df[bet365_col].notna() & df[market_avg_col].notna()
+            mask_full = (
+                mask_pinnacle & df[bet365_col].notna() & df[market_avg_col].notna()
+            )
             if mask_full.sum() >= 10:
                 X = df.loc[mask_full, [bet365_col, market_avg_col]].values
                 y = df.loc[mask_full, pinnacle_col].values
@@ -122,19 +130,39 @@ def fit_imputation_models(df: pd.DataFrame) -> Dict[str, Dict]:
 
     # log training summary
     training_count = df["pinnacle_home_odds"].notna().sum()
-    logger.info(f"Odds imputation: {training_count} matches with complete Pinnacle odds (training set)")
+    logger.info(
+        f"Odds imputation: {training_count} matches with complete Pinnacle odds (training set)"
+    )
 
     return models
 
 
-def apply_imputation(df: pd.DataFrame, models: Dict[str, Dict]) -> pd.DataFrame:
+def apply_imputation(df: pd.DataFrame, models: dict[str, dict]) -> pd.DataFrame:
     """Apply fitted models to impute missing values"""
     logger = logging.getLogger(__name__)
 
     odds_types = [
-        ("home", "pinnacle_home_odds", "bet365_home_odds", "market_avg_home_odds", "home_odds"),
-        ("draw", "pinnacle_draw_odds", "bet365_draw_odds", "market_avg_draw_odds", "draw_odds"),
-        ("away", "pinnacle_away_odds", "bet365_away_odds", "market_avg_away_odds", "away_odds"),
+        (
+            "home",
+            "pinnacle_home_odds",
+            "bet365_home_odds",
+            "market_avg_home_odds",
+            "home_odds",
+        ),
+        (
+            "draw",
+            "pinnacle_draw_odds",
+            "bet365_draw_odds",
+            "market_avg_draw_odds",
+            "draw_odds",
+        ),
+        (
+            "away",
+            "pinnacle_away_odds",
+            "bet365_away_odds",
+            "market_avg_away_odds",
+            "away_odds",
+        ),
     ]
 
     # track imputation counts
@@ -194,10 +222,18 @@ def apply_imputation(df: pd.DataFrame, models: Dict[str, Dict]) -> pd.DataFrame:
                 counts["no_predictors"] += 1
 
     # log imputation summary
-    logger.info(f"Odds imputation: {counts['full']} matches imputed using full model (bet365 + market_avg)")
-    logger.info(f"Odds imputation: {counts['market_avg_only']} matches imputed using market_avg only")
-    logger.info(f"Odds imputation: {counts['bet365_only']} matches imputed using bet365 only")
+    logger.info(
+        f"Odds imputation: {counts['full']} matches imputed using full model (bet365 + market_avg)"
+    )
+    logger.info(
+        f"Odds imputation: {counts['market_avg_only']} matches imputed using market_avg only"
+    )
+    logger.info(
+        f"Odds imputation: {counts['bet365_only']} matches imputed using bet365 only"
+    )
     if counts["no_predictors"] > 0:
-        logger.info(f"Odds imputation: {counts['no_predictors']} matches with no predictors (left as NaN)")
+        logger.info(
+            f"Odds imputation: {counts['no_predictors']} matches with no predictors (left as NaN)"
+        )
 
     return df

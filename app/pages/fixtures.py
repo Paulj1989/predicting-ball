@@ -1,12 +1,13 @@
 # app/pages/fixtures.py
 
-import streamlit as st
-import pandas as pd
-import altair as alt
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from app.components.probability_bar import create_probability_bar
 
+import altair as alt
+import pandas as pd
+import streamlit as st
+
+from app.components.probability_bar import create_probability_bar
 
 # kickoff times in database are stored in UTC
 SOURCE_TIMEZONE = ZoneInfo("UTC")
@@ -73,7 +74,7 @@ def render(fixtures):
 
     # filter to next round only
     if "is_next_round" in fixtures.columns:
-        next_fixtures = fixtures[fixtures["is_next_round"] == True].copy()
+        next_fixtures = fixtures[fixtures["is_next_round"]].copy()
         if len(next_fixtures) == 0:
             st.info("No upcoming fixtures available")
             return
@@ -138,10 +139,10 @@ def _render_match_cards(fixtures, user_tz: ZoneInfo):
                 unsafe_allow_html=True,
             )
             date_fixtures = fixtures[fixtures["date_str"] == date_str]
-            for idx, match in date_fixtures.iterrows():
+            for _idx, match in date_fixtures.iterrows():
                 _render_single_match(match, user_tz)
     else:
-        for idx, match in fixtures.iterrows():
+        for _idx, match in fixtures.iterrows():
             _render_single_match(match, user_tz)
 
 

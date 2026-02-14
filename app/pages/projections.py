@@ -1,11 +1,9 @@
 # app/pages/projections.py
 
-import streamlit as st
-import pandas as pd
 import altair as alt
+import streamlit as st
 from st_aggrid import AgGrid, GridOptionsBuilder
 from st_aggrid.shared import JsCode
-import matplotlib.colors as mcolors
 
 
 def render(projections):
@@ -49,6 +47,7 @@ def _render_metrics(projections):
             "with >5% chance",
         )
 
+
 def _render_standings_table(projections):
     """Render interactive standings table"""
     st.subheader("Projected League Standings")
@@ -71,9 +70,8 @@ def _render_standings_table(projections):
 
     except ImportError:
         # alternative detection using container test
-        test_col1, test_col2, test_col3, test_col4, test_col5 = st.columns(5)
+        _test_col1, _test_col2, _test_col3, _test_col4, _test_col5 = st.columns(5)
         is_mobile = False
-
 
     # select columns based on view mode
     if is_mobile:
@@ -167,7 +165,9 @@ def _render_standings_table(projections):
         gb.configure_column("Defense", flex=1, type=["numericColumn"])
         gb.configure_column("Title %", flex=1, type=["numericColumn"])
         gb.configure_column("UCL %", flex=1, type=["numericColumn"])
-        gb.configure_column("Relegation %", flex=1.5, minWidth=100, type=["numericColumn"])
+        gb.configure_column(
+            "Relegation %", flex=1.5, minWidth=100, type=["numericColumn"]
+        )
 
     # enhanced cell styling for probabilities
     cell_style_jscode = JsCode("""
@@ -286,9 +286,7 @@ def _render_charts(projections):
                 y=alt.Y("team:N", title=None, sort="-x"),
                 color=alt.Color(
                     "title_prob:Q",
-                    scale=alt.Scale(
-                        range=["#b3d9e6", "#026E99"]
-                    ),
+                    scale=alt.Scale(range=["#b3d9e6", "#026E99"]),
                     legend=None,
                 ),
                 tooltip=[

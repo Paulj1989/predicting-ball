@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Validate that weekly update completed successfully"""
 
-import sys
-from pathlib import Path
-from datetime import datetime, timedelta
-import duckdb
 import pickle
+import sys
+from datetime import datetime, timedelta
+from pathlib import Path
+
+import duckdb
 import pandas as pd
 
 
@@ -30,9 +31,10 @@ def validate_update():
 
         try:
             # Check we have recent matches
-            latest_match = con.execute("""
+            result = con.execute("""
                 SELECT MAX(date)::DATE FROM models.match_features
-            """).fetchone()[0]
+            """).fetchone()
+            latest_match = result[0] if result else None
 
             if latest_match:
                 days_old = (datetime.now().date() - latest_match).days
@@ -66,7 +68,7 @@ def validate_update():
 
         try:
             with open(model_path, "rb") as f:
-                model = pickle.load(f)
+                pickle.load(f)
             print("   Model loads successfully")
         except Exception as e:
             errors.append(f"Model failed to load: {e}")
@@ -110,7 +112,7 @@ def validate_update():
             if len(sims) != 18:
                 errors.append(f"Expected 18 teams, got {len(sims)}")
             else:
-                print(f"   Season projections has 18 teams")
+                print("   Season projections has 18 teams")
         except Exception as e:
             errors.append(f"Error reading projections: {e}")
 

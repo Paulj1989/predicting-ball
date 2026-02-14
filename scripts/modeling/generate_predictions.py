@@ -145,7 +145,7 @@ def create_matches_dataframe(
     if next_fixtures is not None and len(next_fixtures) > 0:
         # create set of (home_team, away_team) tuples for next round
         next_matches = set(
-            zip(next_fixtures["home_team"], next_fixtures["away_team"])
+            zip(next_fixtures["home_team"], next_fixtures["away_team"], strict=False)
         )
         df["is_next_round"] = df.apply(
             lambda row: (row["home_team"], row["away_team"]) in next_matches,
@@ -281,12 +281,20 @@ def create_run_snapshot(
     overall_ratings = model_params.get("overall_rating", {})
 
     df["home_attack_rating"] = df["home_team"].map(lambda t: attack_ratings.get(t, 0.0))
-    df["home_defense_rating"] = df["home_team"].map(lambda t: defense_ratings.get(t, 0.0))
-    df["home_overall_rating"] = df["home_team"].map(lambda t: overall_ratings.get(t, 0.0))
+    df["home_defense_rating"] = df["home_team"].map(
+        lambda t: defense_ratings.get(t, 0.0)
+    )
+    df["home_overall_rating"] = df["home_team"].map(
+        lambda t: overall_ratings.get(t, 0.0)
+    )
 
     df["away_attack_rating"] = df["away_team"].map(lambda t: attack_ratings.get(t, 0.0))
-    df["away_defense_rating"] = df["away_team"].map(lambda t: defense_ratings.get(t, 0.0))
-    df["away_overall_rating"] = df["away_team"].map(lambda t: overall_ratings.get(t, 0.0))
+    df["away_defense_rating"] = df["away_team"].map(
+        lambda t: defense_ratings.get(t, 0.0)
+    )
+    df["away_overall_rating"] = df["away_team"].map(
+        lambda t: overall_ratings.get(t, 0.0)
+    )
 
     # add run metadata (same for all rows)
     run_id = run_timestamp.strftime("%Y%m%d_%H%M%S")
@@ -437,7 +445,7 @@ def main():
     validation_metrics = None
     if args.validation_metrics:
         try:
-            with open(args.validation_metrics, "r") as f:
+            with open(args.validation_metrics) as f:
                 validation_metrics = json.load(f)
             print(f"   Loaded validation metrics from: {args.validation_metrics}")
         except Exception as e:
@@ -483,8 +491,8 @@ def main():
         )
         sys.exit(1)
 
-    current_played = current_season[current_season["is_played"] == True].copy()
-    current_future = current_season[current_season["is_played"] == False].copy()
+    current_played = current_season[current_season["is_played"]].copy()
+    current_future = current_season[not current_season["is_played"]].copy()
 
     current_season_year = current_season["season_end_year"].iloc[0]
 
@@ -527,7 +535,7 @@ def main():
     print(f"   Current standings calculated for {len(current_standings)} teams")
 
     if len(current_future) > 0:
-        results, teams = simulate_remaining_season_calibrated(
+        sim_results, sim_teams = simulate_remaining_season_calibrated(
             current_future,
             bootstrap_params,
             current_standings,
@@ -535,13 +543,29 @@ def main():
             seed=args.seed,
         )
 
+        if sim_results is not None and sim_teams is not None:
+            results, teams = sim_results, sim_teams
+        else:
+            teams = list(current_standings.keys())
+            n_teams = len(teams)
+            results = {
+                "points": np.empty((0, n_teams)),
+                "goals_for": np.empty((0, n_teams)),
+                "goals_against": np.empty((0, n_teams)),
+                "position": np.empty((0, n_teams)),
+            }
+
         print("   Simulation complete")
     else:
         print("   Skipping simulation (no remaining fixtures)")
         # create empty results structure
-        teams = current_standings.index.tolist()
+        teams = list(current_standings.keys())
+        n_teams = len(teams)
         results = {
-            team: {"points": [], "goal_diff": [], "position": []} for team in teams
+            "points": np.empty((0, n_teams)),
+            "goals_for": np.empty((0, n_teams)),
+            "goals_against": np.empty((0, n_teams)),
+            "position": np.empty((0, n_teams)),
         }
 
     # ========================================================================
@@ -573,18 +597,23 @@ def main():
         next_predictions = predict_next_fixtures(
             next_fixtures, model["params"], calibrators=calibrators
         )
-        print(f"   Next matchday: {len(next_predictions)} fixtures")
+        if next_predictions is not None:
+            print(f"   Next matchday: {len(next_predictions)} fixtures")
 
     if all_fixtures is not None and len(all_fixtures) > 0:
         all_predictions = predict_next_fixtures(
             all_fixtures, model["params"], calibrators=calibrators
         )
-        print(f"   All future: {len(all_predictions)} fixtures")
+        if all_predictions is not None:
+            print(f"   All future: {len(all_predictions)} fixtures")
 
     # ========================================================================
     # CREATE OUTPUT DATAFRAMES
     # ========================================================================
     print("\n7. Creating output DataFrames...")
+
+    assert all_predictions is not None, "No predictions available to create outputs"
+    assert all_fixtures is not None, "No fixtures available to create outputs"
 
     matches_df = create_matches_dataframe(all_predictions, all_fixtures, next_fixtures)
     print(f"   Matches DataFrame: {len(matches_df)} rows")
@@ -731,7 +760,7 @@ def main():
         print("  - serving/buli_model.pkl (private)")
         if calibrators:
             print("  - serving/buli_calibrators.pkl (private)")
-        timestamp_str = run_timestamp.strftime('%Y%m%d_%H%M%S')
+        timestamp_str = run_timestamp.strftime("%Y%m%d_%H%M%S")
         print(f"  - incoming/buli_run_{timestamp_str}.parquet (for pbdb)")
         print(f"  - incoming/buli_projections_{timestamp_str}.parquet (for pbdb)")
 

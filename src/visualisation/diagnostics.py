@@ -1,11 +1,11 @@
 # src/visualisation/diagnostics.py
 
+from typing import Any
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import seaborn as sns
-from typing import Optional, List, Dict, Any
-
 
 # define colour palette
 COLORS = {
@@ -20,9 +20,9 @@ sns.set_context("notebook", font_scale=1.1)
 
 
 def plot_bootstrap_diagnostics(
-    bootstrap_params: List[Dict[str, Any]],
-    base_params: Dict[str, Any],
-    save_path: Optional[str] = None,
+    bootstrap_params: list[dict[str, Any]],
+    base_params: dict[str, Any],
+    save_path: str | None = None,
     figsize: tuple = (15, 5),
 ) -> plt.Figure:
     """Plot parameter distributions from bootstrap"""
@@ -36,7 +36,9 @@ def plot_bootstrap_diagnostics(
     fig, axes = plt.subplots(1, 3, figsize=figsize)
     colors = [COLORS["primary"], COLORS["accent"], COLORS["secondary"]]
 
-    for ax, (param_name, values), color in zip(axes, param_dict.items(), colors):
+    for ax, (param_name, values), color in zip(
+        axes, param_dict.items(), colors, strict=False
+    ):
         # histogram with seaborn
         sns.histplot(
             values,
@@ -80,7 +82,7 @@ def plot_bootstrap_diagnostics(
         ax.set_xlabel(param_name, fontsize=12, fontweight="bold")
         ax.set_ylabel("Frequency", fontsize=12, fontweight="bold")
         ax.set_title(
-            f"{param_name}\n(σ = {std_val:.3f})", fontsize=13, fontweight="bold"
+            f"{param_name}\n(\u03c3 = {std_val:.3f})", fontsize=13, fontweight="bold"
         )
         ax.legend(fontsize=10, frameon=True, fancybox=True, shadow=True)
         ax.grid(alpha=0.3, linestyle="--", linewidth=0.5)
@@ -100,7 +102,7 @@ def plot_bootstrap_diagnostics(
 def plot_residual_analysis(
     predictions: np.ndarray,
     actuals: np.ndarray,
-    save_path: Optional[str] = None,
+    save_path: str | None = None,
     figsize: tuple = (14, 6),
 ) -> plt.Figure:
     """Plot residual analysis for model predictions"""
@@ -203,9 +205,9 @@ def plot_residual_analysis(
 
 
 def plot_team_ratings(
-    params: Dict[str, Any],
+    params: dict[str, Any],
     top_n: int = 18,
-    save_path: Optional[str] = None,
+    save_path: str | None = None,
     figsize: tuple = (12, 8),
 ) -> plt.Figure:
     """Plot team attack and defense ratings"""
@@ -234,7 +236,7 @@ def plot_team_ratings(
     width = 0.35
 
     # create bars
-    bars1 = ax.bar(
+    ax.bar(
         x - width / 2,
         plot_data["attack"],
         width,
@@ -243,7 +245,7 @@ def plot_team_ratings(
         edgecolor="black",
         linewidth=1,
     )
-    bars2 = ax.bar(
+    ax.bar(
         x + width / 2,
         plot_data["defense"],
         width,
@@ -280,7 +282,7 @@ def plot_prediction_intervals(
     predictions_mean: np.ndarray,
     predictions_upper: np.ndarray,
     n_matches: int = 20,
-    save_path: Optional[str] = None,
+    save_path: str | None = None,
     figsize: tuple = (14, 10),
 ) -> plt.Figure:
     """Plot prediction intervals for matches"""

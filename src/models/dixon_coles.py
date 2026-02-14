@@ -1,10 +1,10 @@
 # src/models/dixon_coles.py
 
+
 import numpy as np
-from scipy.stats import poisson
-from scipy.optimize import minimize_scalar
-from typing import Dict, Tuple
 import pandas as pd
+from scipy.optimize import minimize_scalar
+from scipy.stats import poisson
 
 
 def tau_dixon_coles(
@@ -28,7 +28,7 @@ def calculate_match_probabilities_dixon_coles(
     lambda_away: float,
     rho: float = -0.13,
     max_goals: int = 8,
-) -> Tuple[float, float, float, Dict[Tuple[int, int], float]]:
+) -> tuple[float, float, float, dict[tuple[int, int], float]]:
     """Calculate match outcome probabilities with Dixon-Coles correction"""
     home_win_prob = 0.0
     draw_prob = 0.0
@@ -68,7 +68,7 @@ def calculate_match_probabilities_dixon_coles(
 
 def fit_rho_parameter(
     df: pd.DataFrame,
-    params: Dict,
+    params: dict,
     initial_rho: float = -0.13,
     verbose: bool = True,
 ) -> float:

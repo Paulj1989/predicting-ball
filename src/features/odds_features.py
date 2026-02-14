@@ -1,7 +1,7 @@
 # src/features/odds_features.py
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 
 def add_odds_features(df: pd.DataFrame) -> pd.DataFrame:

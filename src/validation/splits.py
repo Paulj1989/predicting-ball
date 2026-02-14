@@ -1,8 +1,9 @@
 # src/validation/splits.py
 
+from collections.abc import Iterator
+
 import numpy as np
 import pandas as pd
-from typing import Tuple, List, Iterator, Optional
 
 
 class TimeSeriesSplit:
@@ -13,15 +14,13 @@ class TimeSeriesSplit:
     preventing data leakage.
     """
 
-    def __init__(
-        self, n_splits: int = 5, test_size: Optional[int] = None, gap: int = 0
-    ):
+    def __init__(self, n_splits: int = 5, test_size: int | None = None, gap: int = 0):
         """Initialise time-series splitter"""
         self.n_splits = n_splits
         self.test_size = test_size
         self.gap = gap
 
-    def split(self, X: pd.DataFrame) -> Iterator[Tuple[np.ndarray, np.ndarray]]:
+    def split(self, X: pd.DataFrame) -> Iterator[tuple[np.ndarray, np.ndarray]]:
         """Generate indices for train/test splits"""
         n_samples = len(X)
 
@@ -65,10 +64,10 @@ class TimeSeriesSplit:
 
 def create_train_test_split(
     data: pd.DataFrame,
-    test_seasons: List[int],
+    test_seasons: list[int],
     date_column: str = "date",
     season_column: str = "season_end_year",
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Split data into train and test sets by season"""
     # ensure data is sorted by date
     data = data.sort_values(date_column).reset_index(drop=True)
@@ -94,7 +93,7 @@ def create_calibration_split(
     train_data: pd.DataFrame,
     calibration_fraction: float = 0.15,
     date_column: str = "date",
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Split training data into fitting set and calibration set.
 

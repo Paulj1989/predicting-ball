@@ -1,8 +1,9 @@
 # src/models/priors.py
 
+from typing import Any
+
 import numpy as np
 import pandas as pd
-from typing import Dict, Tuple, Any, Optional
 
 # blend weight constants for prior calculations
 PROMOTED_ELO_WEIGHT = 2 / 3
@@ -31,7 +32,7 @@ def _get_team_metric(df: pd.DataFrame, team: str, metric_col: str) -> float:
 
 def calculate_home_advantage_prior(
     historic_data: pd.DataFrame, use_actual_goals: bool = True, verbose: bool = True
-) -> Tuple[float, float]:
+) -> tuple[float, float]:
     """
     Calculate home advantage prior from historical data.
 
@@ -108,7 +109,7 @@ def calculate_squad_value_priors(
     df_train: pd.DataFrame,
     all_teams: list,
     verbose: bool = False,
-) -> Dict[str, Dict[str, float]]:
+) -> dict[str, dict[str, float]]:
     """
     Calculate attack/defense priors from squad values for all teams.
 
@@ -198,7 +199,7 @@ def calculate_elo_priors(
     df_train: pd.DataFrame,
     all_teams: list,
     verbose: bool = False,
-) -> Dict[str, Dict[str, float]]:
+) -> dict[str, dict[str, float]]:
     """Calculate attack/defense priors from Elo ratings for all teams"""
     # extract elo ratings using helper function
     elo_ratings = {team: _get_team_metric(df_train, team, "elo") for team in all_teams}
@@ -269,10 +270,10 @@ def calculate_elo_priors(
 def calculate_all_team_priors(
     df_train: pd.DataFrame,
     all_teams: list,
-    promoted_teams: Dict[str, Dict[str, Any]],
-    previous_season_params: Optional[Dict[str, Any]] = None,
+    promoted_teams: dict[str, dict[str, Any]],
+    previous_season_params: dict[str, Any] | None = None,
     verbose: bool = True,
-) -> Dict[str, Dict[str, float]]:
+) -> dict[str, dict[str, float]]:
     """Calculate priors for all teams using weighted blends"""
     if verbose:
         print("\n" + "=" * 60)
@@ -292,11 +293,10 @@ def calculate_all_team_priors(
     # extract previous season attack/defense if available
     prev_attack = {}
     prev_defense = {}
-    if previous_season_params is not None:
-        if "team_params" in previous_season_params:
-            for team, params in previous_season_params["team_params"].items():
-                prev_attack[team] = params.get("attack", 0.0)
-                prev_defense[team] = params.get("defense", 0.0)
+    if previous_season_params is not None and "team_params" in previous_season_params:
+        for team, params in previous_season_params["team_params"].items():
+            prev_attack[team] = params.get("attack", 0.0)
+            prev_defense[team] = params.get("defense", 0.0)
 
     # calculate blended priors
     all_priors = {}
@@ -419,7 +419,7 @@ def calculate_all_team_priors(
 
 def identify_promoted_teams(
     historic_data: pd.DataFrame, current_season: pd.DataFrame, verbose: bool = True
-) -> Dict[str, Dict[str, Any]]:
+) -> dict[str, dict[str, Any]]:
     """Identify teams in current season not in previous season"""
     if verbose:
         print("\n" + "=" * 60)
@@ -473,11 +473,11 @@ def identify_promoted_teams(
 
 def calculate_promoted_team_priors(
     df_train: pd.DataFrame,
-    promoted_teams: Dict[str, Dict[str, Any]],
+    promoted_teams: dict[str, dict[str, Any]],
     current_season: pd.DataFrame,
-    previous_season_params: Optional[Dict[str, Any]] = None,
+    previous_season_params: dict[str, Any] | None = None,
     verbose: bool = True,
-) -> Tuple[Dict[str, Dict[str, float]], float, float]:
+) -> tuple[dict[str, dict[str, float]], float, float]:
     """
     Calculate priors for ALL teams using weighted blends of available information.
 

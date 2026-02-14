@@ -11,24 +11,24 @@ Usage:
     python scripts/modeling/train_model.py --prev-model outputs/models/production_model.pkl
 """
 
-import sys
 import argparse
-from pathlib import Path
-import pandas as pd
 import pickle
+import sys
 from datetime import datetime
+from pathlib import Path
 
+import pandas as pd
 
+from src.io.model_io import save_model
 from src.models import (
-    fit_poisson_model_two_stage,
-    identify_promoted_teams,
     calculate_home_advantage_prior,
     calculate_promoted_team_priors,
-    optimise_hyperparameters,
+    fit_poisson_model_two_stage,
     get_default_hyperparameters,
+    identify_promoted_teams,
+    optimise_hyperparameters,
 )
 from src.processing.model_preparation import prepare_bundesliga_data
-from src.io.model_io import save_model
 
 
 def parse_args():
@@ -102,7 +102,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def load_previous_hyperparameters(model_dir: Path) -> dict:
+def load_previous_hyperparameters(model_dir: Path) -> dict | None:
     """Load previously optimised hyperparameters from existing model"""
     # check for production model (local or downloaded from DO Spaces)
     model_path = model_dir / "production_model.pkl"
@@ -170,7 +170,7 @@ def main():
     # ========================================================================
     print("\n2. Preparing training data...")
 
-    current_played = current_season[current_season["is_played"] == True].copy()
+    current_played = current_season[current_season["is_played"]].copy()
     all_train_data = pd.concat([historic_data, current_played], ignore_index=True)
 
     print(f"   Total training data: {len(all_train_data)} matches")
@@ -298,6 +298,7 @@ def main():
         print("\nModel fitting failed")
         sys.exit(1)
 
+    assert fitted_params is not None  # guaranteed by the guard above
     print("   Model fitted successfully")
 
     # ========================================================================
