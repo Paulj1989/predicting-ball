@@ -34,9 +34,7 @@ def _convert_to_arrays(
             raise ValueError(f"Array must be shape (n, 3), got {predictions.shape}")
         pred_array = predictions
     else:
-        raise TypeError(
-            f"predictions must be DataFrame or ndarray, got {type(predictions)}"
-        )
+        raise TypeError(f"predictions must be DataFrame or ndarray, got {type(predictions)}")
 
     # convert actuals
     if isinstance(actuals, pd.Series):
@@ -178,18 +176,10 @@ def analyse_performance_by_team(
         print("PERFORMANCE BY TEAM")
         print("=" * 60)
         print("\nTop 5 Best Predicted Teams:")
-        print(
-            df.head()[["team", "n_matches", "rps", "brier_score"]].to_string(
-                index=False
-            )
-        )
+        print(df.head()[["team", "n_matches", "rps", "brier_score"]].to_string(index=False))
 
         print("\nTop 5 Worst Predicted Teams:")
-        print(
-            df.tail()[["team", "n_matches", "rps", "brier_score"]].to_string(
-                index=False
-            )
-        )
+        print(df.tail()[["team", "n_matches", "rps", "brier_score"]].to_string(index=False))
 
     return df
 
@@ -216,9 +206,9 @@ def analyse_performance_by_odds(
         return None
 
     # get favourite probability (max of home/draw/away)
-    favorite_probs = test_data[
-        ["odds_home_prob", "odds_draw_prob", "odds_away_prob"]
-    ].max(axis=1)
+    favorite_probs = test_data[["odds_home_prob", "odds_draw_prob", "odds_away_prob"]].max(
+        axis=1
+    )
 
     # create bins
     bins = pd.qcut(favorite_probs, q=n_bins, duplicates="drop")

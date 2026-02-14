@@ -65,20 +65,12 @@ def evaluate_implied_odds_baseline(
     away_implied = 1 / valid_data["away_odds"]
 
     # check for any invalid values
-    if (
-        home_implied.isna().any()
-        or draw_implied.isna().any()
-        or away_implied.isna().any()
-    ):
+    if home_implied.isna().any() or draw_implied.isna().any() or away_implied.isna().any():
         if verbose:
             print("  NaN VALUES IN IMPLIED PROBABILITIES")
         return None
 
-    if (
-        (home_implied <= 0).any()
-        or (draw_implied <= 0).any()
-        or (away_implied <= 0).any()
-    ):
+    if (home_implied <= 0).any() or (draw_implied <= 0).any() or (away_implied <= 0).any():
         if verbose:
             print("  NON-POSITIVE IMPLIED PROBABILITIES")
         return None

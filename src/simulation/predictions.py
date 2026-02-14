@@ -94,9 +94,9 @@ def _get_next_fixtures_by_date(
     if matchday_date is None:
         matchday_date = date_counts.index[0]
 
-    return future_fixtures[
-        future_fixtures["date"].dt.date == matchday_date
-    ].reset_index(drop=True)
+    return future_fixtures[future_fixtures["date"].dt.date == matchday_date].reset_index(
+        drop=True
+    )
 
 
 def get_all_future_fixtures(
@@ -273,10 +273,7 @@ def predict_next_fixtures(
 
     # create dataframe (exclude score_probabilities for cleaner output)
     predictions_df = pd.DataFrame(
-        [
-            {k: v for k, v in p.items() if k != "score_probabilities"}
-            for p in predictions
-        ]
+        [{k: v for k, v in p.items() if k != "score_probabilities"} for p in predictions]
     )
 
     # apply calibration if provided

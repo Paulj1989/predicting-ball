@@ -117,9 +117,7 @@ def calculate_squad_value_priors(
     piecewise linear interpolation between quartiles.
     """
     # extract squad values using helper function
-    squad_values = {
-        team: _get_team_metric(df_train, team, "value_pct") for team in all_teams
-    }
+    squad_values = {team: _get_team_metric(df_train, team, "value_pct") for team in all_teams}
 
     # calculate league statistics
     valid_values = [v for v in squad_values.values() if not np.isnan(v)]
@@ -159,15 +157,11 @@ def calculate_squad_value_priors(
         elif relative < 1.2:
             blend = (relative - 0.8) / 0.4
             attack_prior = attack_range[0] + blend * (attack_range[1] - attack_range[0])
-            defense_prior = defense_range[0] + blend * (
-                defense_range[1] - defense_range[0]
-            )
+            defense_prior = defense_range[0] + blend * (defense_range[1] - defense_range[0])
         else:
             blend = min((relative - 1.2) / 0.8, 1.0)
             attack_prior = attack_range[1] + blend * (attack_range[2] - attack_range[1])
-            defense_prior = defense_range[1] + blend * (
-                defense_range[2] - defense_range[1]
-            )
+            defense_prior = defense_range[1] + blend * (defense_range[2] - defense_range[1])
 
         priors[team] = {
             "attack_prior": attack_prior,
@@ -236,9 +230,7 @@ def calculate_elo_priors(
         # map to parameter space
         # 1 std dev (~150 elo points) = 0.25 parameter units
         attack_prior = z_score * 0.25
-        defense_prior = (
-            -z_score * 0.25
-        )  # inverted: higher elo = better defense = lower param
+        defense_prior = -z_score * 0.25  # inverted: higher elo = better defense = lower param
 
         priors[team] = {
             "attack_prior": attack_prior,
@@ -286,8 +278,7 @@ def calculate_all_team_priors(
 
     # check elo availability
     has_elo = any(
-        not np.isnan(elo_priors.get(team, {}).get("elo_rating", np.nan))
-        for team in all_teams
+        not np.isnan(elo_priors.get(team, {}).get("elo_rating", np.nan)) for team in all_teams
     )
 
     # extract previous season attack/defense if available
@@ -427,9 +418,7 @@ def identify_promoted_teams(
         print("=" * 60)
 
     last_season_year = historic_data["season_end_year"].max()
-    last_season_data = historic_data[
-        historic_data["season_end_year"] == last_season_year
-    ]
+    last_season_data = historic_data[historic_data["season_end_year"] == last_season_year]
 
     last_season_teams = set(last_season_data[["home_team", "away_team"]].values.ravel())
 
@@ -460,9 +449,7 @@ def identify_promoted_teams(
             print(f"\n  {team}:")
             print(f"    Squad value: {squad_value_pct:.1f}%")
             if len(historic_appearances) > 0:
-                seasons_played = sorted(
-                    historic_appearances["season_end_year"].unique()
-                )
+                seasons_played = sorted(historic_appearances["season_end_year"].unique())
                 print(f"    Previous seasons: {', '.join(map(str, seasons_played))}")
                 print("    Status: RETURNING")
             else:
@@ -492,9 +479,7 @@ def calculate_promoted_team_priors(
     # get all teams
     all_teams = sorted(
         pd.unique(
-            pd.concat([df_train, current_season])[
-                ["home_team", "away_team"]
-            ].values.ravel()
+            pd.concat([df_train, current_season])[["home_team", "away_team"]].values.ravel()
         )
     )
 

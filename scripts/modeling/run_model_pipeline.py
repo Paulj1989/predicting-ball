@@ -66,9 +66,7 @@ def parse_args():
         help="Number of bootstrap samples (default: 250)",
     )
 
-    parser.add_argument(
-        "--skip-validation", action="store_true", help="Skip validation step"
-    )
+    parser.add_argument("--skip-validation", action="store_true", help="Skip validation step")
 
     parser.add_argument(
         "--metric",

@@ -128,9 +128,7 @@ def _render_match_cards(fixtures, user_tz: ZoneInfo):
     # group by date if available for better visual organization
     if "date" in fixtures.columns:
         fixtures = fixtures.copy()
-        fixtures["date_str"] = pd.to_datetime(fixtures["date"]).dt.strftime(
-            "%A, %d %B %Y"
-        )
+        fixtures["date_str"] = pd.to_datetime(fixtures["date"]).dt.strftime("%A, %d %B %Y")
         dates = fixtures["date_str"].unique()
 
         for date_str in dates:
@@ -205,9 +203,7 @@ def _render_single_match(match, user_tz: ZoneInfo):
 def _render_matchday_chart(fixtures):
     """Render stacked bar chart of all match probabilities"""
     fixtures_viz = fixtures.copy()
-    fixtures_viz["match"] = (
-        fixtures_viz["home_team"] + " vs " + fixtures_viz["away_team"]
-    )
+    fixtures_viz["match"] = fixtures_viz["home_team"] + " vs " + fixtures_viz["away_team"]
 
     # create probability data
     prob_data = []

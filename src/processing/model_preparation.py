@@ -71,9 +71,7 @@ def prepare_bundesliga_data(
 
     # split into historic and current season
     current_season = df["season_end_year"].max()
-    historic_df = df[
-        (df["season_end_year"] < current_season) & (df["is_played"])
-    ].copy()
+    historic_df = df[(df["season_end_year"] < current_season) & (df["is_played"])].copy()
     current_df = df[df["season_end_year"] == current_season].copy()
 
     # remove matches without npxG from historic (required for modeling)

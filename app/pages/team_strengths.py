@@ -98,12 +98,8 @@ def _render_comparison_charts(selected_team, projections):
                     alt.value("#D93649"),
                     alt.value("#026E99"),
                 ),
-                opacity=alt.condition(
-                    alt.datum.is_selected, alt.value(1.0), alt.value(0.6)
-                ),
-                size=alt.condition(
-                    alt.datum.is_selected, alt.value(400), alt.value(200)
-                ),
+                opacity=alt.condition(alt.datum.is_selected, alt.value(1.0), alt.value(0.6)),
+                size=alt.condition(alt.datum.is_selected, alt.value(400), alt.value(200)),
                 tooltip=[
                     alt.Tooltip("team:N", title="Team"),
                     alt.Tooltip("attack:Q", title="Attack", format=".3f"),
@@ -115,16 +111,8 @@ def _render_comparison_charts(selected_team, projections):
         )
 
         # add quadrant lines
-        h_line = (
-            alt.Chart(pd.DataFrame({"y": [0]}))
-            .mark_rule(strokeDash=[5, 5])
-            .encode(y="y")
-        )
-        v_line = (
-            alt.Chart(pd.DataFrame({"x": [0]}))
-            .mark_rule(strokeDash=[5, 5])
-            .encode(x="x")
-        )
+        h_line = alt.Chart(pd.DataFrame({"y": [0]})).mark_rule(strokeDash=[5, 5]).encode(y="y")
+        v_line = alt.Chart(pd.DataFrame({"x": [0]})).mark_rule(strokeDash=[5, 5]).encode(x="x")
 
         st.altair_chart(scatter + h_line + v_line, use_container_width=True)
 

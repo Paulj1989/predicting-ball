@@ -149,18 +149,14 @@ def main():
     # LOAD DATA
     # ========================================================================
     print("\n1. Loading data...")
-    historic_data, current_season = prepare_bundesliga_data(
-        windows=args.windows, verbose=True
-    )
+    historic_data, current_season = prepare_bundesliga_data(windows=args.windows, verbose=True)
 
     print(f"   Historic data: {len(historic_data)} matches")
     print(f"   Current season: {len(current_season)} matches")
 
     if "home_goals_weighted" not in historic_data.columns:
         print("\n   Error: home_goals_weighted not found in data")
-        print(
-            "   Make sure prepare_bundesliga_data includes weighted goals calculation"
-        )
+        print("   Make sure prepare_bundesliga_data includes weighted goals calculation")
         sys.exit(1)
 
     print("   Weighted goals calculated")
@@ -182,9 +178,7 @@ def main():
     # HYPERPARAMETER OPTIMISATION OR LOADING
     # ========================================================================
     if args.tune:
-        print(
-            f"\n3. Running full hyperparameter optimisation (metric: {args.metric})..."
-        )
+        print(f"\n3. Running full hyperparameter optimisation (metric: {args.metric})...")
 
         hyperparams = optimise_hyperparameters(
             all_train_data, n_trials=args.n_trials, metric=args.metric, verbose=True

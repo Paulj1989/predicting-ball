@@ -36,9 +36,7 @@ def plot_bootstrap_diagnostics(
     fig, axes = plt.subplots(1, 3, figsize=figsize)
     colors = [COLORS["primary"], COLORS["accent"], COLORS["secondary"]]
 
-    for ax, (param_name, values), color in zip(
-        axes, param_dict.items(), colors, strict=False
-    ):
+    for ax, (param_name, values), color in zip(axes, param_dict.items(), colors, strict=False):
         # histogram with seaborn
         sns.histplot(
             values,
@@ -81,15 +79,11 @@ def plot_bootstrap_diagnostics(
 
         ax.set_xlabel(param_name, fontsize=12, fontweight="bold")
         ax.set_ylabel("Frequency", fontsize=12, fontweight="bold")
-        ax.set_title(
-            f"{param_name}\n(\u03c3 = {std_val:.3f})", fontsize=13, fontweight="bold"
-        )
+        ax.set_title(f"{param_name}\n(\u03c3 = {std_val:.3f})", fontsize=13, fontweight="bold")
         ax.legend(fontsize=10, frameon=True, fancybox=True, shadow=True)
         ax.grid(alpha=0.3, linestyle="--", linewidth=0.5)
 
-    plt.suptitle(
-        "Bootstrap Parameter Distributions", fontsize=15, fontweight="bold", y=1.02
-    )
+    plt.suptitle("Bootstrap Parameter Distributions", fontsize=15, fontweight="bold", y=1.02)
     plt.tight_layout()
 
     if save_path:
@@ -258,9 +252,7 @@ def plot_team_ratings(
     # labels
     ax.set_xlabel("Team", fontsize=12, fontweight="bold")
     ax.set_ylabel("Rating", fontsize=12, fontweight="bold")
-    ax.set_title(
-        "Team Attack and Defense Ratings", fontsize=14, fontweight="bold", pad=20
-    )
+    ax.set_title("Team Attack and Defense Ratings", fontsize=14, fontweight="bold", pad=20)
     ax.set_xticks(x)
     ax.set_xticklabels(plot_data["team"], rotation=45, ha="right", fontsize=10)
     ax.legend(fontsize=11, frameon=True, fancybox=True, shadow=True)

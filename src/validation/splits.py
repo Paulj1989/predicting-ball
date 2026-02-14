@@ -156,12 +156,8 @@ def validate_split_quality(
         )
 
     # check team overlap
-    train_teams = set(train_data["home_team"].unique()) | set(
-        train_data["away_team"].unique()
-    )
-    test_teams = set(test_data["home_team"].unique()) | set(
-        test_data["away_team"].unique()
-    )
+    train_teams = set(train_data["home_team"].unique()) | set(train_data["away_team"].unique())
+    test_teams = set(test_data["home_team"].unique()) | set(test_data["away_team"].unique())
 
     teams_only_in_test = test_teams - train_teams
 

@@ -29,9 +29,7 @@ def calculate_rps(
             )
         ordered_predictions = predictions
     else:
-        raise TypeError(
-            f"predictions must be DataFrame or ndarray, got {type(predictions)}"
-        )
+        raise TypeError(f"predictions must be DataFrame or ndarray, got {type(predictions)}")
 
     # convert actuals to standard format
     if isinstance(actuals, pd.Series):
@@ -96,9 +94,7 @@ def calculate_brier_score(
             )
         pred_array = predictions
     else:
-        raise TypeError(
-            f"predictions must be DataFrame or ndarray, got {type(predictions)}"
-        )
+        raise TypeError(f"predictions must be DataFrame or ndarray, got {type(predictions)}")
 
     # convert actuals to standard format
     if isinstance(actuals, pd.Series):
@@ -159,9 +155,7 @@ def calculate_log_loss(
             )
         pred_array = predictions
     else:
-        raise TypeError(
-            f"predictions must be DataFrame or ndarray, got {type(predictions)}"
-        )
+        raise TypeError(f"predictions must be DataFrame or ndarray, got {type(predictions)}")
 
     # convert actuals to standard format
     if isinstance(actuals, pd.Series):
@@ -219,9 +213,7 @@ def calculate_accuracy(
             )
         pred_array = predictions
     else:
-        raise TypeError(
-            f"predictions must be DataFrame or ndarray, got {type(predictions)}"
-        )
+        raise TypeError(f"predictions must be DataFrame or ndarray, got {type(predictions)}")
 
     # convert actuals to standard format
     if isinstance(actuals, pd.Series):
@@ -272,9 +264,7 @@ def evaluate_model_comprehensive(
 
     for _idx, match in test_data.iterrows():
         # get prediction
-        pred = predict_match_probabilities(
-            params, match, use_dixon_coles=use_dixon_coles
-        )
+        pred = predict_match_probabilities(params, match, use_dixon_coles=use_dixon_coles)
 
         predictions.append([pred["home_win"], pred["draw"], pred["away_win"]])
 

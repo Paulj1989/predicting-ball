@@ -26,9 +26,7 @@ def run_coverage_test(
     from ..models.poisson import calculate_lambdas
 
     if verbose:
-        print(
-            f"\nTesting {confidence:.0%} prediction intervals on {len(test_data)} matches"
-        )
+        print(f"\nTesting {confidence:.0%} prediction intervals on {len(test_data)} matches")
 
     n_matches = len(test_data)
     covered_both = 0
@@ -76,12 +74,8 @@ def run_coverage_test(
 
         # calculate prediction intervals
         alpha = (1 - confidence) / 2
-        h_lower, h_upper = np.percentile(
-            home_goals_samples, [alpha * 100, (1 - alpha) * 100]
-        )
-        a_lower, a_upper = np.percentile(
-            away_goals_samples, [alpha * 100, (1 - alpha) * 100]
-        )
+        h_lower, h_upper = np.percentile(home_goals_samples, [alpha * 100, (1 - alpha) * 100])
+        a_lower, a_upper = np.percentile(away_goals_samples, [alpha * 100, (1 - alpha) * 100])
 
         # check coverage
         if (h_lower <= actual_h <= h_upper) and (a_lower <= actual_a <= a_upper):

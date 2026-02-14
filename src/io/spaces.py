@@ -45,9 +45,7 @@ def get_spaces_client():
     config = get_spaces_config()
 
     if not config["key"] or not config["secret"]:
-        raise ValueError(
-            "DO_SPACES_KEY and DO_SPACES_SECRET must be set in environment"
-        )
+        raise ValueError("DO_SPACES_KEY and DO_SPACES_SECRET must be set in environment")
 
     return boto3.client(
         "s3",

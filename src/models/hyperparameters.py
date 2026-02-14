@@ -109,9 +109,7 @@ def optimise_hyperparameters(
     )
 
     # optimise
-    study.optimize(
-        objective, n_trials=n_trials, n_jobs=n_jobs, show_progress_bar=verbose
-    )
+    study.optimize(objective, n_trials=n_trials, n_jobs=n_jobs, show_progress_bar=verbose)
 
     if verbose:
         print("\n" + "=" * 60)
@@ -126,9 +124,7 @@ def optimise_hyperparameters(
             f"  time_decay: {study.best_params['time_decay']:.4f} ({half_life_years:.1f} year half-life)"
         )
         print(f"  lambda_reg: {study.best_params['lambda_reg']:.4f}")
-        print(
-            f"  prior_decay_rate: {study.best_params['prior_decay_rate']:.2f} matches"
-        )
+        print(f"  prior_decay_rate: {study.best_params['prior_decay_rate']:.2f} matches")
         print(f"  rho (Dixon-Coles): {study.best_params['rho']:.4f}")
 
         # interpret rho

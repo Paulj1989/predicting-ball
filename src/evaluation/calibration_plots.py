@@ -172,14 +172,10 @@ def _plot_single_calibration(
     bin_counts = []
 
     for i in range(n_bins):
-        in_bin = (pred_probs >= bin_boundaries[i]) & (
-            pred_probs < bin_boundaries[i + 1]
-        )
+        in_bin = (pred_probs >= bin_boundaries[i]) & (pred_probs < bin_boundaries[i + 1])
 
         if i == n_bins - 1:  # last bin includes upper boundary
-            in_bin = (pred_probs >= bin_boundaries[i]) & (
-                pred_probs <= bin_boundaries[i + 1]
-            )
+            in_bin = (pred_probs >= bin_boundaries[i]) & (pred_probs <= bin_boundaries[i + 1])
 
         if in_bin.sum() > 0:
             bin_pred_means.append(pred_probs[in_bin].mean())

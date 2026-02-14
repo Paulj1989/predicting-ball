@@ -107,12 +107,8 @@ def simulate_remaining_season_calibrated(
 
     if len(future_fixtures) > 0:
         # extract match info
-        home_idx = np.array(
-            [team_to_idx[t] for t in future_fixtures["home_team"]], dtype=int
-        )
-        away_idx = np.array(
-            [team_to_idx[t] for t in future_fixtures["away_team"]], dtype=int
-        )
+        home_idx = np.array([team_to_idx[t] for t in future_fixtures["home_team"]], dtype=int)
+        away_idx = np.array([team_to_idx[t] for t in future_fixtures["away_team"]], dtype=int)
 
         len(future_fixtures)
 

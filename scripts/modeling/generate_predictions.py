@@ -39,9 +39,7 @@ from src.simulation import (
 
 def parse_args():
     """Parse command line arguments"""
-    parser = argparse.ArgumentParser(
-        description="Generate predictions and season projections"
-    )
+    parser = argparse.ArgumentParser(description="Generate predictions and season projections")
 
     parser.add_argument(
         "--model-path", type=str, required=True, help="Path to trained model file"
@@ -281,28 +279,18 @@ def create_run_snapshot(
     overall_ratings = model_params.get("overall_rating", {})
 
     df["home_attack_rating"] = df["home_team"].map(lambda t: attack_ratings.get(t, 0.0))
-    df["home_defense_rating"] = df["home_team"].map(
-        lambda t: defense_ratings.get(t, 0.0)
-    )
-    df["home_overall_rating"] = df["home_team"].map(
-        lambda t: overall_ratings.get(t, 0.0)
-    )
+    df["home_defense_rating"] = df["home_team"].map(lambda t: defense_ratings.get(t, 0.0))
+    df["home_overall_rating"] = df["home_team"].map(lambda t: overall_ratings.get(t, 0.0))
 
     df["away_attack_rating"] = df["away_team"].map(lambda t: attack_ratings.get(t, 0.0))
-    df["away_defense_rating"] = df["away_team"].map(
-        lambda t: defense_ratings.get(t, 0.0)
-    )
-    df["away_overall_rating"] = df["away_team"].map(
-        lambda t: overall_ratings.get(t, 0.0)
-    )
+    df["away_defense_rating"] = df["away_team"].map(lambda t: defense_ratings.get(t, 0.0))
+    df["away_overall_rating"] = df["away_team"].map(lambda t: overall_ratings.get(t, 0.0))
 
     # add run metadata (same for all rows)
     run_id = run_timestamp.strftime("%Y%m%d_%H%M%S")
     df["run_id"] = run_id
     df["run_timestamp"] = run_timestamp
-    df["model_version"] = model.get("trained_at", run_timestamp).strftime(
-        "%Y-%m-%d %H:%M:%S"
-    )
+    df["model_version"] = model.get("trained_at", run_timestamp).strftime("%Y-%m-%d %H:%M:%S")
 
     # add hyperparameters as JSON string
     hyperparams = model.get("hyperparams", {})
@@ -312,9 +300,7 @@ def create_run_snapshot(
     if validation_metrics:
         df["validation_metrics_json"] = json.dumps(validation_metrics)
     else:
-        df["validation_metrics_json"] = json.dumps(
-            {"note": "No validation metrics provided"}
-        )
+        df["validation_metrics_json"] = json.dumps({"note": "No validation metrics provided"})
 
     # add calibration metrics if available
     calibration_metrics = {}
@@ -413,16 +399,12 @@ def save_local_outputs(
         print(f"   Saved: {output_dir / 'latest_buli_matches.parquet'}")
 
     if len(projections_df) > 0:
-        projections_df.to_parquet(
-            output_dir / "latest_buli_projections.parquet", index=False
-        )
+        projections_df.to_parquet(output_dir / "latest_buli_projections.parquet", index=False)
         print(f"   Saved: {output_dir / 'latest_buli_projections.parquet'}")
 
     if len(snapshot_df) > 0:
         timestamp_str = run_timestamp.strftime("%Y%m%d_%H%M%S")
-        snapshot_df.to_parquet(
-            output_dir / f"buli_run_{timestamp_str}.parquet", index=False
-        )
+        snapshot_df.to_parquet(output_dir / f"buli_run_{timestamp_str}.parquet", index=False)
         print(f"   Saved: {output_dir / f'buli_run_{timestamp_str}.parquet'}")
 
 
@@ -479,16 +461,12 @@ def main():
     # ========================================================================
     print("\n2. Loading data...")
 
-    historic_data, current_season = prepare_bundesliga_data(
-        windows=windows, verbose=False
-    )
+    historic_data, current_season = prepare_bundesliga_data(windows=windows, verbose=False)
 
     # verify weighted goals exists
     if "home_goals_weighted" not in historic_data.columns:
         print("\n   Error: home_goals_weighted not found in data")
-        print(
-            "   Make sure prepare_bundesliga_data includes weighted goals calculation"
-        )
+        print("   Make sure prepare_bundesliga_data includes weighted goals calculation")
         sys.exit(1)
 
     current_played = current_season[current_season["is_played"]].copy()
@@ -618,9 +596,7 @@ def main():
     matches_df = create_matches_dataframe(all_predictions, all_fixtures, next_fixtures)
     print(f"   Matches DataFrame: {len(matches_df)} rows")
 
-    projections_df = create_projections_dataframe(
-        summary, model["params"], current_standings
-    )
+    projections_df = create_projections_dataframe(summary, model["params"], current_standings)
     print(f"   Projections DataFrame: {len(projections_df)} rows")
 
     snapshot_df = create_run_snapshot(
@@ -721,9 +697,7 @@ def main():
         ]
 
         # only display columns that exist
-        available_cols = [
-            col for col in display_cols if col in next_predictions.columns
-        ]
+        available_cols = [col for col in display_cols if col in next_predictions.columns]
 
         # format probabilities as percentages for display
         display_df = next_predictions[available_cols].copy()

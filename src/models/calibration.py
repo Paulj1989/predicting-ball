@@ -68,9 +68,7 @@ def fit_temperature_scaler(
         return nll
 
     # optimise temperature (search range: 0.1 to 5.0)
-    result = minimize_scalar(
-        negative_log_likelihood, bounds=(0.1, 5.0), method="bounded"
-    )
+    result = minimize_scalar(negative_log_likelihood, bounds=(0.1, 5.0), method="bounded")
 
     optimal_temperature = result.x
 
@@ -163,9 +161,7 @@ def calibrate_dispersion_for_coverage(
 
         for i in range(n_matches):
             match = calibration_data.iloc[i]
-            lambda_h, lambda_a = calculate_lambdas(
-                calibration_data.iloc[[i]], base_params
-            )
+            lambda_h, lambda_a = calculate_lambdas(calibration_data.iloc[[i]], base_params)
 
             # simulate with this dispersion
             n_sims = 5000
@@ -174,12 +170,8 @@ def calibrate_dispersion_for_coverage(
 
             # get prediction intervals
             alpha = (1 - target_coverage) / 2
-            h_lower, h_upper = np.percentile(
-                simulated_h, [alpha * 100, (1 - alpha) * 100]
-            )
-            a_lower, a_upper = np.percentile(
-                simulated_a, [alpha * 100, (1 - alpha) * 100]
-            )
+            h_lower, h_upper = np.percentile(simulated_h, [alpha * 100, (1 - alpha) * 100])
+            a_lower, a_upper = np.percentile(simulated_a, [alpha * 100, (1 - alpha) * 100])
 
             # check actual outcome
             actual_h = int(match["home_goals"])
@@ -277,15 +269,11 @@ def create_dispersion_interpolator(calibrated_dispersions: dict[float, float]):
         elif confidence <= 0.80:
             # interpolate between 68% and 80%
             t = (confidence - 0.68) / (0.80 - 0.68)
-            return (1 - t) * calibrated_dispersions[0.68] + t * calibrated_dispersions[
-                0.80
-            ]
+            return (1 - t) * calibrated_dispersions[0.68] + t * calibrated_dispersions[0.80]
         else:
             # interpolate between 80% and 95%
             t = (confidence - 0.80) / (0.95 - 0.80)
-            return (1 - t) * calibrated_dispersions[0.80] + t * calibrated_dispersions[
-                0.95
-            ]
+            return (1 - t) * calibrated_dispersions[0.80] + t * calibrated_dispersions[0.95]
 
     return get_dispersion_for_confidence
 
@@ -346,15 +334,9 @@ def fit_outcome_specific_temperatures(
         print("=" * 70)
         print(f"\nCalibration set: {len(actuals)} matches")
         print("Outcome distribution:")
-        print(
-            f"  Home wins: {outcome_counts[0]} ({outcome_counts[0] / len(actuals):.1%})"
-        )
-        print(
-            f"  Draws:     {outcome_counts[1]} ({outcome_counts[1] / len(actuals):.1%})"
-        )
-        print(
-            f"  Away wins: {outcome_counts[2]} ({outcome_counts[2] / len(actuals):.1%})"
-        )
+        print(f"  Home wins: {outcome_counts[0]} ({outcome_counts[0] / len(actuals):.1%})")
+        print(f"  Draws:     {outcome_counts[1]} ({outcome_counts[1] / len(actuals):.1%})")
+        print(f"  Away wins: {outcome_counts[2]} ({outcome_counts[2] / len(actuals):.1%})")
 
     # warn if insufficient samples
     for i, name in enumerate(["home wins", "draws", "away wins"]):
@@ -655,9 +637,7 @@ def validate_calibration_on_holdout(
         print(
             f"{'Brier Score':<20} {brier_uncal:>14.4f} {brier_cal:>14.4f} {brier_uncal - brier_cal:>+14.4f}"
         )
-        print(
-            f"{'RPS':<20} {rps_uncal:>14.4f} {rps_cal:>14.4f} {rps_uncal - rps_cal:>+14.4f}"
-        )
+        print(f"{'RPS':<20} {rps_uncal:>14.4f} {rps_cal:>14.4f} {rps_uncal - rps_cal:>+14.4f}")
         print(
             f"{'Log Loss':<20} {log_loss_uncal:>14.4f} {log_loss_cal:>14.4f} {log_loss_uncal - log_loss_cal:>+14.4f}"
         )
@@ -690,9 +670,7 @@ def validate_calibration_on_holdout(
         if draw_mask.sum() > 0:
             draw_improvement = (draw_acc_cal - draw_acc_uncal) * 100
             if draw_improvement > 10:
-                print(
-                    f"\n EXCELLENT: Draw accuracy improved by {draw_improvement:.0f}pp"
-                )
+                print(f"\n EXCELLENT: Draw accuracy improved by {draw_improvement:.0f}pp")
             elif draw_improvement > 0:
                 print(f"\n GOOD: Draw accuracy improved by {draw_improvement:.0f}pp")
             else:

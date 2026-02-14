@@ -5,9 +5,7 @@ import numpy as np
 import pandas as pd
 
 
-def add_rolling_npxgd(
-    df: pd.DataFrame, windows: list[int] | None = None
-) -> pd.DataFrame:
+def add_rolling_npxgd(df: pd.DataFrame, windows: list[int] | None = None) -> pd.DataFrame:
     """
     Add rolling npxGD (non-penalty xG difference) statistics.
     Calculates mean npxGD over specified windows for each team, respecting season boundaries.
@@ -32,9 +30,7 @@ def add_rolling_npxgd(
             df[f"{prefix}_npxgd_w{window}"] = np.nan
 
     # only use matches with npxg data
-    played_df = df[
-        df["is_played"] & df["home_npxg"].notna() & df["away_npxg"].notna()
-    ].copy()
+    played_df = df[df["is_played"] & df["home_npxg"].notna() & df["away_npxg"].notna()].copy()
     if len(played_df) == 0:
         return df
 
@@ -65,9 +61,7 @@ def _calculate_and_merge_team_npxgd(
     team_away["orig_idx"] = team_away.index
 
     # combine and sort by date
-    team_matches = (
-        pd.concat([team_home, team_away]).sort_values("date").reset_index(drop=True)
-    )
+    team_matches = pd.concat([team_home, team_away]).sort_values("date").reset_index(drop=True)
 
     # calculate npxGD (npxG for - npxG against)
     team_matches["npxgd"] = np.where(
@@ -152,9 +146,7 @@ def add_venue_npxgd(df: pd.DataFrame) -> pd.DataFrame:
     df["home_venue_npxgd_per_game"] = np.nan
     df["away_venue_npxgd_per_game"] = np.nan
 
-    played_df = df[
-        df["is_played"] & df["home_npxg"].notna() & df["away_npxg"].notna()
-    ].copy()
+    played_df = df[df["is_played"] & df["home_npxg"].notna() & df["away_npxg"].notna()].copy()
     if len(played_df) == 0:
         return df
 
@@ -227,9 +219,7 @@ def _calculate_venue_npxgd_stats(
         else:
             # expanding window: use all previous home games this season
             prev_matches = team_home_matches.iloc[:i]
-            npxgd_per_game = (
-                prev_matches["home_npxg"] - prev_matches["away_npxg"]
-            ).mean()
+            npxgd_per_game = (prev_matches["home_npxg"] - prev_matches["away_npxg"]).mean()
             df.at[idx, "home_venue_npxgd_per_game"] = npxgd_per_game
 
     # =========================================================================
@@ -245,9 +235,7 @@ def _calculate_venue_npxgd_stats(
         else:
             # expanding window: use all previous away games this season
             prev_matches = team_away_matches.iloc[:i]
-            npxgd_per_game = (
-                prev_matches["away_npxg"] - prev_matches["home_npxg"]
-            ).mean()
+            npxgd_per_game = (prev_matches["away_npxg"] - prev_matches["home_npxg"]).mean()
             df.at[idx, "away_venue_npxgd_per_game"] = npxgd_per_game
 
     return df

@@ -91,9 +91,7 @@ def backtest_single_season(
                 print(f"  Accuracy: {metrics['accuracy']:.1%}")
         else:
             # no calibrators, use uncalibrated
-            metrics, predictions, actuals = evaluate_model_comprehensive(
-                params, test_data
-            )
+            metrics, predictions, actuals = evaluate_model_comprehensive(params, test_data)
 
             if verbose:
                 print("\nResults (uncalibrated):")
@@ -202,9 +200,7 @@ def run_rolling_validation(
         print("=" * 60)
         print(f"Validating on {n_seasons} most recent seasons")
 
-    return backtest_multiple_seasons(
-        fitted_model, all_data, test_seasons, verbose=verbose
-    )
+    return backtest_multiple_seasons(fitted_model, all_data, test_seasons, verbose=verbose)
 
 
 def cross_validate_hyperparameters(

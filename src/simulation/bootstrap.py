@@ -57,9 +57,7 @@ def parametric_bootstrap_with_residuals(
             print(f"Bootstrap iteration {b}/{n_bootstrap}")
 
         # resample residuals
-        resampled_idx = np.random.choice(
-            len(df_train), size=len(df_train), replace=True
-        )
+        resampled_idx = np.random.choice(len(df_train), size=len(df_train), replace=True)
 
         # create synthetic data
         synthetic_home = np.maximum(0, lambda_home_base + residuals_home[resampled_idx])
@@ -110,9 +108,7 @@ def parametric_bootstrap_with_residuals(
 
         if verbose:
             print("\nParameter uncertainty (mean ± std):")
-            print(
-                f"  Home advantage: {np.mean(home_advs):.3f} ± {np.std(home_advs):.3f}"
-            )
+            print(f"  Home advantage: {np.mean(home_advs):.3f} ± {np.std(home_advs):.3f}")
             print(f"  Odds weight: {np.mean(beta_odds):.3f} ± {np.std(beta_odds):.3f}")
             print(f"  Form weight: {np.mean(beta_form):.3f} ± {np.std(beta_form):.3f}")
             print(f"  Calibration: dispersion factor = {dispersion_factor:.3f}")
@@ -196,11 +192,7 @@ def plot_parameter_diagnostics(
         plt.savefig(save_path, dpi=150, bbox_inches="tight")
         print(f"\n✓ Parameter diagnostic plot saved: {save_path}")
     else:
-        plt.savefig(
-            "outputs/figures/parameter_diagnostics.png", dpi=150, bbox_inches="tight"
-        )
-        print(
-            "\n✓ Parameter diagnostic plot saved: outputs/figures/parameter_diagnostics.png"
-        )
+        plt.savefig("outputs/figures/parameter_diagnostics.png", dpi=150, bbox_inches="tight")
+        print("\n✓ Parameter diagnostic plot saved: outputs/figures/parameter_diagnostics.png")
 
     plt.close()

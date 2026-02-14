@@ -131,9 +131,7 @@ def _render_standings_table(projections):
 
     display_df["Title %"] = (display_df["Title %"] * 100).round(1)
     display_df["UCL %"] = (display_df["UCL %"] * 100).round(1)
-    display_df[display_df.columns[-1]] = (
-        display_df[display_df.columns[-1]] * 100
-    ).round(1)
+    display_df[display_df.columns[-1]] = (display_df[display_df.columns[-1]] * 100).round(1)
 
     # create aggrid with custom styling
     gb = GridOptionsBuilder.from_dataframe(display_df)
@@ -165,9 +163,7 @@ def _render_standings_table(projections):
         gb.configure_column("Defense", flex=1, type=["numericColumn"])
         gb.configure_column("Title %", flex=1, type=["numericColumn"])
         gb.configure_column("UCL %", flex=1, type=["numericColumn"])
-        gb.configure_column(
-            "Relegation %", flex=1.5, minWidth=100, type=["numericColumn"]
-        )
+        gb.configure_column("Relegation %", flex=1.5, minWidth=100, type=["numericColumn"])
 
     # enhanced cell styling for probabilities
     cell_style_jscode = JsCode("""
@@ -292,9 +288,7 @@ def _render_charts(projections):
                 tooltip=[
                     alt.Tooltip("team:N", title="Team"),
                     alt.Tooltip("title_prob:Q", title="Probability", format=".2%"),
-                    alt.Tooltip(
-                        "projected_points:Q", title="Projected Points", format=".0f"
-                    ),
+                    alt.Tooltip("projected_points:Q", title="Projected Points", format=".0f"),
                 ],
             )
             .properties(height=400)
@@ -322,9 +316,7 @@ def _render_charts(projections):
                 tooltip=[
                     alt.Tooltip("team:N", title="Team"),
                     alt.Tooltip("relegation_prob:Q", title="Probability", format=".2%"),
-                    alt.Tooltip(
-                        "projected_points:Q", title="Projected Points", format=".0f"
-                    ),
+                    alt.Tooltip("projected_points:Q", title="Projected Points", format=".0f"),
                 ],
             )
             .properties(height=400)

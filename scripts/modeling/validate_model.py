@@ -29,9 +29,7 @@ from src.validation import (
 
 def parse_args():
     """Parse command line arguments"""
-    parser = argparse.ArgumentParser(
-        description="Validate trained model on historical data"
-    )
+    parser = argparse.ArgumentParser(description="Validate trained model on historical data")
 
     parser.add_argument(
         "--model-path", type=str, required=True, help="Path to trained model file"
@@ -132,16 +130,12 @@ def main():
     # ========================================================================
     print("\n2. Loading data...")
 
-    historic_data, current_season = prepare_bundesliga_data(
-        windows=windows, verbose=False
-    )
+    historic_data, current_season = prepare_bundesliga_data(windows=windows, verbose=False)
 
     # verify weighted goals exists
     if "home_goals_weighted" not in historic_data.columns:
         print("\n   ✗ Error: home_goals_weighted not found in data")
-        print(
-            "   Make sure prepare_bundesliga_data includes weighted goals calculation"
-        )
+        print("   Make sure prepare_bundesliga_data includes weighted goals calculation")
         sys.exit(1)
 
     # combine all data
@@ -149,9 +143,7 @@ def main():
     all_data = pd.concat([historic_data, current_played], ignore_index=True)
 
     print(f"   Total matches available: {len(all_data)}")
-    print(
-        f"   Date range: {all_data['date'].min().date()} to {all_data['date'].max().date()}"
-    )
+    print(f"   Date range: {all_data['date'].min().date()} to {all_data['date'].max().date()}")
     print(f"   Seasons: {sorted(all_data['season_end_year'].unique())}")
 
     # ========================================================================
@@ -219,9 +211,7 @@ def main():
             for i in range(min(5, len(preds))):
                 h, d, a = preds[i]
                 actual = ["H", "D", "A"][actuals[i]]
-                print(
-                    f"    Match {i}: H={h:.3f} D={d:.3f} A={a:.3f} (actual: {actual})"
-                )
+                print(f"    Match {i}: H={h:.3f} D={d:.3f} A={a:.3f} (actual: {actual})")
 
             # check if probabilities sum to 1
             prob_sums = preds.sum(axis=1)
@@ -238,9 +228,7 @@ def main():
             )
 
             if max_draw < 0.15:
-                print(
-                    f"     WARNING: Maximum draw probability is very low ({max_draw:.3f})"
-                )
+                print(f"     WARNING: Maximum draw probability is very low ({max_draw:.3f})")
 
     if len(results) == 0:
         print("\n✗ No validation results obtained")
@@ -321,17 +309,13 @@ def main():
             "log_loss",
             "brier",
         ]:
-            baseline_key = (
-                "rps" if args.metric == "rps" else metric_key_map[args.metric]
-            )
+            baseline_key = "rps" if args.metric == "rps" else metric_key_map[args.metric]
             if baseline_key in result["baseline_metrics"]:
                 baseline_value = result["baseline_metrics"][baseline_key]
                 if isinstance(primary_value, int | float) and isinstance(
                     baseline_value, int | float
                 ):
-                    improvement = (
-                        (baseline_value - primary_value) / baseline_value * 100
-                    )
+                    improvement = (baseline_value - primary_value) / baseline_value * 100
                     baseline_info = f" (vs baseline: {improvement:+.1f}%)"
 
         # format based on selected metric
@@ -386,9 +370,7 @@ def main():
     if all(r.get("baseline_metrics") for r in results):
         primary_key = metric_key_map[args.metric]
         if all(primary_key in r.get("baseline_metrics", {}) for r in results):
-            avg_baseline = np.mean(
-                [r["baseline_metrics"][primary_key] for r in results]
-            )
+            avg_baseline = np.mean([r["baseline_metrics"][primary_key] for r in results])
 
             if args.metric == "rps":
                 avg_primary = avg_rps

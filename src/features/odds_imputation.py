@@ -92,9 +92,7 @@ def fit_imputation_models(df: pd.DataFrame) -> dict[str, dict]:
 
         if has_bet365 and has_market_avg:
             # full model with both predictors
-            mask_full = (
-                mask_pinnacle & df[bet365_col].notna() & df[market_avg_col].notna()
-            )
+            mask_full = mask_pinnacle & df[bet365_col].notna() & df[market_avg_col].notna()
             if mask_full.sum() >= 10:
                 X = df.loc[mask_full, [bet365_col, market_avg_col]].values
                 y = df.loc[mask_full, pinnacle_col].values
@@ -228,9 +226,7 @@ def apply_imputation(df: pd.DataFrame, models: dict[str, dict]) -> pd.DataFrame:
     logger.info(
         f"Odds imputation: {counts['market_avg_only']} matches imputed using market_avg only"
     )
-    logger.info(
-        f"Odds imputation: {counts['bet365_only']} matches imputed using bet365 only"
-    )
+    logger.info(f"Odds imputation: {counts['bet365_only']} matches imputed using bet365 only")
     if counts["no_predictors"] > 0:
         logger.info(
             f"Odds imputation: {counts['no_predictors']} matches with no predictors (left as NaN)"
