@@ -18,9 +18,9 @@ Usage:
     python scripts/modeling/run_model_pipeline.py --refresh  # Pull both database and model
 """
 
-import sys
 import argparse
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -66,9 +66,7 @@ def parse_args():
         help="Number of bootstrap samples (default: 250)",
     )
 
-    parser.add_argument(
-        "--skip-validation", action="store_true", help="Skip validation step"
-    )
+    parser.add_argument("--skip-validation", action="store_true", help="Skip validation step")
 
     parser.add_argument(
         "--metric",

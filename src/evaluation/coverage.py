@@ -1,14 +1,15 @@
 # src/evaluation/coverage.py
 
+from typing import Any
+
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Optional, Any
 
 from ..simulation.sampling import sample_goals_calibrated
 
 
 def run_coverage_test(
-    bootstrap_params: List[Dict[str, Any]],
+    bootstrap_params: list[dict[str, Any]],
     test_data: pd.DataFrame,
     confidence: float = 0.80,
     n_samples: int = 5000,
@@ -25,9 +26,7 @@ def run_coverage_test(
     from ..models.poisson import calculate_lambdas
 
     if verbose:
-        print(
-            f"\nTesting {confidence:.0%} prediction intervals on {len(test_data)} matches"
-        )
+        print(f"\nTesting {confidence:.0%} prediction intervals on {len(test_data)} matches")
 
     n_matches = len(test_data)
     covered_both = 0
@@ -64,7 +63,7 @@ def run_coverage_test(
         home_goals_samples = []
         away_goals_samples = []
 
-        for lh, la in zip(lambda_h_samples, lambda_a_samples):
+        for lh, la in zip(lambda_h_samples, lambda_a_samples, strict=False):
             hg = sample_goals_calibrated(lh, dispersion_factor, size=1)
             ag = sample_goals_calibrated(la, dispersion_factor, size=1)
             home_goals_samples.append(hg)
@@ -75,12 +74,8 @@ def run_coverage_test(
 
         # calculate prediction intervals
         alpha = (1 - confidence) / 2
-        h_lower, h_upper = np.percentile(
-            home_goals_samples, [alpha * 100, (1 - alpha) * 100]
-        )
-        a_lower, a_upper = np.percentile(
-            away_goals_samples, [alpha * 100, (1 - alpha) * 100]
-        )
+        h_lower, h_upper = np.percentile(home_goals_samples, [alpha * 100, (1 - alpha) * 100])
+        a_lower, a_upper = np.percentile(away_goals_samples, [alpha * 100, (1 - alpha) * 100])
 
         # check coverage
         if (h_lower <= actual_h <= h_upper) and (a_lower <= actual_a <= a_upper):
@@ -103,7 +98,7 @@ def run_coverage_test(
 
 
 def test_base_poisson_coverage(
-    params: Dict[str, Any],
+    params: dict[str, Any],
     test_data: pd.DataFrame,
     confidence: float = 0.80,
     verbose: bool = True,
@@ -115,8 +110,9 @@ def test_base_poisson_coverage(
     prediction intervals without accounting for parameter uncertainty.
     """
     # import here to avoid circular dependency
-    from ..models.poisson import calculate_lambdas
     from scipy.stats import poisson
+
+    from ..models.poisson import calculate_lambdas
 
     if verbose:
         print(f"\nTesting base Poisson {confidence:.0%} intervals (no bootstrap)")
@@ -156,10 +152,10 @@ def test_base_poisson_coverage(
 
 
 def diagnose_bootstrap_lambda_distribution(
-    bootstrap_params: List[Dict[str, Any]],
+    bootstrap_params: list[dict[str, Any]],
     match_data: pd.DataFrame,
     n_samples: int = 1000,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """
     Diagnose bootstrap lambda distributions for a specific match.
 
@@ -209,12 +205,14 @@ def diagnose_bootstrap_lambda_distribution(
 
 
 def coverage_by_confidence_level(
-    bootstrap_params: List[Dict[str, Any]],
+    bootstrap_params: list[dict[str, Any]],
     test_data: pd.DataFrame,
-    confidence_levels: List[float] = [0.68, 0.80, 0.95],
+    confidence_levels: list[float] | None = None,
     verbose: bool = True,
-) -> Dict[float, float]:
+) -> dict[float, float]:
     """Test coverage at multiple confidence levels"""
+    if confidence_levels is None:
+        confidence_levels = [0.68, 0.8, 0.95]
     results = {}
 
     if verbose:

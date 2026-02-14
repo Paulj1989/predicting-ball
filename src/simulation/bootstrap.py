@@ -1,20 +1,21 @@
 # src/simulation/bootstrap.py
 
+from typing import Any
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-from typing import Dict, List, Optional, Any
 
 
 def parametric_bootstrap_with_residuals(
     df_train: pd.DataFrame,
-    base_params: Dict[str, Any],
-    hyperparams: Dict[str, float],
-    promoted_priors: Optional[Dict[str, Dict[str, float]]] = None,
+    base_params: dict[str, Any],
+    hyperparams: dict[str, float],
+    promoted_priors: dict[str, dict[str, float]] | None = None,
     n_bootstrap: int = 500,
     use_two_stage: bool = True,
     verbose: bool = True,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Parametric bootstrap with residual resampling.
 
@@ -28,7 +29,7 @@ def parametric_bootstrap_with_residuals(
     This captures uncertainty in estimated team strengths and other parameters.
     """
     # import here to avoid circular dependency
-    from ..models.poisson import fit_poisson_model_two_stage, calculate_lambdas
+    from ..models.poisson import calculate_lambdas, fit_poisson_model_two_stage
 
     if verbose:
         print("\n" + "=" * 60)
@@ -56,9 +57,7 @@ def parametric_bootstrap_with_residuals(
             print(f"Bootstrap iteration {b}/{n_bootstrap}")
 
         # resample residuals
-        resampled_idx = np.random.choice(
-            len(df_train), size=len(df_train), replace=True
-        )
+        resampled_idx = np.random.choice(len(df_train), size=len(df_train), replace=True)
 
         # create synthetic data
         synthetic_home = np.maximum(0, lambda_home_base + residuals_home[resampled_idx])
@@ -109,9 +108,7 @@ def parametric_bootstrap_with_residuals(
 
         if verbose:
             print("\nParameter uncertainty (mean ± std):")
-            print(
-                f"  Home advantage: {np.mean(home_advs):.3f} ± {np.std(home_advs):.3f}"
-            )
+            print(f"  Home advantage: {np.mean(home_advs):.3f} ± {np.std(home_advs):.3f}")
             print(f"  Odds weight: {np.mean(beta_odds):.3f} ± {np.std(beta_odds):.3f}")
             print(f"  Form weight: {np.mean(beta_form):.3f} ± {np.std(beta_form):.3f}")
             print(f"  Calibration: dispersion factor = {dispersion_factor:.3f}")
@@ -120,9 +117,9 @@ def parametric_bootstrap_with_residuals(
 
 
 def plot_parameter_diagnostics(
-    bootstrap_params: List[Dict[str, Any]],
-    base_params: Dict[str, Any],
-    save_path: Optional[str] = None,
+    bootstrap_params: list[dict[str, Any]],
+    base_params: dict[str, Any],
+    save_path: str | None = None,
 ) -> None:
     """Plot parameter distributions from bootstrap"""
     print("\n" + "=" * 60)
@@ -160,11 +157,11 @@ def plot_parameter_diagnostics(
 
     # create plots
     n_params = len(param_dict)
-    fig, axes = plt.subplots(1, n_params, figsize=(6 * n_params, 5))
+    _fig, axes = plt.subplots(1, n_params, figsize=(6 * n_params, 5))
     if n_params == 1:
         axes = [axes]
 
-    for ax, (param, values) in zip(axes, param_dict.items()):
+    for ax, (param, values) in zip(axes, param_dict.items(), strict=False):
         ax.hist(values, bins=30, alpha=0.6, edgecolor="black", color="steelblue")
 
         # mark base model value
@@ -195,11 +192,7 @@ def plot_parameter_diagnostics(
         plt.savefig(save_path, dpi=150, bbox_inches="tight")
         print(f"\n✓ Parameter diagnostic plot saved: {save_path}")
     else:
-        plt.savefig(
-            "outputs/figures/parameter_diagnostics.png", dpi=150, bbox_inches="tight"
-        )
-        print(
-            "\n✓ Parameter diagnostic plot saved: outputs/figures/parameter_diagnostics.png"
-        )
+        plt.savefig("outputs/figures/parameter_diagnostics.png", dpi=150, bbox_inches="tight")
+        print("\n✓ Parameter diagnostic plot saved: outputs/figures/parameter_diagnostics.png")
 
     plt.close()

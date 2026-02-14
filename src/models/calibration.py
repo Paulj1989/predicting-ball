@@ -1,15 +1,16 @@
 # src/models/calibration.py
 
+import warnings
+from typing import Any
+
 import numpy as np
 import pandas as pd
-from scipy.optimize import minimize_scalar, minimize
-from typing import Dict, Callable, Tuple, Any, Union
-import warnings
+from scipy.optimize import minimize, minimize_scalar
 
 
 def fit_temperature_scaler(
-    predictions: Union[pd.DataFrame, np.ndarray],
-    actuals: Union[pd.Series, np.ndarray],
+    predictions: pd.DataFrame | np.ndarray,
+    actuals: pd.Series | np.ndarray,
     verbose: bool = True,
 ) -> float:
     """
@@ -38,7 +39,7 @@ def fit_temperature_scaler(
         try:
             actuals = np.array([outcome_map[a] for a in actuals])
         except KeyError as e:
-            raise ValueError(f"Unknown outcome: {e}")
+            raise ValueError(f"Unknown outcome: {e}") from e
     else:
         actuals = actuals.astype(int)
         if not all(a in [0, 1, 2] for a in actuals):
@@ -67,9 +68,7 @@ def fit_temperature_scaler(
         return nll
 
     # optimise temperature (search range: 0.1 to 5.0)
-    result = minimize_scalar(
-        negative_log_likelihood, bounds=(0.1, 5.0), method="bounded"
-    )
+    result = minimize_scalar(negative_log_likelihood, bounds=(0.1, 5.0), method="bounded")
 
     optimal_temperature = result.x
 
@@ -94,7 +93,7 @@ def fit_temperature_scaler(
 
 
 def apply_temperature_scaling(
-    predictions: Union[pd.DataFrame, np.ndarray], temperature: float
+    predictions: pd.DataFrame | np.ndarray, temperature: float
 ) -> np.ndarray:
     """
     Apply temperature scaling to predictions.
@@ -131,7 +130,7 @@ def apply_temperature_scaling(
 
 
 def calibrate_dispersion_for_coverage(
-    base_params: Dict[str, Any],
+    base_params: dict[str, Any],
     calibration_data: pd.DataFrame,
     target_coverage: float = 0.80,
     tolerance: float = 0.02,
@@ -146,8 +145,8 @@ def calibrate_dispersion_for_coverage(
     calibration set.
     """
     # import here to avoid circular dependency
-    from .poisson import calculate_lambdas
     from ..simulation.sampling import sample_goals_calibrated
+    from .poisson import calculate_lambdas
 
     if verbose:
         print(f"\n{'=' * 60}")
@@ -162,9 +161,7 @@ def calibrate_dispersion_for_coverage(
 
         for i in range(n_matches):
             match = calibration_data.iloc[i]
-            lambda_h, lambda_a = calculate_lambdas(
-                calibration_data.iloc[[i]], base_params
-            )
+            lambda_h, lambda_a = calculate_lambdas(calibration_data.iloc[[i]], base_params)
 
             # simulate with this dispersion
             n_sims = 5000
@@ -173,12 +170,8 @@ def calibrate_dispersion_for_coverage(
 
             # get prediction intervals
             alpha = (1 - target_coverage) / 2
-            h_lower, h_upper = np.percentile(
-                simulated_h, [alpha * 100, (1 - alpha) * 100]
-            )
-            a_lower, a_upper = np.percentile(
-                simulated_a, [alpha * 100, (1 - alpha) * 100]
-            )
+            h_lower, h_upper = np.percentile(simulated_h, [alpha * 100, (1 - alpha) * 100])
+            a_lower, a_upper = np.percentile(simulated_a, [alpha * 100, (1 - alpha) * 100])
 
             # check actual outcome
             actual_h = int(match["home_goals"])
@@ -232,8 +225,8 @@ def calibrate_dispersion_for_coverage(
 
 
 def calibrate_model_comprehensively(
-    base_params: Dict[str, Any], calibration_data: pd.DataFrame, verbose: bool = True
-) -> Tuple[Dict[float, float], None]:
+    base_params: dict[str, Any], calibration_data: pd.DataFrame, verbose: bool = True
+) -> tuple[dict[float, float], None]:
     """Calibrate dispersion factors for multiple coverage levels"""
     if verbose:
         print(f"\n{'=' * 60}")
@@ -260,7 +253,7 @@ def calibrate_model_comprehensively(
     return calibrated_dispersions, None
 
 
-def create_dispersion_interpolator(calibrated_dispersions: Dict[float, float]):
+def create_dispersion_interpolator(calibrated_dispersions: dict[float, float]):
     """
     Create interpolation function from calibrated dispersions.
 
@@ -276,25 +269,21 @@ def create_dispersion_interpolator(calibrated_dispersions: Dict[float, float]):
         elif confidence <= 0.80:
             # interpolate between 68% and 80%
             t = (confidence - 0.68) / (0.80 - 0.68)
-            return (1 - t) * calibrated_dispersions[0.68] + t * calibrated_dispersions[
-                0.80
-            ]
+            return (1 - t) * calibrated_dispersions[0.68] + t * calibrated_dispersions[0.80]
         else:
             # interpolate between 80% and 95%
             t = (confidence - 0.80) / (0.95 - 0.80)
-            return (1 - t) * calibrated_dispersions[0.80] + t * calibrated_dispersions[
-                0.95
-            ]
+            return (1 - t) * calibrated_dispersions[0.80] + t * calibrated_dispersions[0.95]
 
     return get_dispersion_for_confidence
 
 
 def fit_outcome_specific_temperatures(
-    predictions: Union[pd.DataFrame, np.ndarray],
-    actuals: Union[pd.Series, np.ndarray],
+    predictions: pd.DataFrame | np.ndarray,
+    actuals: pd.Series | np.ndarray,
     min_samples_per_outcome: int = 20,
     verbose: bool = True,
-) -> Dict[str, float]:
+) -> dict[str, Any]:
     """
     Fit separate temperature parameters for each outcome (home/draw/away).
 
@@ -330,7 +319,7 @@ def fit_outcome_specific_temperatures(
         try:
             actuals = np.array([outcome_map[a] for a in actuals])
         except KeyError as e:
-            raise ValueError(f"Unknown outcome: {e}")
+            raise ValueError(f"Unknown outcome: {e}") from e
     else:
         actuals = actuals.astype(int)
         if not all(a in [0, 1, 2] for a in actuals):
@@ -345,15 +334,9 @@ def fit_outcome_specific_temperatures(
         print("=" * 70)
         print(f"\nCalibration set: {len(actuals)} matches")
         print("Outcome distribution:")
-        print(
-            f"  Home wins: {outcome_counts[0]} ({outcome_counts[0] / len(actuals):.1%})"
-        )
-        print(
-            f"  Draws:     {outcome_counts[1]} ({outcome_counts[1] / len(actuals):.1%})"
-        )
-        print(
-            f"  Away wins: {outcome_counts[2]} ({outcome_counts[2] / len(actuals):.1%})"
-        )
+        print(f"  Home wins: {outcome_counts[0]} ({outcome_counts[0] / len(actuals):.1%})")
+        print(f"  Draws:     {outcome_counts[1]} ({outcome_counts[1] / len(actuals):.1%})")
+        print(f"  Away wins: {outcome_counts[2]} ({outcome_counts[2] / len(actuals):.1%})")
 
     # warn if insufficient samples
     for i, name in enumerate(["home wins", "draws", "away wins"]):
@@ -363,6 +346,7 @@ def fit_outcome_specific_temperatures(
                 f"(recommended: {min_samples_per_outcome}+). "
                 f"Temperature estimate may be unreliable.",
                 UserWarning,
+                stacklevel=2,
             )
 
     # ========================================================================
@@ -405,7 +389,9 @@ def fit_outcome_specific_temperatures(
 
     if not result.success:
         warnings.warn(
-            f"Temperature optimisation did not converge: {result.message}", UserWarning
+            f"Temperature optimisation did not converge: {result.message}",
+            UserWarning,
+            stacklevel=2,
         )
 
     T_home, T_draw, T_away = result.x
@@ -531,8 +517,8 @@ def fit_outcome_specific_temperatures(
 
 
 def apply_outcome_specific_scaling(
-    predictions: Union[pd.DataFrame, np.ndarray],
-    temperatures: Dict[str, float],
+    predictions: pd.DataFrame | np.ndarray,
+    temperatures: dict[str, Any],
 ) -> np.ndarray:
     """Apply outcome-specific temperature scaling to predictions"""
     # convert to numpy array
@@ -563,11 +549,11 @@ def apply_outcome_specific_scaling(
 
 
 def validate_calibration_on_holdout(
-    temperatures: Dict[str, float],
+    temperatures: dict[str, Any],
     holdout_predictions: np.ndarray,
     holdout_actuals: np.ndarray,
     verbose: bool = True,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """Validate calibration on a holdout set"""
     # apply calibration
     calibrated_preds = apply_outcome_specific_scaling(holdout_predictions, temperatures)
@@ -580,8 +566,8 @@ def validate_calibration_on_holdout(
     # calculate metrics
     from ..evaluation.metrics import (
         calculate_brier_score,
-        calculate_rps,
         calculate_log_loss,
+        calculate_rps,
     )
 
     # uncalibrated
@@ -651,9 +637,7 @@ def validate_calibration_on_holdout(
         print(
             f"{'Brier Score':<20} {brier_uncal:>14.4f} {brier_cal:>14.4f} {brier_uncal - brier_cal:>+14.4f}"
         )
-        print(
-            f"{'RPS':<20} {rps_uncal:>14.4f} {rps_cal:>14.4f} {rps_uncal - rps_cal:>+14.4f}"
-        )
+        print(f"{'RPS':<20} {rps_uncal:>14.4f} {rps_cal:>14.4f} {rps_uncal - rps_cal:>+14.4f}")
         print(
             f"{'Log Loss':<20} {log_loss_uncal:>14.4f} {log_loss_cal:>14.4f} {log_loss_uncal - log_loss_cal:>+14.4f}"
         )
@@ -686,9 +670,7 @@ def validate_calibration_on_holdout(
         if draw_mask.sum() > 0:
             draw_improvement = (draw_acc_cal - draw_acc_uncal) * 100
             if draw_improvement > 10:
-                print(
-                    f"\n EXCELLENT: Draw accuracy improved by {draw_improvement:.0f}pp"
-                )
+                print(f"\n EXCELLENT: Draw accuracy improved by {draw_improvement:.0f}pp")
             elif draw_improvement > 0:
                 print(f"\n GOOD: Draw accuracy improved by {draw_improvement:.0f}pp")
             else:
@@ -698,8 +680,8 @@ def validate_calibration_on_holdout(
 
 
 def apply_calibration(
-    predictions: Union[pd.DataFrame, np.ndarray],
-    calibrators: Dict[str, Any],
+    predictions: pd.DataFrame | np.ndarray,
+    calibrators: dict[str, Any],
 ) -> np.ndarray:
     """Apply calibration - handles both standard and outcome-specific"""
     if "temperature" not in calibrators:

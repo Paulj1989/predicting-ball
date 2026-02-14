@@ -11,7 +11,7 @@ Provides utilities for:
 import io
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import boto3
 from botocore.exceptions import ClientError
@@ -45,9 +45,7 @@ def get_spaces_client():
     config = get_spaces_config()
 
     if not config["key"] or not config["secret"]:
-        raise ValueError(
-            "DO_SPACES_KEY and DO_SPACES_SECRET must be set in environment"
-        )
+        raise ValueError("DO_SPACES_KEY and DO_SPACES_SECRET must be set in environment")
 
     return boto3.client(
         "s3",
@@ -67,7 +65,7 @@ def upload_file(
     local_path: str | Path,
     remote_key: str,
     public: bool = False,
-    content_type: Optional[str] = None,
+    content_type: str | None = None,
 ) -> str:
     """Upload a local file to DO Spaces"""
     local_path = Path(local_path)
@@ -97,7 +95,7 @@ def upload_bytes(
     data: bytes,
     remote_key: str,
     public: bool = False,
-    content_type: Optional[str] = None,
+    content_type: str | None = None,
 ) -> str:
     """Upload bytes directly to DO Spaces"""
     client = get_spaces_client()

@@ -12,29 +12,28 @@ Usage:
     python scripts/modeling/run_calibration.py --model-path outputs/models/production_model.pkl --outcome-specific
 """
 
-import sys
 import argparse
+import sys
 from pathlib import Path
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
-from src.models.calibration import (
-    fit_temperature_scaler,
-    apply_temperature_scaling,
-    fit_outcome_specific_temperatures,
-    apply_outcome_specific_scaling,
-    validate_calibration_on_holdout,
-    calibrate_dispersion_for_coverage,
-    calibrate_model_comprehensively,
-)
 from src.evaluation import (
-    evaluate_model_comprehensive,
     create_calibration_report,
+    evaluate_model_comprehensive,
+)
+from src.io.model_io import load_model, save_calibrators
+from src.models.calibration import (
+    apply_outcome_specific_scaling,
+    apply_temperature_scaling,
+    calibrate_model_comprehensively,
+    fit_outcome_specific_temperatures,
+    fit_temperature_scaler,
+    validate_calibration_on_holdout,
 )
 from src.processing.model_preparation import prepare_bundesliga_data
 from src.validation.splits import create_calibration_split
-from src.io.model_io import load_model, save_calibrators
 
 
 def parse_args():
@@ -140,26 +139,20 @@ def main():
     # ========================================================================
     print("\n2. Loading calibration data...")
 
-    historic_data, current_season = prepare_bundesliga_data(
-        windows=windows, verbose=False
-    )
+    historic_data, current_season = prepare_bundesliga_data(windows=windows, verbose=False)
 
     # verify weighted goals exists
     if "home_goals_weighted" not in historic_data.columns:
         print("\n   ✗ Error: home_goals_weighted not found in data")
-        print(
-            "   Make sure prepare_bundesliga_data includes weighted goals calculation"
-        )
+        print("   Make sure prepare_bundesliga_data includes weighted goals calculation")
         sys.exit(1)
 
     # use all available data
-    current_played = current_season[current_season["is_played"] == True].copy()
+    current_played = current_season[current_season["is_played"]].copy()
     all_data = pd.concat([historic_data, current_played], ignore_index=True)
 
     print(f"   Total matches: {len(all_data)}")
-    print(
-        f"   Date range: {all_data['date'].min().date()} to {all_data['date'].max().date()}"
-    )
+    print(f"   Date range: {all_data['date'].min().date()} to {all_data['date'].max().date()}")
 
     # three-way split: fit, calibration, holdout
     total_test_fraction = args.calibration_fraction + args.holdout_fraction
@@ -179,12 +172,8 @@ def main():
     print(f"   Holdout validation: {len(holdout_data)} matches")
 
     # check draw rate
-    cal_draw_rate = (
-        calibration_data["home_goals"] == calibration_data["away_goals"]
-    ).mean()
-    holdout_draw_rate = (
-        holdout_data["home_goals"] == holdout_data["away_goals"]
-    ).mean()
+    cal_draw_rate = (calibration_data["home_goals"] == calibration_data["away_goals"]).mean()
+    holdout_draw_rate = (holdout_data["home_goals"] == holdout_data["away_goals"]).mean()
     print(f"   Draw rate (cal): {cal_draw_rate:.1%}")
     print(f"   Draw rate (holdout): {holdout_draw_rate:.1%}")
 
@@ -199,13 +188,11 @@ def main():
     )
 
     # holdout set predictions
-    metrics_uncal_holdout, holdout_predictions, holdout_actuals = (
-        evaluate_model_comprehensive(
-            model["params"], holdout_data, use_dixon_coles=True
-        )
+    _metrics_uncal_holdout, holdout_predictions, holdout_actuals = (
+        evaluate_model_comprehensive(model["params"], holdout_data, use_dixon_coles=True)
     )
 
-    print(f"\n   Uncalibrated metrics (calibration set):")
+    print("\n   Uncalibrated metrics (calibration set):")
 
     # emphasise selected metric
     metric_map = {"rps": "RPS", "log_loss": "Log Loss", "brier": "Brier"}
@@ -216,15 +203,11 @@ def main():
         print(f"     Brier: {metrics_uncal_cal['brier_score']:.4f}")
         print(f"     Log Loss: {metrics_uncal_cal.get('log_loss', 'N/A')}")
     elif args.metric == "log_loss":
-        print(
-            f"     {metric_display}: {metrics_uncal_cal.get('log_loss', 'N/A')} (PRIMARY)"
-        )
+        print(f"     {metric_display}: {metrics_uncal_cal.get('log_loss', 'N/A')} (PRIMARY)")
         print(f"     Brier: {metrics_uncal_cal['brier_score']:.4f}")
         print(f"     RPS: {metrics_uncal_cal.get('rps', 'N/A')}")
     else:  # brier
-        print(
-            f"     {metric_display}: {metrics_uncal_cal['brier_score']:.4f} (PRIMARY)"
-        )
+        print(f"     {metric_display}: {metrics_uncal_cal['brier_score']:.4f} (PRIMARY)")
         print(f"     RPS: {metrics_uncal_cal.get('rps', 'N/A')}")
         print(f"     Log Loss: {metrics_uncal_cal.get('log_loss', 'N/A')}")
 
@@ -249,9 +232,7 @@ def main():
         )
 
         # apply to calibration set
-        cal_preds_calibrated = apply_outcome_specific_scaling(
-            cal_predictions, temperatures
-        )
+        cal_preds_calibrated = apply_outcome_specific_scaling(cal_predictions, temperatures)
 
         # store in calibrator package
         calibration_method = "outcome_specific"
@@ -280,8 +261,8 @@ def main():
     # calculate calibrated metrics on calibration set
     from src.evaluation.metrics import (
         calculate_brier_score,
-        calculate_rps,
         calculate_log_loss,
+        calculate_rps,
     )
 
     brier_cal = calculate_brier_score(cal_preds_calibrated, cal_actuals)
@@ -405,7 +386,7 @@ def main():
     )
 
     try:
-        report = create_calibration_report(
+        create_calibration_report(
             holdout_preds_calibrated,
             holdout_actuals,
             model_name="Calibrated Model (Holdout Set)",
@@ -441,9 +422,7 @@ def main():
     if args.metric == "rps":
         print(f"  RPS improvement: {holdout_metrics['rps_improvement']:+.4f} (PRIMARY)")
         print(f"  Brier improvement: {holdout_metrics['brier_improvement']:+.4f}")
-        print(
-            f"  Log Loss improvement: {holdout_metrics.get('log_loss_improvement', 'N/A')}"
-        )
+        print(f"  Log Loss improvement: {holdout_metrics.get('log_loss_improvement', 'N/A')}")
     elif args.metric == "log_loss":
         print(
             f"  Log Loss improvement: {holdout_metrics.get('log_loss_improvement', 'N/A')} (PRIMARY)"
@@ -451,13 +430,9 @@ def main():
         print(f"  Brier improvement: {holdout_metrics['brier_improvement']:+.4f}")
         print(f"  RPS improvement: {holdout_metrics['rps_improvement']:+.4f}")
     else:  # brier
-        print(
-            f"  Brier improvement: {holdout_metrics['brier_improvement']:+.4f} (PRIMARY)"
-        )
+        print(f"  Brier improvement: {holdout_metrics['brier_improvement']:+.4f} (PRIMARY)")
         print(f"  RPS improvement: {holdout_metrics['rps_improvement']:+.4f}")
-        print(
-            f"  Log Loss improvement: {holdout_metrics.get('log_loss_improvement', 'N/A')}"
-        )
+        print(f"  Log Loss improvement: {holdout_metrics.get('log_loss_improvement', 'N/A')}")
     print(
         f"  Draw accuracy: {holdout_metrics['draw_accuracy_uncalibrated']:.1%} → {holdout_metrics['draw_accuracy_calibrated']:.1%}"
     )

@@ -1,11 +1,11 @@
 # src/models/poisson.py
 
+from typing import Any
+
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 from scipy.stats import poisson
-from typing import Dict, Optional, Tuple, Any
-
 
 # ============================================================================
 # TWO-STAGE FITTING FUNCTIONS
@@ -14,13 +14,13 @@ from typing import Dict, Optional, Tuple, Any
 
 def fit_baseline_strengths(
     df_train: pd.DataFrame,
-    hyperparams: Dict[str, float],
-    promoted_priors: Optional[Dict[str, Dict[str, float]]] = None,
-    home_adv_prior: Optional[float] = None,
-    home_adv_std: Optional[float] = None,
+    hyperparams: dict[str, float],
+    promoted_priors: dict[str, dict[str, float]] | None = None,
+    home_adv_prior: float | None = None,
+    home_adv_std: float | None = None,
     n_random_starts: int = 3,
     verbose: bool = False,
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Stage 1: Fit baseline team strengths (attack/defense) + home advantage"""
 
     from ..models.dixon_coles import tau_dixon_coles
@@ -32,7 +32,7 @@ def fit_baseline_strengths(
     all_teams = sorted(pd.unique(df_train[["home_team", "away_team"]].values.ravel()))
 
     if promoted_priors:
-        for team in promoted_priors.keys():
+        for team in promoted_priors:
             if team not in all_teams:
                 all_teams.append(team)
         all_teams = sorted(all_teams)
@@ -130,9 +130,7 @@ def fit_baseline_strengths(
         # vectorised tau calculation
         tau_vec = np.array(
             [
-                tau_dixon_coles(
-                    home_g_weighted[i], away_g_weighted[i], mu_h[i], mu_a[i], rho
-                )
+                tau_dixon_coles(home_g_weighted[i], away_g_weighted[i], mu_h[i], mu_a[i], rho)
                 for i in range(len(home_g_weighted))
             ]
         )
@@ -147,8 +145,7 @@ def fit_baseline_strengths(
 
         # regularisation: priors on attack/defense
         prior_penalty = np.sum(
-            prior_weights
-            * ((attack - attack_priors) ** 2 + (defense - defense_priors) ** 2)
+            prior_weights * ((attack - attack_priors) ** 2 + (defense - defense_priors) ** 2)
         )
 
         # home advantage prior
@@ -244,10 +241,10 @@ def fit_baseline_strengths(
 
 def fit_feature_coefficients(
     df_train: pd.DataFrame,
-    baseline_params: Dict[str, Any],
-    hyperparams: Dict[str, float],
+    baseline_params: dict[str, Any],
+    hyperparams: dict[str, float],
     verbose: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Stage 2: Fit coefficients for match-specific features (odds, form)"""
 
     from .ratings import add_interpretable_ratings_to_params
@@ -412,12 +409,8 @@ def fit_feature_coefficients(
     dispersion_factor = (dispersion_h + dispersion_a) / 2
 
     full_params["dispersion_factor"] = dispersion_factor
-    full_params["var_ratio_h"] = var_h / max(
-        np.var(home_g_actual - lambda_h_fitted), 0.1
-    )
-    full_params["var_ratio_a"] = var_a / max(
-        np.var(away_g_actual - lambda_a_fitted), 0.1
-    )
+    full_params["var_ratio_h"] = var_h / max(np.var(home_g_actual - lambda_h_fitted), 0.1)
+    full_params["var_ratio_a"] = var_a / max(np.var(away_g_actual - lambda_a_fitted), 0.1)
 
     if verbose:
         print("\n  ✓ Feature coefficients fitted")
@@ -432,13 +425,13 @@ def fit_feature_coefficients(
 
 def fit_poisson_model_two_stage(
     df_train: pd.DataFrame,
-    hyperparams: Dict[str, float],
-    promoted_priors: Optional[Dict[str, Dict[str, float]]] = None,
-    home_adv_prior: Optional[float] = None,
-    home_adv_std: Optional[float] = None,
+    hyperparams: dict[str, float],
+    promoted_priors: dict[str, dict[str, float]] | None = None,
+    home_adv_prior: float | None = None,
+    home_adv_std: float | None = None,
     n_random_starts: int = 3,
     verbose: bool = False,
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """
     Two-stage Poisson model fitting.
 
@@ -491,11 +484,11 @@ def fit_poisson_model_two_stage(
 def calculate_lambdas_single(
     home_team: str,
     away_team: str,
-    params: Dict[str, Any],
+    params: dict[str, Any],
     home_log_odds_ratio: float = 0.0,
     home_npxgd_w5: float = 0.0,
     away_npxgd_w5: float = 0.0,
-) -> Tuple[float, float]:
+) -> tuple[float, float]:
     """Calculate expected goals for a single match"""
     att_h = params.get("attack", {}).get(home_team, 0.0)
     def_h = params.get("defense", {}).get(home_team, 0.0)
@@ -508,15 +501,9 @@ def calculate_lambdas_single(
 
     # calculate strengths
     home_strength = (
-        att_h
-        + def_a
-        + home_adv
-        + beta_odds * home_log_odds_ratio
-        + beta_form * home_npxgd_w5
+        att_h + def_a + home_adv + beta_odds * home_log_odds_ratio + beta_form * home_npxgd_w5
     )
-    away_strength = (
-        att_a + def_h - beta_odds * home_log_odds_ratio + beta_form * away_npxgd_w5
-    )
+    away_strength = att_a + def_h - beta_odds * home_log_odds_ratio + beta_form * away_npxgd_w5
 
     # convert to lambdas
     lambda_home = np.clip(np.exp(home_strength), 0.1, 8.0)
@@ -526,8 +513,8 @@ def calculate_lambdas_single(
 
 
 def calculate_lambdas(
-    df: pd.DataFrame, params: Dict[str, Any], fill_missing_with_mean: bool = False
-) -> Tuple[np.ndarray, np.ndarray]:
+    df: pd.DataFrame, params: dict[str, Any], fill_missing_with_mean: bool = False
+) -> tuple[np.ndarray, np.ndarray]:
     """Calculate expected goals (lambdas) for matches using fitted parameters"""
     # get all teams (from data and parameters)
     df_teams = set(df["home_team"].unique()) | set(df["away_team"].unique())
@@ -568,14 +555,10 @@ def calculate_lambdas(
 
     # form features
     home_npxgd_w5 = (
-        df["home_npxgd_w5"].fillna(0).values
-        if "home_npxgd_w5" in df
-        else np.zeros(len(df))
+        df["home_npxgd_w5"].fillna(0).values if "home_npxgd_w5" in df else np.zeros(len(df))
     )
     away_npxgd_w5 = (
-        df["away_npxgd_w5"].fillna(0).values
-        if "away_npxgd_w5" in df
-        else np.zeros(len(df))
+        df["away_npxgd_w5"].fillna(0).values if "away_npxgd_w5" in df else np.zeros(len(df))
     )
 
     # calculate strengths

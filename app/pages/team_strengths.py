@@ -1,8 +1,8 @@
 # app/pages/team_strengths.py
 
-import streamlit as st
-import pandas as pd
 import altair as alt
+import pandas as pd
+import streamlit as st
 
 
 def render(model, projections):
@@ -94,16 +94,12 @@ def _render_comparison_charts(selected_team, projections):
                     scale=alt.Scale(domain=[axis_min, axis_max]),
                 ),
                 color=alt.condition(
-                    alt.datum.is_selected == True,
+                    alt.datum.is_selected,
                     alt.value("#D93649"),
                     alt.value("#026E99"),
                 ),
-                opacity=alt.condition(
-                    alt.datum.is_selected == True, alt.value(1.0), alt.value(0.6)
-                ),
-                size=alt.condition(
-                    alt.datum.is_selected == True, alt.value(400), alt.value(200)
-                ),
+                opacity=alt.condition(alt.datum.is_selected, alt.value(1.0), alt.value(0.6)),
+                size=alt.condition(alt.datum.is_selected, alt.value(400), alt.value(200)),
                 tooltip=[
                     alt.Tooltip("team:N", title="Team"),
                     alt.Tooltip("attack:Q", title="Attack", format=".3f"),
@@ -115,16 +111,8 @@ def _render_comparison_charts(selected_team, projections):
         )
 
         # add quadrant lines
-        h_line = (
-            alt.Chart(pd.DataFrame({"y": [0]}))
-            .mark_rule(strokeDash=[5, 5])
-            .encode(y="y")
-        )
-        v_line = (
-            alt.Chart(pd.DataFrame({"x": [0]}))
-            .mark_rule(strokeDash=[5, 5])
-            .encode(x="x")
-        )
+        h_line = alt.Chart(pd.DataFrame({"y": [0]})).mark_rule(strokeDash=[5, 5]).encode(y="y")
+        v_line = alt.Chart(pd.DataFrame({"x": [0]})).mark_rule(strokeDash=[5, 5]).encode(x="x")
 
         st.altair_chart(scatter + h_line + v_line, use_container_width=True)
 
@@ -140,7 +128,7 @@ def _render_comparison_charts(selected_team, projections):
                 x=alt.X("overall:Q", title="Overall Rating"),
                 y=alt.Y("team:N", title=None, sort="-x"),
                 color=alt.condition(
-                    alt.datum.is_selected == True,
+                    alt.datum.is_selected,
                     alt.value("#D93649"),
                     alt.value("#026E99"),
                 ),

@@ -1,15 +1,15 @@
 # src/models/hyperparameters.py
 
+
 import numpy as np
-import pandas as pd
 import optuna
+import pandas as pd
 from optuna.pruners import MedianPruner
 from optuna.samplers import TPESampler
 from sklearn.model_selection import TimeSeriesSplit
-from typing import Dict
 
 
-def get_default_hyperparameters() -> Dict[str, float]:
+def get_default_hyperparameters() -> dict[str, float]:
     """Get default hyperparameters for the model"""
     return {
         "time_decay": 0.005,
@@ -26,7 +26,7 @@ def optimise_hyperparameters(
     metric: str = "rps",
     use_two_stage: bool = True,
     verbose: bool = False,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """
     Optimise hyperparameters using time-series cross-validation.
 
@@ -109,9 +109,7 @@ def optimise_hyperparameters(
     )
 
     # optimise
-    study.optimize(
-        objective, n_trials=n_trials, n_jobs=n_jobs, show_progress_bar=verbose
-    )
+    study.optimize(objective, n_trials=n_trials, n_jobs=n_jobs, show_progress_bar=verbose)
 
     if verbose:
         print("\n" + "=" * 60)
@@ -126,9 +124,7 @@ def optimise_hyperparameters(
             f"  time_decay: {study.best_params['time_decay']:.4f} ({half_life_years:.1f} year half-life)"
         )
         print(f"  lambda_reg: {study.best_params['lambda_reg']:.4f}")
-        print(
-            f"  prior_decay_rate: {study.best_params['prior_decay_rate']:.2f} matches"
-        )
+        print(f"  prior_decay_rate: {study.best_params['prior_decay_rate']:.2f} matches")
         print(f"  rho (Dixon-Coles): {study.best_params['rho']:.4f}")
 
         # interpret rho

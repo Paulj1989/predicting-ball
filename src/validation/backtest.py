@@ -1,23 +1,22 @@
 # src/validation/backtest.py
 
+from typing import Any
+
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Optional, Any
-
-from .splits import create_train_test_split, validate_split_quality
 
 
 def backtest_single_season(
-    fitted_model: Dict[str, Any],
+    fitted_model: dict[str, Any],
     all_data: pd.DataFrame,
     test_season: int,
-    calibrators: Optional[Any] = None,
+    calibrators: Any | None = None,
     verbose: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str, Any] | None:
     """Backtest fitted model on a single holdout season"""
     # import here to avoid circular dependency
-    from ..evaluation.metrics import evaluate_model_comprehensive
     from ..evaluation.baselines import evaluate_implied_odds_baseline
+    from ..evaluation.metrics import evaluate_model_comprehensive
 
     if verbose:
         print("\n" + "=" * 60)
@@ -42,10 +41,9 @@ def backtest_single_season(
         temperature = None
         if isinstance(calibrators, dict):
             temperature = calibrators.get("temperature")
-            if temperature is None:
-                if verbose:
-                    print("⚠ No temperature calibrator found, using uncalibrated")
-        elif isinstance(calibrators, (int, float)):
+            if temperature is None and verbose:
+                print("⚠ No temperature calibrator found, using uncalibrated")
+        elif isinstance(calibrators, int | float):
             temperature = calibrators
 
         if temperature is not None:
@@ -53,7 +51,7 @@ def backtest_single_season(
             from ..models.calibration import apply_calibration
 
             # get uncalibrated predictions first
-            metrics_uncal, predictions_uncal, actuals = evaluate_model_comprehensive(
+            _metrics_uncal, predictions_uncal, actuals = evaluate_model_comprehensive(
                 params, test_data
             )
 
@@ -62,10 +60,10 @@ def backtest_single_season(
 
             # recalculate metrics with calibrated predictions
             from ..evaluation.metrics import (
-                calculate_rps,
+                calculate_accuracy,
                 calculate_brier_score,
                 calculate_log_loss,
-                calculate_accuracy,
+                calculate_rps,
             )
 
             metrics_cal = {
@@ -137,16 +135,16 @@ def backtest_single_season(
 
 
 def backtest_multiple_seasons(
-    fitted_model: Dict[str, Any],
+    fitted_model: dict[str, Any],
     all_data: pd.DataFrame,
-    test_seasons: List[int],
-    calibrators: Optional[Any] = None,
+    test_seasons: list[int],
+    calibrators: Any | None = None,
     verbose: bool = True,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Backtest fitted model on multiple seasons"""
     if verbose:
         print("\n" + "=" * 60)
-        print(f"MULTI-SEASON BACKTESTING")
+        print("MULTI-SEASON BACKTESTING")
         print("=" * 60)
         print(f"Testing {len(test_seasons)} seasons: {test_seasons}")
 
@@ -186,11 +184,11 @@ def backtest_multiple_seasons(
 
 
 def run_rolling_validation(
-    fitted_model: Dict[str, Any],
+    fitted_model: dict[str, Any],
     all_data: pd.DataFrame,
     n_seasons: int = 3,
     verbose: bool = True,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Run rolling validation on most recent N seasons"""
     # get most recent n seasons
     seasons = sorted(all_data["season_end_year"].unique())
@@ -202,22 +200,21 @@ def run_rolling_validation(
         print("=" * 60)
         print(f"Validating on {n_seasons} most recent seasons")
 
-    return backtest_multiple_seasons(
-        fitted_model, all_data, test_seasons, verbose=verbose
-    )
+    return backtest_multiple_seasons(fitted_model, all_data, test_seasons, verbose=verbose)
 
 
 def cross_validate_hyperparameters(
     all_data: pd.DataFrame,
-    hyperparam_grid: Dict[str, List[float]],
+    hyperparam_grid: dict[str, list[float]],
     n_splits: int = 5,
     verbose: bool = True,
-) -> Dict[str, float]:
+) -> dict[str, float] | None:
     """Cross-validate hyperparameters using time-series splits"""
     from itertools import product
-    from .splits import TimeSeriesSplit
-    from ..models.poisson import fit_poisson_model
+
     from ..evaluation.metrics import evaluate_model_comprehensive
+    from ..models.poisson import fit_poisson_model_two_stage as fit_poisson_model
+    from .splits import TimeSeriesSplit
 
     if verbose:
         print("\n" + "=" * 60)
@@ -239,14 +236,14 @@ def cross_validate_hyperparameters(
     best_params = None
 
     for combo in combinations:
-        hyperparams = dict(zip(param_names, combo))
+        hyperparams = dict(zip(param_names, combo, strict=False))
 
         if verbose:
             print(f"\nTesting: {hyperparams}")
 
         cv_scores = []
 
-        for fold, (train_idx, test_idx) in enumerate(splitter.split(all_data)):
+        for _fold, (train_idx, test_idx) in enumerate(splitter.split(all_data)):
             train_fold = all_data.iloc[train_idx]
             test_fold = all_data.iloc[test_idx]
 
@@ -268,7 +265,7 @@ def cross_validate_hyperparameters(
                 best_score = avg_score
                 best_params = hyperparams
 
-    if verbose:
+    if verbose and best_params is not None:
         print("\n" + "=" * 60)
         print("BEST PARAMETERS")
         print("=" * 60)

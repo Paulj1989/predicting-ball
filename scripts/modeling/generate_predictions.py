@@ -39,9 +39,7 @@ from src.simulation import (
 
 def parse_args():
     """Parse command line arguments"""
-    parser = argparse.ArgumentParser(
-        description="Generate predictions and season projections"
-    )
+    parser = argparse.ArgumentParser(description="Generate predictions and season projections")
 
     parser.add_argument(
         "--model-path", type=str, required=True, help="Path to trained model file"
@@ -145,7 +143,7 @@ def create_matches_dataframe(
     if next_fixtures is not None and len(next_fixtures) > 0:
         # create set of (home_team, away_team) tuples for next round
         next_matches = set(
-            zip(next_fixtures["home_team"], next_fixtures["away_team"])
+            zip(next_fixtures["home_team"], next_fixtures["away_team"], strict=False)
         )
         df["is_next_round"] = df.apply(
             lambda row: (row["home_team"], row["away_team"]) in next_matches,
@@ -292,9 +290,7 @@ def create_run_snapshot(
     run_id = run_timestamp.strftime("%Y%m%d_%H%M%S")
     df["run_id"] = run_id
     df["run_timestamp"] = run_timestamp
-    df["model_version"] = model.get("trained_at", run_timestamp).strftime(
-        "%Y-%m-%d %H:%M:%S"
-    )
+    df["model_version"] = model.get("trained_at", run_timestamp).strftime("%Y-%m-%d %H:%M:%S")
 
     # add hyperparameters as JSON string
     hyperparams = model.get("hyperparams", {})
@@ -304,9 +300,7 @@ def create_run_snapshot(
     if validation_metrics:
         df["validation_metrics_json"] = json.dumps(validation_metrics)
     else:
-        df["validation_metrics_json"] = json.dumps(
-            {"note": "No validation metrics provided"}
-        )
+        df["validation_metrics_json"] = json.dumps({"note": "No validation metrics provided"})
 
     # add calibration metrics if available
     calibration_metrics = {}
@@ -405,16 +399,12 @@ def save_local_outputs(
         print(f"   Saved: {output_dir / 'latest_buli_matches.parquet'}")
 
     if len(projections_df) > 0:
-        projections_df.to_parquet(
-            output_dir / "latest_buli_projections.parquet", index=False
-        )
+        projections_df.to_parquet(output_dir / "latest_buli_projections.parquet", index=False)
         print(f"   Saved: {output_dir / 'latest_buli_projections.parquet'}")
 
     if len(snapshot_df) > 0:
         timestamp_str = run_timestamp.strftime("%Y%m%d_%H%M%S")
-        snapshot_df.to_parquet(
-            output_dir / f"buli_run_{timestamp_str}.parquet", index=False
-        )
+        snapshot_df.to_parquet(output_dir / f"buli_run_{timestamp_str}.parquet", index=False)
         print(f"   Saved: {output_dir / f'buli_run_{timestamp_str}.parquet'}")
 
 
@@ -437,7 +427,7 @@ def main():
     validation_metrics = None
     if args.validation_metrics:
         try:
-            with open(args.validation_metrics, "r") as f:
+            with open(args.validation_metrics) as f:
                 validation_metrics = json.load(f)
             print(f"   Loaded validation metrics from: {args.validation_metrics}")
         except Exception as e:
@@ -471,20 +461,16 @@ def main():
     # ========================================================================
     print("\n2. Loading data...")
 
-    historic_data, current_season = prepare_bundesliga_data(
-        windows=windows, verbose=False
-    )
+    historic_data, current_season = prepare_bundesliga_data(windows=windows, verbose=False)
 
     # verify weighted goals exists
     if "home_goals_weighted" not in historic_data.columns:
         print("\n   Error: home_goals_weighted not found in data")
-        print(
-            "   Make sure prepare_bundesliga_data includes weighted goals calculation"
-        )
+        print("   Make sure prepare_bundesliga_data includes weighted goals calculation")
         sys.exit(1)
 
-    current_played = current_season[current_season["is_played"] == True].copy()
-    current_future = current_season[current_season["is_played"] == False].copy()
+    current_played = current_season[current_season["is_played"]].copy()
+    current_future = current_season[not current_season["is_played"]].copy()
 
     current_season_year = current_season["season_end_year"].iloc[0]
 
@@ -527,7 +513,7 @@ def main():
     print(f"   Current standings calculated for {len(current_standings)} teams")
 
     if len(current_future) > 0:
-        results, teams = simulate_remaining_season_calibrated(
+        sim_results, sim_teams = simulate_remaining_season_calibrated(
             current_future,
             bootstrap_params,
             current_standings,
@@ -535,13 +521,29 @@ def main():
             seed=args.seed,
         )
 
+        if sim_results is not None and sim_teams is not None:
+            results, teams = sim_results, sim_teams
+        else:
+            teams = list(current_standings.keys())
+            n_teams = len(teams)
+            results = {
+                "points": np.empty((0, n_teams)),
+                "goals_for": np.empty((0, n_teams)),
+                "goals_against": np.empty((0, n_teams)),
+                "position": np.empty((0, n_teams)),
+            }
+
         print("   Simulation complete")
     else:
         print("   Skipping simulation (no remaining fixtures)")
         # create empty results structure
-        teams = current_standings.index.tolist()
+        teams = list(current_standings.keys())
+        n_teams = len(teams)
         results = {
-            team: {"points": [], "goal_diff": [], "position": []} for team in teams
+            "points": np.empty((0, n_teams)),
+            "goals_for": np.empty((0, n_teams)),
+            "goals_against": np.empty((0, n_teams)),
+            "position": np.empty((0, n_teams)),
         }
 
     # ========================================================================
@@ -573,25 +575,28 @@ def main():
         next_predictions = predict_next_fixtures(
             next_fixtures, model["params"], calibrators=calibrators
         )
-        print(f"   Next matchday: {len(next_predictions)} fixtures")
+        if next_predictions is not None:
+            print(f"   Next matchday: {len(next_predictions)} fixtures")
 
     if all_fixtures is not None and len(all_fixtures) > 0:
         all_predictions = predict_next_fixtures(
             all_fixtures, model["params"], calibrators=calibrators
         )
-        print(f"   All future: {len(all_predictions)} fixtures")
+        if all_predictions is not None:
+            print(f"   All future: {len(all_predictions)} fixtures")
 
     # ========================================================================
     # CREATE OUTPUT DATAFRAMES
     # ========================================================================
     print("\n7. Creating output DataFrames...")
 
+    assert all_predictions is not None, "No predictions available to create outputs"
+    assert all_fixtures is not None, "No fixtures available to create outputs"
+
     matches_df = create_matches_dataframe(all_predictions, all_fixtures, next_fixtures)
     print(f"   Matches DataFrame: {len(matches_df)} rows")
 
-    projections_df = create_projections_dataframe(
-        summary, model["params"], current_standings
-    )
+    projections_df = create_projections_dataframe(summary, model["params"], current_standings)
     print(f"   Projections DataFrame: {len(projections_df)} rows")
 
     snapshot_df = create_run_snapshot(
@@ -692,9 +697,7 @@ def main():
         ]
 
         # only display columns that exist
-        available_cols = [
-            col for col in display_cols if col in next_predictions.columns
-        ]
+        available_cols = [col for col in display_cols if col in next_predictions.columns]
 
         # format probabilities as percentages for display
         display_df = next_predictions[available_cols].copy()
@@ -731,7 +734,7 @@ def main():
         print("  - serving/buli_model.pkl (private)")
         if calibrators:
             print("  - serving/buli_calibrators.pkl (private)")
-        timestamp_str = run_timestamp.strftime('%Y%m%d_%H%M%S')
+        timestamp_str = run_timestamp.strftime("%Y%m%d_%H%M%S")
         print(f"  - incoming/buli_run_{timestamp_str}.parquet (for pbdb)")
         print(f"  - incoming/buli_projections_{timestamp_str}.parquet (for pbdb)")
 

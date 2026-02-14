@@ -1,18 +1,20 @@
 # app/main.py
 
-import streamlit as st
-import pandas as pd
+import sys
 from pathlib import Path
 from zoneinfo import ZoneInfo
-import sys
+
+import pandas as pd
+import streamlit as st
 
 # add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from streamlit_js_eval import streamlit_js_eval
-from app.styles.custom_css import apply_custom_styles
-from app.pages import projections, team_strengths, fixtures, about
+
 from app.components import render_footer, umami_tracker
+from app.pages import about, fixtures, projections, team_strengths
+from app.styles.custom_css import apply_custom_styles
 
 # DO Spaces public URL base
 DO_SPACES_BASE_URL = "https://ball-bucket.lon1.digitaloceanspaces.com/serving"

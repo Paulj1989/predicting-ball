@@ -22,12 +22,8 @@ def calculate_weighted_goals(df: pd.DataFrame) -> pd.DataFrame:
 
     # fallback for missing data: use actual goals
     mask_missing = df["home_goals_weighted"].isna()
-    df.loc[mask_missing, "home_goals_weighted"] = df.loc[
-        mask_missing, "home_goals"
-    ].fillna(0)
-    df.loc[mask_missing, "away_goals_weighted"] = df.loc[
-        mask_missing, "away_goals"
-    ].fillna(0)
+    df.loc[mask_missing, "home_goals_weighted"] = df.loc[mask_missing, "home_goals"].fillna(0)
+    df.loc[mask_missing, "away_goals_weighted"] = df.loc[mask_missing, "away_goals"].fillna(0)
 
     return df
 

@@ -1,11 +1,11 @@
 # src/validation/diagnostics.py
 
+from pathlib import Path
+from typing import Any
+
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import seaborn as sns
-from typing import Dict, List, Optional, Any, Union
-
 
 # color palette
 COLORS = {
@@ -20,7 +20,7 @@ sns.set_context("notebook", font_scale=1.1)
 
 
 def _convert_to_arrays(
-    predictions: Union[pd.DataFrame, np.ndarray], actuals: Union[pd.Series, np.ndarray]
+    predictions: pd.DataFrame | np.ndarray, actuals: pd.Series | np.ndarray
 ) -> tuple:
     """Convert predictions and actuals to standard numpy array format"""
     # convert predictions
@@ -34,9 +34,7 @@ def _convert_to_arrays(
             raise ValueError(f"Array must be shape (n, 3), got {predictions.shape}")
         pred_array = predictions
     else:
-        raise TypeError(
-            f"predictions must be DataFrame or ndarray, got {type(predictions)}"
-        )
+        raise TypeError(f"predictions must be DataFrame or ndarray, got {type(predictions)}")
 
     # convert actuals
     if isinstance(actuals, pd.Series):
@@ -50,7 +48,7 @@ def _convert_to_arrays(
         try:
             actuals_array = np.array([outcome_map[a] for a in actuals])
         except KeyError as e:
-            raise ValueError(f"Unknown outcome: {e}")
+            raise ValueError(f"Unknown outcome: {e}") from e
     else:  # numeric type
         actuals_array = actuals.astype(int)
         if not all(a in [0, 1, 2] for a in actuals_array):
@@ -60,11 +58,11 @@ def _convert_to_arrays(
 
 
 def analyse_prediction_errors(
-    predictions: Union[pd.DataFrame, np.ndarray],
-    actuals: Union[pd.Series, np.ndarray],
+    predictions: pd.DataFrame | np.ndarray,
+    actuals: pd.Series | np.ndarray,
     test_data: pd.DataFrame,
     verbose: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Analyse prediction errors by outcome type"""
     # convert to standard format
     pred_array, actuals_array = _convert_to_arrays(predictions, actuals)
@@ -76,7 +74,7 @@ def analyse_prediction_errors(
     n_outcomes = 3
     confusion = np.zeros((n_outcomes, n_outcomes), dtype=int)
 
-    for actual, predicted in zip(actuals_array, predicted_outcomes):
+    for actual, predicted in zip(actuals_array, predicted_outcomes, strict=False):
         confusion[actual, predicted] += 1
 
     # calculate accuracy by outcome
@@ -128,13 +126,13 @@ def analyse_prediction_errors(
 
 
 def analyse_performance_by_team(
-    predictions: Union[pd.DataFrame, np.ndarray],
-    actuals: Union[pd.Series, np.ndarray],
+    predictions: pd.DataFrame | np.ndarray,
+    actuals: pd.Series | np.ndarray,
     test_data: pd.DataFrame,
     verbose: bool = True,
 ) -> pd.DataFrame:
     """Analyse model performance by team"""
-    from ..evaluation.metrics import calculate_rps, calculate_brier_score
+    from ..evaluation.metrics import calculate_brier_score, calculate_rps
 
     # convert to standard format
     pred_array, actuals_array = _convert_to_arrays(predictions, actuals)
@@ -178,34 +176,26 @@ def analyse_performance_by_team(
         print("PERFORMANCE BY TEAM")
         print("=" * 60)
         print("\nTop 5 Best Predicted Teams:")
-        print(
-            df.head()[["team", "n_matches", "rps", "brier_score"]].to_string(
-                index=False
-            )
-        )
+        print(df.head()[["team", "n_matches", "rps", "brier_score"]].to_string(index=False))
 
         print("\nTop 5 Worst Predicted Teams:")
-        print(
-            df.tail()[["team", "n_matches", "rps", "brier_score"]].to_string(
-                index=False
-            )
-        )
+        print(df.tail()[["team", "n_matches", "rps", "brier_score"]].to_string(index=False))
 
     return df
 
 
 def analyse_performance_by_odds(
-    predictions: Union[pd.DataFrame, np.ndarray],
-    actuals: Union[pd.Series, np.ndarray],
+    predictions: pd.DataFrame | np.ndarray,
+    actuals: pd.Series | np.ndarray,
     test_data: pd.DataFrame,
     n_bins: int = 5,
     verbose: bool = True,
-) -> Optional[pd.DataFrame]:
+) -> pd.DataFrame | None:
     """Analyse performance by odds-implied probability"""
     from ..evaluation.metrics import (
-        calculate_rps,
-        calculate_brier_score,
         calculate_accuracy,
+        calculate_brier_score,
+        calculate_rps,
     )
 
     # convert to standard format
@@ -216,9 +206,9 @@ def analyse_performance_by_odds(
         return None
 
     # get favourite probability (max of home/draw/away)
-    favorite_probs = test_data[
-        ["odds_home_prob", "odds_draw_prob", "odds_away_prob"]
-    ].max(axis=1)
+    favorite_probs = test_data[["odds_home_prob", "odds_draw_prob", "odds_away_prob"]].max(
+        axis=1
+    )
 
     # create bins
     bins = pd.qcut(favorite_probs, q=n_bins, duplicates="drop")
@@ -262,7 +252,7 @@ def analyse_performance_by_odds(
 
 
 def create_validation_report(
-    validation_results: List[Dict[str, Any]], save_path: Optional[str] = None
+    validation_results: list[dict[str, Any]], save_path: str | Path | None = None
 ) -> pd.DataFrame:
     """Create comprehensive validation report"""
     rows = []

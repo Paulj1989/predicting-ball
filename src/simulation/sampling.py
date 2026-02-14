@@ -1,13 +1,13 @@
 # src/simulation/sampling.py
 
+
 import numpy as np
-from typing import Union, Tuple
 from scipy.stats import poisson
 
 
 def sample_goals_calibrated(
-    lambda_val: Union[float, np.ndarray], dispersion_factor: float, size: int = 1
-) -> Union[int, np.ndarray]:
+    lambda_val: float | np.ndarray, dispersion_factor: float, size: int = 1
+) -> int | np.ndarray:
     """
     Sample goals accounting for overdispersion.
 
@@ -56,7 +56,7 @@ def sample_match_outcome(
     lambda_away: float,
     dispersion_factor: float = 1.0,
     max_goals: int = 10,
-) -> Tuple[int, int]:
+) -> tuple[int, int]:
     """Sample a single match outcome"""
     home_goals = sample_goals_calibrated(lambda_home, dispersion_factor, size=1)
     away_goals = sample_goals_calibrated(lambda_away, dispersion_factor, size=1)
@@ -74,7 +74,7 @@ def calculate_outcome_probabilities(
     dispersion_factor: float = 1.0,
     max_goals: int = 8,
     use_poisson: bool = True,
-) -> Tuple[float, float, float]:
+) -> tuple[float, float, float]:
     """Calculate match outcome probabilities (home/draw/away)"""
     home_win_prob = 0.0
     draw_prob = 0.0

@@ -1,7 +1,7 @@
 # src/features/squad_features.py
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 
 def add_squad_value_features(df: pd.DataFrame) -> pd.DataFrame:
@@ -35,12 +35,8 @@ def add_squad_value_features(df: pd.DataFrame) -> pd.DataFrame:
     )
 
     # percentile features (relative to season average)
-    df["home_value_pct"] = (
-        (df["home_value"] - season_avg_value) / season_avg_value
-    ) * 100
-    df["away_value_pct"] = (
-        (df["away_value"] - season_avg_value) / season_avg_value
-    ) * 100
+    df["home_value_pct"] = ((df["home_value"] - season_avg_value) / season_avg_value) * 100
+    df["away_value_pct"] = ((df["away_value"] - season_avg_value) / season_avg_value) * 100
     df["value_pct_diff"] = df["home_value_pct"] - df["away_value_pct"]
 
     # log-transformed features

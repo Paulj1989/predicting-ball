@@ -32,6 +32,18 @@ dependencies = [
     "setuptools>=80.9.0",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=6.0.0",
+    "pytest-xdist>=3.5.0",
+    "hypothesis>=6.100.0",
+    "pandera>=0.20.0",
+    "ruff>=0.8.0",
+    "ty>=0.0.1a0",
+    "pre-commit>=4.0.0",
+]
+
 [tool.uv]
 environments = [
     "sys_platform == 'linux'",
@@ -42,5 +54,66 @@ environments = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[dependency-groups]
+dev = [
+    "ipykernel>=7.2.0",
+]
+
 [tool.hatch.build]
 packages = ["src"]
+
+# Testing
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+omit = ["*/tests/*", "*/__pycache__/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]
+
+# Linting
+[tool.ruff]
+line-length = 95
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "F",      # pyflakes
+    "I",      # isort
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+    "SIM",    # flake8-simplify
+    "RUF",    # ruff-specific
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "B008",   # function call in default argument
+    "SIM108", # ternary operator
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.ruff.lint.isort]
+known-first-party = ["src"]
+
+# Type checking
+[tool.ty.environment]
+python-version = "3.11"

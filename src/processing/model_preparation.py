@@ -1,19 +1,18 @@
 # src/processing/model_preparation.py
 
-import pandas as pd
-import numpy as np
-import duckdb
 import logging
-from typing import Tuple
+
+import duckdb
+import pandas as pd
 
 from src.features.feature_builder import prepare_model_features
 
 
 def prepare_bundesliga_data(
     db_path: str = "data/pb.duckdb",
-    windows: list = [5, 10],
+    windows: list | None = None,
     verbose: bool = False,
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Load data and engineer features for modeling.
 
@@ -32,6 +31,8 @@ def prepare_bundesliga_data(
     - Venue-specific npxGD (home at home, away away)
     - Red card indicators
     """
+    if windows is None:
+        windows = [5, 10]
     logger = logging.getLogger(__name__)
 
     # load match features from database (Bundesliga only)
@@ -70,9 +71,7 @@ def prepare_bundesliga_data(
 
     # split into historic and current season
     current_season = df["season_end_year"].max()
-    historic_df = df[
-        (df["season_end_year"] < current_season) & (df["is_played"] == True)
-    ].copy()
+    historic_df = df[(df["season_end_year"] < current_season) & (df["is_played"])].copy()
     current_df = df[df["season_end_year"] == current_season].copy()
 
     # remove matches without npxG from historic (required for modeling)

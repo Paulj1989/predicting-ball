@@ -84,19 +84,19 @@ A pipeline for fitting a two-stage Dixon-Coles Poisson model that predicts match
 Run the complete pipeline with a single command:
 
 ```bash
-python scripts/modeling/run_model_pipeline.py
+uv run scripts/modeling/run_model_pipeline.py
 ```
 
 Pull fresh data from DO Spaces before running:
 
 ```bash
-python scripts/modeling/run_model_pipeline.py --refresh
+uv run scripts/modeling/run_model_pipeline.py --refresh
 ```
 
 Run with hyperparameter tuning (monthly):
 
 ```bash
-python scripts/modeling/run_model_pipeline.py --tune --n-trials 50
+uv run scripts/modeling/run_model_pipeline.py --tune --n-trials 50
 ```
 
 ### Individual Pipeline Stages
@@ -105,27 +105,27 @@ Run each stage independently:
 
 ```bash
 # download database
-python scripts/automation/download_db.py
+uv run scripts/automation/download_db.py
 
 # train model (using existing hyperparameters)
-python scripts/modeling/train_model.py
+uv run scripts/modeling/train_model.py
 
 # train with tuning
-python scripts/modeling/train_model.py --tune --n-trials 50 --metric rps
+uv run scripts/modeling/train_model.py --tune --n-trials 50 --metric rps
 
 # calibrate model
-python scripts/modeling/run_calibration.py \
+uv run scripts/modeling/run_calibration.py \
     --model-path outputs/models/production_model.pkl \
     --comprehensive \
     --outcome-specific
 
 # validate model
-python scripts/modeling/validate_model.py \
+uv run scripts/modeling/validate_model.py \
     --model-path outputs/models/production_model.pkl \
     --calibrator-path outputs/models/calibrators.pkl
 
 # generate (and upload) predictions
-python scripts/modeling/generate_predictions.py \
+uv run scripts/modeling/generate_predictions.py \
     --model-path outputs/models/production_model.pkl \
     --calibrator-path outputs/models/calibrators.pkl \
     --n-bootstrap 250 \

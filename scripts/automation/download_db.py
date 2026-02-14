@@ -2,10 +2,11 @@
 """Download DuckDB database and model artifacts from Digital Ocean Spaces"""
 
 import argparse
-import boto3
 import os
 import sys
 from pathlib import Path
+
+import boto3
 
 try:
     from dotenv import load_dotenv
@@ -89,7 +90,7 @@ def download_model(s3=None):
             print(f"   Downloaded ({file_size:.1f} KB)")
             downloaded += 1
         else:
-            print(f"   Not found (may not exist yet)")
+            print("   Not found (may not exist yet)")
 
     if downloaded > 0:
         print(f"Model artifacts downloaded: {downloaded} file(s)")

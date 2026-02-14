@@ -9,29 +9,27 @@ Usage:
     python scripts/modeling/validate_model.py --model-path outputs/models/production_model.pkl
 """
 
-import sys
-import json
 import argparse
+import json
+import sys
 from pathlib import Path
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
+from src.io.model_io import load_model
+from src.processing.model_preparation import prepare_bundesliga_data
 from src.validation import (
+    analyse_performance_by_team,
+    analyse_prediction_errors,
     backtest_multiple_seasons,
     create_validation_report,
-    analyse_prediction_errors,
-    analyse_performance_by_team,
 )
-from src.processing.model_preparation import prepare_bundesliga_data
-from src.io.model_io import load_model
 
 
 def parse_args():
     """Parse command line arguments"""
-    parser = argparse.ArgumentParser(
-        description="Validate trained model on historical data"
-    )
+    parser = argparse.ArgumentParser(description="Validate trained model on historical data")
 
     parser.add_argument(
         "--model-path", type=str, required=True, help="Path to trained model file"
@@ -132,26 +130,20 @@ def main():
     # ========================================================================
     print("\n2. Loading data...")
 
-    historic_data, current_season = prepare_bundesliga_data(
-        windows=windows, verbose=False
-    )
+    historic_data, current_season = prepare_bundesliga_data(windows=windows, verbose=False)
 
     # verify weighted goals exists
     if "home_goals_weighted" not in historic_data.columns:
         print("\n   ✗ Error: home_goals_weighted not found in data")
-        print(
-            "   Make sure prepare_bundesliga_data includes weighted goals calculation"
-        )
+        print("   Make sure prepare_bundesliga_data includes weighted goals calculation")
         sys.exit(1)
 
     # combine all data
-    current_played = current_season[current_season["is_played"] == True].copy()
+    current_played = current_season[current_season["is_played"]].copy()
     all_data = pd.concat([historic_data, current_played], ignore_index=True)
 
     print(f"   Total matches available: {len(all_data)}")
-    print(
-        f"   Date range: {all_data['date'].min().date()} to {all_data['date'].max().date()}"
-    )
+    print(f"   Date range: {all_data['date'].min().date()} to {all_data['date'].max().date()}")
     print(f"   Seasons: {sorted(all_data['season_end_year'].unique())}")
 
     # ========================================================================
@@ -219,9 +211,7 @@ def main():
             for i in range(min(5, len(preds))):
                 h, d, a = preds[i]
                 actual = ["H", "D", "A"][actuals[i]]
-                print(
-                    f"    Match {i}: H={h:.3f} D={d:.3f} A={a:.3f} (actual: {actual})"
-                )
+                print(f"    Match {i}: H={h:.3f} D={d:.3f} A={a:.3f} (actual: {actual})")
 
             # check if probabilities sum to 1
             prob_sums = preds.sum(axis=1)
@@ -238,9 +228,7 @@ def main():
             )
 
             if max_draw < 0.15:
-                print(
-                    f"     WARNING: Maximum draw probability is very low ({max_draw:.3f})"
-                )
+                print(f"     WARNING: Maximum draw probability is very low ({max_draw:.3f})")
 
     if len(results) == 0:
         print("\n✗ No validation results obtained")
@@ -257,9 +245,7 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # create validation report
-    report = create_validation_report(
-        results, save_path=output_dir / "validation_report.csv"
-    )
+    create_validation_report(results, save_path=output_dir / "validation_report.csv")
     print("   ✓ Validation report saved")
 
     # analyse errors for most recent season
@@ -269,7 +255,7 @@ def main():
 
     season_data = all_data[all_data["season_end_year"] == most_recent_result["season"]]
 
-    error_analysis = analyse_prediction_errors(
+    analyse_prediction_errors(
         most_recent_result["predictions"],
         most_recent_result["actuals"],
         season_data,
@@ -323,17 +309,13 @@ def main():
             "log_loss",
             "brier",
         ]:
-            baseline_key = (
-                "rps" if args.metric == "rps" else metric_key_map[args.metric]
-            )
+            baseline_key = "rps" if args.metric == "rps" else metric_key_map[args.metric]
             if baseline_key in result["baseline_metrics"]:
                 baseline_value = result["baseline_metrics"][baseline_key]
-                if isinstance(primary_value, (int, float)) and isinstance(
-                    baseline_value, (int, float)
+                if isinstance(primary_value, int | float) and isinstance(
+                    baseline_value, int | float
                 ):
-                    improvement = (
-                        (baseline_value - primary_value) / baseline_value * 100
-                    )
+                    improvement = (baseline_value - primary_value) / baseline_value * 100
                     baseline_info = f" (vs baseline: {improvement:+.1f}%)"
 
         # format based on selected metric
@@ -388,9 +370,7 @@ def main():
     if all(r.get("baseline_metrics") for r in results):
         primary_key = metric_key_map[args.metric]
         if all(primary_key in r.get("baseline_metrics", {}) for r in results):
-            avg_baseline = np.mean(
-                [r["baseline_metrics"][primary_key] for r in results]
-            )
+            avg_baseline = np.mean([r["baseline_metrics"][primary_key] for r in results])
 
             if args.metric == "rps":
                 avg_primary = avg_rps
@@ -417,35 +397,37 @@ def main():
                 return {k: to_native(v) for k, v in obj.items()}
             if isinstance(obj, list):
                 return [to_native(v) for v in obj]
-            if isinstance(obj, (np.integer, np.int64)):
+            if isinstance(obj, np.integer):
                 return int(obj)
-            if isinstance(obj, (np.floating, np.float64)):
+            if isinstance(obj, np.floating):
                 return float(obj)
             if isinstance(obj, np.ndarray):
                 return obj.tolist()
             return obj
 
-        metrics_output = to_native({
-            "test_seasons": test_seasons,
-            "per_season": [
-                {
-                    "season": r["season"],
-                    "n_matches": r["n_matches"],
-                    "rps": r["metrics"]["rps"],
-                    "brier_score": r["metrics"].get("brier_score"),
-                    "log_loss": r["metrics"].get("log_loss"),
-                    "accuracy": r["metrics"].get("accuracy"),
-                    "baseline_rps": r.get("baseline_metrics", {}).get("rps"),
-                }
-                for r in results
-            ],
-            "average": {
-                "rps": avg_rps,
-                "brier_score": avg_brier,
-                "log_loss": avg_log_loss,
-            },
-            "calibrated": calibrators is not None,
-        })
+        metrics_output = to_native(
+            {
+                "test_seasons": test_seasons,
+                "per_season": [
+                    {
+                        "season": r["season"],
+                        "n_matches": r["n_matches"],
+                        "rps": r["metrics"]["rps"],
+                        "brier_score": r["metrics"].get("brier_score"),
+                        "log_loss": r["metrics"].get("log_loss"),
+                        "accuracy": r["metrics"].get("accuracy"),
+                        "baseline_rps": r.get("baseline_metrics", {}).get("rps"),
+                    }
+                    for r in results
+                ],
+                "average": {
+                    "rps": avg_rps,
+                    "brier_score": avg_brier,
+                    "log_loss": avg_log_loss,
+                },
+                "calibrated": calibrators is not None,
+            }
+        )
 
         json_path = Path(args.output_json)
         json_path.parent.mkdir(parents=True, exist_ok=True)

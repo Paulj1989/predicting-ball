@@ -1,12 +1,14 @@
 # src/evaluation/metrics.py
 
+from collections.abc import Callable
+from typing import Any
+
 import numpy as np
 import pandas as pd
-from typing import Any, Union, Dict, Optional, Tuple
 
 
 def calculate_rps(
-    predictions: Union[pd.DataFrame, np.ndarray], actuals: Union[pd.Series, np.ndarray]
+    predictions: pd.DataFrame | np.ndarray, actuals: pd.Series | np.ndarray
 ) -> float:
     """
     Calculate Ranked Probability Score (RPS).
@@ -27,9 +29,7 @@ def calculate_rps(
             )
         ordered_predictions = predictions
     else:
-        raise TypeError(
-            f"predictions must be DataFrame or ndarray, got {type(predictions)}"
-        )
+        raise TypeError(f"predictions must be DataFrame or ndarray, got {type(predictions)}")
 
     # convert actuals to standard format
     if isinstance(actuals, pd.Series):
@@ -49,7 +49,7 @@ def calculate_rps(
         try:
             actuals_idx = np.array([outcome_map[a] for a in actuals])
         except KeyError as e:
-            raise ValueError(f"Unknown outcome in actuals: {e}")
+            raise ValueError(f"Unknown outcome in actuals: {e}") from e
     else:
         actuals_idx = actuals.astype(int)
         if not all(a in [0, 1, 2] for a in actuals_idx):
@@ -77,7 +77,7 @@ def calculate_rps(
 
 
 def calculate_brier_score(
-    predictions: Union[pd.DataFrame, np.ndarray], actuals: Union[pd.Series, np.ndarray]
+    predictions: pd.DataFrame | np.ndarray, actuals: pd.Series | np.ndarray
 ) -> float:
     """Calculate Brier Score (mean squared error of probabilities)"""
     # convert inputs to standard format
@@ -94,9 +94,7 @@ def calculate_brier_score(
             )
         pred_array = predictions
     else:
-        raise TypeError(
-            f"predictions must be DataFrame or ndarray, got {type(predictions)}"
-        )
+        raise TypeError(f"predictions must be DataFrame or ndarray, got {type(predictions)}")
 
     # convert actuals to standard format
     if isinstance(actuals, pd.Series):
@@ -116,7 +114,7 @@ def calculate_brier_score(
         try:
             actuals_idx = np.array([outcome_map[a] for a in actuals])
         except KeyError as e:
-            raise ValueError(f"Unknown outcome in actuals: {e}")
+            raise ValueError(f"Unknown outcome in actuals: {e}") from e
     else:
         actuals_idx = actuals.astype(int)
         if not all(a in [0, 1, 2] for a in actuals_idx):
@@ -138,8 +136,8 @@ def calculate_brier_score(
 
 
 def calculate_log_loss(
-    predictions: Union[pd.DataFrame, np.ndarray],
-    actuals: Union[pd.Series, np.ndarray],
+    predictions: pd.DataFrame | np.ndarray,
+    actuals: pd.Series | np.ndarray,
     eps: float = 1e-15,
 ) -> float:
     """Calculate logarithmic loss (cross-entropy)"""
@@ -157,9 +155,7 @@ def calculate_log_loss(
             )
         pred_array = predictions
     else:
-        raise TypeError(
-            f"predictions must be DataFrame or ndarray, got {type(predictions)}"
-        )
+        raise TypeError(f"predictions must be DataFrame or ndarray, got {type(predictions)}")
 
     # convert actuals to standard format
     if isinstance(actuals, pd.Series):
@@ -182,7 +178,7 @@ def calculate_log_loss(
         try:
             actuals_idx = np.array([outcome_map[a] for a in actuals])
         except KeyError as e:
-            raise ValueError(f"Unknown outcome in actuals: {e}")
+            raise ValueError(f"Unknown outcome in actuals: {e}") from e
     else:
         actuals_idx = actuals.astype(int)
         if not all(a in [0, 1, 2] for a in actuals_idx):
@@ -200,7 +196,7 @@ def calculate_log_loss(
 
 
 def calculate_accuracy(
-    predictions: Union[pd.DataFrame, np.ndarray], actuals: Union[pd.Series, np.ndarray]
+    predictions: pd.DataFrame | np.ndarray, actuals: pd.Series | np.ndarray
 ) -> float:
     """Calculate classification accuracy"""
     # convert inputs to standard format
@@ -217,9 +213,7 @@ def calculate_accuracy(
             )
         pred_array = predictions
     else:
-        raise TypeError(
-            f"predictions must be DataFrame or ndarray, got {type(predictions)}"
-        )
+        raise TypeError(f"predictions must be DataFrame or ndarray, got {type(predictions)}")
 
     # convert actuals to standard format
     if isinstance(actuals, pd.Series):
@@ -242,7 +236,7 @@ def calculate_accuracy(
         try:
             actuals_idx = np.array([outcome_map[a] for a in actuals])
         except KeyError as e:
-            raise ValueError(f"Unknown outcome in actuals: {e}")
+            raise ValueError(f"Unknown outcome in actuals: {e}") from e
     else:
         actuals_idx = actuals.astype(int)
         if not all(a in [0, 1, 2] for a in actuals_idx):
@@ -254,12 +248,13 @@ def calculate_accuracy(
 
     return float(accuracy)
 
+
 def evaluate_model_comprehensive(
-    params: Dict[str, Any],
+    params: dict[str, Any],
     test_data: pd.DataFrame,
     use_dixon_coles: bool = True,
-    calibrators: Optional[Dict] = None,
-) -> Tuple[Dict[str, float], np.ndarray, np.ndarray]:
+    calibrators: dict | None = None,
+) -> tuple[dict[str, float], np.ndarray, np.ndarray]:
     """Comprehensive model evaluation with multiple metrics"""
     from ..simulation.predictions import predict_match_probabilities
 
@@ -267,11 +262,9 @@ def evaluate_model_comprehensive(
     predictions = []
     actuals = []
 
-    for idx, match in test_data.iterrows():
+    for _idx, match in test_data.iterrows():
         # get prediction
-        pred = predict_match_probabilities(
-            params, match, use_dixon_coles=use_dixon_coles
-        )
+        pred = predict_match_probabilities(params, match, use_dixon_coles=use_dixon_coles)
 
         predictions.append([pred["home_win"], pred["draw"], pred["away_win"]])
 
@@ -295,7 +288,6 @@ def evaluate_model_comprehensive(
 
     # apply calibration if provided
     if calibrators is not None:
-
         from ..models.calibration import apply_calibration
 
         predictions = apply_calibration(predictions, calibrators)
@@ -332,7 +324,7 @@ def evaluate_model_comprehensive(
 
 
 def compare_metrics(
-    metrics_dict: Dict[str, Dict[str, float]], reference_model: str = "implied_odds"
+    metrics_dict: dict[str, dict[str, float]], reference_model: str = "implied_odds"
 ) -> pd.DataFrame:
     """Compare multiple models across metrics"""
     rows = []
@@ -360,7 +352,7 @@ def compare_metrics(
 def calculate_metric_confidence_interval(
     predictions: np.ndarray,
     actuals: np.ndarray,
-    metric_func: callable,
+    metric_func: Callable,
     n_bootstrap: int = 1000,
     confidence: float = 0.95,
 ) -> tuple[float, float, float]:
