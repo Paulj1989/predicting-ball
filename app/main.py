@@ -36,7 +36,7 @@ def _detect_user_timezone():
         pass
 
 
-@st.cache_data
+@st.cache_data(ttl="6h")
 def load_predictions():
     """Load predictions from DO Spaces (public Parquet files)"""
     try:
