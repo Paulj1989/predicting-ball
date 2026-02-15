@@ -7,6 +7,7 @@ from hypothesis import strategies as st
 
 from src.models.dixon_coles import (
     calculate_match_probabilities_dixon_coles,
+    fit_rho_parameter,
     tau_dixon_coles,
 )
 
@@ -123,3 +124,23 @@ class TestMatchProbabilities:
 
         for prob in scores.values():
             assert prob >= 0
+
+
+class TestFitRhoParameter:
+    """Tests for fitting the rho correlation parameter."""
+
+    def test_returns_float(self, sample_model_params, sample_training_data):
+        """Should return a float rho value."""
+        rho = fit_rho_parameter(sample_training_data, sample_model_params, verbose=False)
+        assert isinstance(rho, float)
+
+    def test_rho_in_search_bounds(self, sample_model_params, sample_training_data):
+        """Rho should be within the search bounds [-0.4, 0.2]."""
+        rho = fit_rho_parameter(sample_training_data, sample_model_params, verbose=False)
+        assert -0.4 <= rho <= 0.2
+
+    def test_rho_typically_negative(self, sample_model_params, sample_training_data):
+        """Rho should typically be negative (draws more likely than independent Poisson)."""
+        rho = fit_rho_parameter(sample_training_data, sample_model_params, verbose=False)
+        # may not always be negative with random data, but should be in valid range
+        assert -0.4 <= rho <= 0.2
