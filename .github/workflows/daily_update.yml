@@ -107,6 +107,39 @@ jobs:
             --calibrator-path outputs/models/calibrators.pkl \
             --output-json outputs/validation/metrics.json
 
+      - name: Quality checks
+        id: quality
+        run: |
+          python scripts/modeling/check_quality.py \
+            --validation-metrics outputs/validation/metrics.json \
+            --calibrator-path outputs/models/calibrators.pkl
+        continue-on-error: true
+
+      - name: Create quality issue
+        if: steps.quality.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let body = 'Quality gate checks produced warnings.\n\n';
+            try {
+              const report = JSON.parse(fs.readFileSync('outputs/validation/quality_report.json', 'utf8'));
+              for (const check of report) {
+                const icon = check.status === 'pass' ? '✅' : '⚠️';
+                body += `- ${icon} **${check.name}**: ${check.details}\n`;
+              }
+            } catch (e) {
+              body += 'Could not read quality report.\n';
+            }
+            body += `\n[View Logs](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`;
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Quality Gate Warning - ${new Date().toLocaleDateString()}`,
+              body: body,
+              labels: ['model-quality', 'automation']
+            });
+
       - name: Generate predictions and upload
         env:
           DO_SPACES_KEY: ${{ secrets.DO_SPACES_KEY }}
