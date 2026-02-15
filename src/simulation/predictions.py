@@ -28,7 +28,7 @@ def get_next_round_fixtures(
     """
     # filter to unplayed fixtures
     if "is_played" in current_season.columns:
-        future_fixtures = current_season[not current_season["is_played"]].copy()
+        future_fixtures = current_season[~current_season["is_played"]].copy()
     else:
         # fall back to checking for null goals
         future_fixtures = current_season[current_season["home_goals"].isna()].copy()
@@ -103,7 +103,7 @@ def get_all_future_fixtures(
     current_season: pd.DataFrame,
 ) -> pd.DataFrame | None:
     """Get all unplayed fixtures for the current season"""
-    future_fixtures = current_season[not current_season["is_played"]].copy()
+    future_fixtures = current_season[~current_season["is_played"]].copy()
 
     if len(future_fixtures) == 0:
         return None

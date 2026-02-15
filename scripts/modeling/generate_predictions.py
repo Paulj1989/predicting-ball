@@ -470,7 +470,7 @@ def main():
         sys.exit(1)
 
     current_played = current_season[current_season["is_played"]].copy()
-    current_future = current_season[not current_season["is_played"]].copy()
+    current_future = current_season[~current_season["is_played"]].copy()
 
     current_season_year = current_season["season_end_year"].iloc[0]
 
