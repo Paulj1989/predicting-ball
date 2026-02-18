@@ -99,9 +99,7 @@ jobs:
       - name: Calibrate and validate
         run: |
           python scripts/modeling/run_calibration.py \
-            --model-path outputs/models/production_model.pkl \
-            --comprehensive \
-            --outcome-specific
+            --model-path outputs/models/production_model.pkl
           python scripts/modeling/validate_model.py \
             --model-path outputs/models/production_model.pkl \
             --calibrator-path outputs/models/calibrators.pkl \
@@ -151,8 +149,9 @@ jobs:
             --model-path outputs/models/production_model.pkl \
             --calibrator-path outputs/models/calibrators.pkl \
             --validation-metrics outputs/validation/metrics.json \
-            --n-bootstrap 250 \
-            --n-simulations 10000
+            --n-simulations 10000 \
+            --hot-k-att 0.02 \
+            --hot-k-def 0.01
 
       - name: Notify training failure
         if: failure()
