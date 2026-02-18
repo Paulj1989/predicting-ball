@@ -118,7 +118,6 @@ def predict_single_match(
     home_team: str,
     away_team: str,
     params: dict[str, Any],
-    home_log_odds_ratio: float = 0.0,
     home_npxgd_w5: float = 0.0,
     away_npxgd_w5: float = 0.0,
     max_goals: int = 8,
@@ -130,7 +129,6 @@ def predict_single_match(
         home_team=home_team,
         away_team=away_team,
         params=params,
-        home_log_odds_ratio=home_log_odds_ratio,
         home_npxgd_w5=home_npxgd_w5,
         away_npxgd_w5=away_npxgd_w5,
     )
@@ -197,10 +195,6 @@ def predict_match_probabilities(
     away_team = match_data["away_team"]
 
     # get features (with safe defaults)
-    home_log_odds_ratio = match_data.get("home_log_odds_ratio", 0.0)
-    if pd.isna(home_log_odds_ratio):
-        home_log_odds_ratio = 0.0
-
     home_npxgd_w5 = match_data.get("home_npxgd_w5", 0.0)
     if pd.isna(home_npxgd_w5):
         home_npxgd_w5 = 0.0
@@ -214,19 +208,31 @@ def predict_match_probabilities(
         home_team=home_team,
         away_team=away_team,
         params=params,
-        home_log_odds_ratio=home_log_odds_ratio,
         home_npxgd_w5=home_npxgd_w5,
         away_npxgd_w5=away_npxgd_w5,
         max_goals=max_goals,
         use_dixon_coles=use_dixon_coles,
     )
 
-    # return just the probability fields
-    return {
+    model_probs = {
         "home_win": prediction["home_win"],
         "draw": prediction["draw"],
         "away_win": prediction["away_win"],
     }
+
+    # apply odds blending at probability level
+    w = params.get("odds_blend_weight", 1.0)
+    if w < 1.0:
+        odds_h = match_data.get("odds_home_prob", float("nan"))
+        odds_d = match_data.get("odds_draw_prob", float("nan"))
+        odds_a = match_data.get("odds_away_prob", float("nan"))
+
+        if not (pd.isna(odds_h) or pd.isna(odds_d) or pd.isna(odds_a)):
+            model_probs["home_win"] = w * model_probs["home_win"] + (1 - w) * odds_h
+            model_probs["draw"] = w * model_probs["draw"] + (1 - w) * odds_d
+            model_probs["away_win"] = w * model_probs["away_win"] + (1 - w) * odds_a
+
+    return model_probs
 
 
 def predict_next_fixtures(
@@ -241,14 +247,11 @@ def predict_next_fixtures(
 
     predictions = []
 
+    w = params.get("odds_blend_weight", 1.0)
+
     for _idx, match in fixtures.iterrows():
         home_team = match["home_team"]
         away_team = match["away_team"]
-
-        # get odds if available
-        home_log_odds_ratio = match.get("home_log_odds_ratio", 0)
-        if pd.isna(home_log_odds_ratio):
-            home_log_odds_ratio = 0
 
         home_npxgd_w5 = match.get("home_npxgd_w5", 0.0)
         if pd.isna(home_npxgd_w5):
@@ -263,11 +266,21 @@ def predict_next_fixtures(
             home_team,
             away_team,
             params,
-            home_log_odds_ratio=home_log_odds_ratio,
             home_npxgd_w5=home_npxgd_w5,
             away_npxgd_w5=away_npxgd_w5,
             use_dixon_coles=use_dixon_coles,
         )
+
+        # apply odds blending at probability level
+        if w < 1.0:
+            odds_h = match.get("odds_home_prob", float("nan"))
+            odds_d = match.get("odds_draw_prob", float("nan"))
+            odds_a = match.get("odds_away_prob", float("nan"))
+
+            if not (pd.isna(odds_h) or pd.isna(odds_d) or pd.isna(odds_a)):
+                pred["home_win"] = w * pred["home_win"] + (1 - w) * odds_h
+                pred["draw"] = w * pred["draw"] + (1 - w) * odds_d
+                pred["away_win"] = w * pred["away_win"] + (1 - w) * odds_a
 
         predictions.append(pred)
 

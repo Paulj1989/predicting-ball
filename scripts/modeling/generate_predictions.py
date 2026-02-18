@@ -27,14 +27,18 @@ from src.io.spaces import (
     upload_dataframe_as_parquet,
     upload_pickle,
 )
+from src.models.fisher_information import (
+    build_state_vector,
+    compute_fisher_information,
+    invert_fisher_with_constraints,
+)
 from src.processing.model_preparation import prepare_bundesliga_data
 from src.simulation import (
     create_final_summary,
     get_current_standings,
-    parametric_bootstrap_with_residuals,
     predict_next_fixtures,
-    simulate_remaining_season_calibrated,
 )
+from src.simulation.hot_simulation import simulate_season_hot
 
 
 def parse_args():
@@ -53,10 +57,17 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--n-bootstrap",
-        type=int,
-        default=250,
-        help="Number of bootstrap iterations (default: 250)",
+        "--hot-k-att",
+        type=float,
+        default=0.02,
+        help="Attack learning rate for hot simulation (0 = cold simulation, default: 0.02)",
+    )
+
+    parser.add_argument(
+        "--hot-k-def",
+        type=float,
+        default=0.01,
+        help="Defence learning rate for hot simulation (default: 0.01)",
     )
 
     parser.add_argument(
@@ -483,67 +494,63 @@ def main():
         print("   Season may be complete or no future fixtures available")
 
     # ========================================================================
-    # BOOTSTRAP FOR UNCERTAINTY
+    # MLE STANDARD ERRORS FOR UNCERTAINTY
     # ========================================================================
-    print(f"\n3. Running bootstrap ({args.n_bootstrap} iterations)...")
+    print("\n3. Computing MLE standard errors...")
 
-    # use recent data for bootstrap
     all_train = pd.concat([historic_data, current_played], ignore_index=True)
-
     print(f"   Training data: {len(all_train)} matches")
 
-    bootstrap_params = parametric_bootstrap_with_residuals(
-        all_train,
-        model["params"],
-        model["hyperparams"],
-        promoted_priors=model.get("promoted_priors"),
-        n_bootstrap=args.n_bootstrap,
-        verbose=True,
-    )
+    fisher = compute_fisher_information(model["params"], all_train, model["hyperparams"])
 
-    print(f"   Bootstrap complete: {len(bootstrap_params)} samples")
+    n_model_teams = len(model["params"]["teams"])
+    mle_cov = invert_fisher_with_constraints(fisher, n_model_teams)
+    state_mean = build_state_vector(model["params"])
+
+    print(f"   Fisher information computed ({fisher.shape[0]}x{fisher.shape[0]} matrix)")
+    print("   Covariance matrix inverted successfully")
 
     # ========================================================================
     # SIMULATE REMAINING SEASON
     # ========================================================================
-    print(f"\n4. Simulating season ({args.n_simulations:,} iterations)...")
+    sim_mode = "hot" if (args.hot_k_att > 0 or args.hot_k_def > 0) else "cold"
+    print(
+        f"\n4. Simulating season ({args.n_simulations:,} iterations, {sim_mode},"
+        f" K_att={args.hot_k_att}, K_def={args.hot_k_def})..."
+    )
 
     current_standings = get_current_standings(current_played)
-
     print(f"   Current standings calculated for {len(current_standings)} teams")
 
+    dispersion = model["params"].get("dispersion_factor", 1.0)
+    rho = model["params"].get("rho", -0.13)
+    disp_flag = " ⚠ (> 1.2)" if dispersion > 1.2 else ""
+    print(f"   Dispersion (diagnostic): {dispersion:.3f}{disp_flag}")
+    print(f"   Rho: {rho:.3f}")
+
     if len(current_future) > 0:
-        sim_results, sim_teams = simulate_remaining_season_calibrated(
+        results, teams = simulate_season_hot(
             current_future,
-            bootstrap_params,
+            state_mean,
+            mle_cov,
             current_standings,
+            state_teams=model["params"]["teams"],
             n_simulations=args.n_simulations,
+            K_att=args.hot_k_att,
+            K_def=args.hot_k_def,
+            rho=rho,
             seed=args.seed,
         )
-
-        if sim_results is not None and sim_teams is not None:
-            results, teams = sim_results, sim_teams
-        else:
-            teams = list(current_standings.keys())
-            n_teams = len(teams)
-            results = {
-                "points": np.empty((0, n_teams)),
-                "goals_for": np.empty((0, n_teams)),
-                "goals_against": np.empty((0, n_teams)),
-                "position": np.empty((0, n_teams)),
-            }
-
         print("   Simulation complete")
     else:
         print("   Skipping simulation (no remaining fixtures)")
-        # create empty results structure
         teams = list(current_standings.keys())
-        n_teams = len(teams)
+        n_teams_sim = len(teams)
         results = {
-            "points": np.empty((0, n_teams)),
-            "goals_for": np.empty((0, n_teams)),
-            "goals_against": np.empty((0, n_teams)),
-            "position": np.empty((0, n_teams)),
+            "points": np.empty((0, n_teams_sim)),
+            "goals_for": np.empty((0, n_teams_sim)),
+            "goals_against": np.empty((0, n_teams_sim)),
+            "positions": np.empty((0, n_teams_sim)),
         }
 
     # ========================================================================

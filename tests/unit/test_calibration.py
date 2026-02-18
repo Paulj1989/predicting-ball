@@ -9,7 +9,6 @@ from src.models.calibration import (
     apply_calibration,
     apply_outcome_specific_scaling,
     apply_temperature_scaling,
-    create_dispersion_interpolator,
     fit_outcome_specific_temperatures,
     fit_temperature_scaler,
     validate_calibration_on_holdout,
@@ -168,47 +167,9 @@ class TestFitOutcomeSpecificTemperatures:
         result = fit_outcome_specific_temperatures(
             synthetic_predictions, synthetic_actuals, verbose=False
         )
-        # optimised NLL should be <= uncalibrated NLL
+        # optimised nll should be <= uncalibrated nll
+        # (outcome-specific temperatures still optimise on nll internally)
         assert result["nll_improvement"] >= -0.1
-
-
-class TestCreateDispersionInterpolator:
-    """Tests for dispersion interpolation."""
-
-    def test_returns_callable(self):
-        """Should return a callable."""
-        dispersions = {0.68: 1.2, 0.80: 1.5, 0.95: 2.0}
-        func = create_dispersion_interpolator(dispersions)
-        assert callable(func)
-
-    def test_exact_calibrated_levels(self):
-        """Should return exact values at calibrated levels."""
-        dispersions = {0.68: 1.2, 0.80: 1.5, 0.95: 2.0}
-        func = create_dispersion_interpolator(dispersions)
-        assert func(0.68) == 1.2
-        assert func(0.80) == 1.5
-        assert func(0.95) == 2.0
-
-    def test_interpolates_between_levels(self):
-        """Should interpolate between calibrated levels."""
-        dispersions = {0.68: 1.0, 0.80: 2.0, 0.95: 3.0}
-        func = create_dispersion_interpolator(dispersions)
-
-        # midpoint between 68% and 80%
-        mid = func(0.74)
-        assert 1.0 < mid < 2.0
-
-        # midpoint between 80% and 95%
-        mid2 = func(0.875)
-        assert 2.0 < mid2 < 3.0
-
-    def test_clamps_at_boundaries(self):
-        """Should clamp at boundary values."""
-        dispersions = {0.68: 1.2, 0.80: 1.5, 0.95: 2.0}
-        func = create_dispersion_interpolator(dispersions)
-
-        assert func(0.50) == 1.2  # below 68%
-        assert func(0.99) == 2.0  # above 95%
 
 
 class TestFitTemperatureScalerEdgeCases:

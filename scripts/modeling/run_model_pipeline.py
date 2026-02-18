@@ -60,10 +60,17 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--n-bootstrap",
-        type=int,
-        default=250,
-        help="Number of bootstrap samples (default: 250)",
+        "--hot-k-att",
+        type=float,
+        default=0.02,
+        help="Attack learning rate for hot simulation (default: 0.02, 0 for cold)",
+    )
+
+    parser.add_argument(
+        "--hot-k-def",
+        type=float,
+        default=0.01,
+        help="Defence learning rate for hot simulation (default: 0.01)",
     )
 
     parser.add_argument("--skip-validation", action="store_true", help="Skip validation step")
@@ -153,8 +160,6 @@ def main():
         str(modeling_dir / "run_calibration.py"),
         "--model-path",
         "outputs/models/production_model.pkl",
-        "--comprehensive",
-        "--outcome-specific",
         "--metric",
         args.metric,
     ]
@@ -188,8 +193,10 @@ def main():
         "outputs/models/production_model.pkl",
         "--calibrator-path",
         "outputs/models/calibrators.pkl",
-        "--n-bootstrap",
-        str(args.n_bootstrap),
+        "--hot-k-att",
+        str(args.hot_k_att),
+        "--hot-k-def",
+        str(args.hot_k_def),
     ]
 
     run_command(predict_cmd, "STEP 4: GENERATING PREDICTIONS")

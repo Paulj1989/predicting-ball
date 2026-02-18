@@ -2,8 +2,6 @@
 
 from .calibration import (
     apply_temperature_scaling,
-    calibrate_dispersion_for_coverage,
-    calibrate_model_comprehensively,
     fit_temperature_scaler,
 )
 from .hyperparameters import (
@@ -41,8 +39,6 @@ __all__ = [
     "calculate_lambdas_single",
     "calculate_promoted_team_priors",
     "calculate_squad_value_priors",
-    "calibrate_dispersion_for_coverage",
-    "calibrate_model_comprehensively",
     # ratings
     "create_interpretable_ratings",
     # core model

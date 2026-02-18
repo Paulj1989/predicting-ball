@@ -245,8 +245,9 @@ def fit_feature_coefficients(
     hyperparams: dict[str, float],
     verbose: bool = False,
 ) -> dict[str, Any]:
-    """Stage 2: Fit coefficients for match-specific features (odds, form)"""
+    """Stage 2: Fit form residual coefficient and odds blend weight"""
 
+    from .dixon_coles import calculate_match_probabilities_dixon_coles
     from .ratings import add_interpretable_ratings_to_params
 
     # ========================================================================
@@ -266,16 +267,11 @@ def fit_feature_coefficients(
     attack = np.array([baseline_params["attack"][t] for t in all_teams])
     defense = np.array([baseline_params["defense"][t] for t in all_teams])
     home_adv_baseline = baseline_params["home_adv"]
+    rho = baseline_params.get("rho", -0.13)
 
     # ========================================================================
     # FEATURES
     # ========================================================================
-
-    home_log_odds_ratio = (
-        df_train["home_log_odds_ratio"].fillna(0).values
-        if "home_log_odds_ratio" in df_train
-        else np.zeros(len(df_train))
-    )
 
     home_npxgd_w5 = (
         df_train["home_npxgd_w5"].fillna(0).values
@@ -289,6 +285,22 @@ def fit_feature_coefficients(
     )
 
     # ========================================================================
+    # BASELINE LAMBDAS AND RESIDUALS
+    # ========================================================================
+
+    baseline_home = home_adv_baseline + attack[home_idx] + defense[away_idx]
+    baseline_away = attack[away_idx] + defense[home_idx]
+
+    baseline_lambda_h = np.exp(np.clip(baseline_home, -3, 3))
+    baseline_lambda_a = np.exp(np.clip(baseline_away, -3, 3))
+
+    expected_npxgd_home = baseline_lambda_h - baseline_lambda_a
+    expected_npxgd_away = baseline_lambda_a - baseline_lambda_h
+
+    home_npxgd_residual = home_npxgd_w5 - expected_npxgd_home
+    away_npxgd_residual = away_npxgd_w5 - expected_npxgd_away
+
+    # ========================================================================
     # TIME WEIGHTING
     # ========================================================================
 
@@ -300,28 +312,16 @@ def fit_feature_coefficients(
     combined_weights = time_weights
 
     # ========================================================================
-    # OBJECTIVE: FEATURE COEFFICIENTS ONLY
+    # OBJECTIVE: FORM RESIDUAL COEFFICIENT
     # ========================================================================
 
     def neg_loglik_features(x: np.ndarray) -> float:
-        """Fit feature coefficients with fixed team strengths"""
-        beta_odds = x[0]
-        beta_form = x[1]
+        """Fit form residual coefficient with fixed team strengths"""
+        beta_form = x[0]
 
-        # calculate lambdas (baseline + features)
-        home_strength = (
-            home_adv_baseline
-            + attack[home_idx]
-            + defense[away_idx]
-            + beta_odds * home_log_odds_ratio
-            + beta_form * home_npxgd_w5
-        )
-        away_strength = (
-            attack[away_idx]
-            + defense[home_idx]
-            - beta_odds * home_log_odds_ratio
-            + beta_form * away_npxgd_w5
-        )
+        # final strength with form residual adjustment
+        home_strength = baseline_home + beta_form * home_npxgd_residual
+        away_strength = baseline_away + beta_form * away_npxgd_residual
 
         mu_h = np.clip(np.exp(home_strength), 0.1, 8.0)
         mu_a = np.clip(np.exp(away_strength), 0.1, 8.0)
@@ -331,13 +331,13 @@ def fit_feature_coefficients(
         ll_a = poisson.logpmf(away_g_weighted, mu_a)
         ll_total = np.sum(combined_weights * (ll_h + ll_a))
 
-        # light regularisation on features
-        reg_features = 0.01 * (beta_odds**2 + beta_form**2)
+        # light regularisation
+        reg_features = 0.01 * beta_form**2
 
         return -ll_total + reg_features
 
     # ========================================================================
-    # OPTIMISATION
+    # OPTIMISATION: FORM COEFFICIENT
     # ========================================================================
 
     if verbose:
@@ -346,12 +346,8 @@ def fit_feature_coefficients(
         print("=" * 60)
         print("  (Team strengths fixed from stage 1)")
 
-    bounds = [
-        (0.0, 1.5),  # beta_odds
-        (-0.5, 0.5),  # beta_form
-    ]
-
-    x0 = np.array([0.5, 0.1])
+    bounds = [(-0.5, 0.5)]  # beta_form
+    x0 = np.array([0.1])
 
     result = minimize(
         neg_loglik_features,
@@ -361,62 +357,115 @@ def fit_feature_coefficients(
         options={"maxiter": 500, "ftol": 1e-8},
     )
 
-    beta_odds = result.x[0]
-    beta_form = result.x[1]
+    beta_form = result.x[0]
+
+    # ========================================================================
+    # ODDS BLEND WEIGHT
+    # ========================================================================
+
+    # compute final lambdas with fitted beta_form
+    home_strength_final = baseline_home + beta_form * home_npxgd_residual
+    away_strength_final = baseline_away + beta_form * away_npxgd_residual
+    lambda_h_fitted = np.clip(np.exp(home_strength_final), 0.1, 8.0)
+    lambda_a_fitted = np.clip(np.exp(away_strength_final), 0.1, 8.0)
+
+    # compute model probabilities for each match
+    n_matches = len(df_train)
+    model_probs = np.zeros((n_matches, 3))
+    for i in range(n_matches):
+        hw, dw, aw, _ = calculate_match_probabilities_dixon_coles(
+            lambda_h_fitted[i], lambda_a_fitted[i], rho=rho
+        )
+        model_probs[i] = [hw, dw, aw]
+
+    # extract odds-implied probabilities
+    odds_home = (
+        df_train["odds_home_prob"].values
+        if "odds_home_prob" in df_train
+        else np.full(n_matches, np.nan)
+    )
+    odds_draw = (
+        df_train["odds_draw_prob"].values
+        if "odds_draw_prob" in df_train
+        else np.full(n_matches, np.nan)
+    )
+    odds_away = (
+        df_train["odds_away_prob"].values
+        if "odds_away_prob" in df_train
+        else np.full(n_matches, np.nan)
+    )
+    odds_probs = np.column_stack([odds_home, odds_draw, odds_away])
+
+    # mask for matches with valid odds
+    has_odds = ~np.isnan(odds_probs).any(axis=1)
+
+    if has_odds.sum() > 10:
+        # actual outcomes for RPS calculation
+        results = df_train["result"].values
+        actual_matrix = np.zeros((n_matches, 3))
+        for i, r in enumerate(results):
+            if r == "H":
+                actual_matrix[i] = [1, 0, 0]
+            elif r == "D":
+                actual_matrix[i] = [0, 1, 0]
+            elif r == "A":
+                actual_matrix[i] = [0, 0, 1]
+
+        odds_weights = combined_weights[has_odds]
+        model_p = model_probs[has_odds]
+        odds_p = odds_probs[has_odds]
+        actual_m = actual_matrix[has_odds]
+
+        from scipy.optimize import minimize_scalar
+
+        def blend_rps(w):
+            """Time-weighted mean RPS for blended probabilities"""
+            blended = w * model_p + (1 - w) * odds_p
+            # rps for 3-outcome ordered categories
+            cum_pred = np.cumsum(blended, axis=1)
+            cum_actual = np.cumsum(actual_m, axis=1)
+            rps_per_match = np.sum((cum_pred - cum_actual) ** 2, axis=1) / 2
+            return np.average(rps_per_match, weights=odds_weights)
+
+        blend_result = minimize_scalar(blend_rps, bounds=(0.0, 1.0), method="bounded")
+        odds_blend_weight = float(blend_result.x)
+    else:
+        # not enough odds data, use model only
+        odds_blend_weight = 1.0
 
     # ========================================================================
     # COMBINE RESULTS
     # ========================================================================
 
     full_params = baseline_params.copy()
-    full_params["beta_odds"] = beta_odds
     full_params["beta_form"] = beta_form
+    full_params["odds_blend_weight"] = odds_blend_weight
     full_params["log_likelihood_features"] = -result.fun
 
-    # add calibration parameters
+    # diagnostic: pearson dispersion statistic (var(residuals) / mean(goals))
+    # for true poisson, this should be close to 1.0; materially above 1.2
+    # may indicate the model is missing structure worth investigating
     home_g_actual = df_train["home_goals"].fillna(0).astype(int).values
     away_g_actual = df_train["away_goals"].fillna(0).astype(int).values
 
-    # recalculate lambdas with features
-    home_strength = (
-        home_adv_baseline
-        + attack[home_idx]
-        + defense[away_idx]
-        + beta_odds * home_log_odds_ratio
-        + beta_form * home_npxgd_w5
-    )
-    away_strength = (
-        attack[away_idx]
-        + defense[home_idx]
-        - beta_odds * home_log_odds_ratio
-        + beta_form * away_npxgd_w5
-    )
-
-    lambda_h_fitted = np.exp(home_strength)
-    lambda_a_fitted = np.exp(away_strength)
-
-    # calculate dispersion
     residuals_h = home_g_actual - lambda_h_fitted
     residuals_a = away_g_actual - lambda_a_fitted
 
-    var_h = np.var(residuals_h)
-    var_a = np.var(residuals_a)
     mean_h = np.mean(home_g_actual)
     mean_a = np.mean(away_g_actual)
 
-    dispersion_h = var_h / mean_h if mean_h > 0 else 1.0
-    dispersion_a = var_a / mean_a if mean_a > 0 else 1.0
+    dispersion_h = np.var(residuals_h) / mean_h if mean_h > 0 else 1.0
+    dispersion_a = np.var(residuals_a) / mean_a if mean_a > 0 else 1.0
     dispersion_factor = (dispersion_h + dispersion_a) / 2
 
     full_params["dispersion_factor"] = dispersion_factor
-    full_params["var_ratio_h"] = var_h / max(np.var(home_g_actual - lambda_h_fitted), 0.1)
-    full_params["var_ratio_a"] = var_a / max(np.var(away_g_actual - lambda_a_fitted), 0.1)
 
     if verbose:
         print("\n  ✓ Feature coefficients fitted")
-        print(f"    Beta (odds): {beta_odds:.3f}")
         print(f"    Beta (form): {beta_form:.3f}")
-        print(f"    Dispersion factor: {dispersion_factor:.3f}")
+        print(f"    Odds blend weight: {odds_blend_weight:.3f}")
+        disp_flag = " ⚠ (> 1.2 — consider investigating)" if dispersion_factor > 1.2 else ""
+        print(f"    Dispersion (diagnostic): {dispersion_factor:.3f}{disp_flag}")
 
     full_params = add_interpretable_ratings_to_params(full_params)
 
@@ -436,7 +485,7 @@ def fit_poisson_model_two_stage(
     Two-stage Poisson model fitting.
 
     Stage 1: Baseline team strengths (team identity + home advantage only).
-    Stage 2: Feature coefficients (odds, form) using fixed baseline strengths.
+    Stage 2: Form residual coefficient + odds blend weight using fixed baseline strengths.
     """
     # stage 1: baseline
     baseline_params = fit_baseline_strengths(
@@ -468,10 +517,12 @@ def fit_poisson_model_two_stage(
         print("✓ Feature coefficients act as match-specific adjustments")
         print("\nFinal parameters:")
         print(f"  Home advantage: {full_params['home_adv']:.3f}")
-        print(f"  Odds weight: {full_params['beta_odds']:.3f}")
         print(f"  Form weight: {full_params['beta_form']:.3f}")
+        print(f"  Odds blend: {full_params['odds_blend_weight']:.3f}")
         print(f"  Rho: {full_params['rho']:.3f}")
-        print(f"  Dispersion factor: {full_params['dispersion_factor']:.3f}")
+        disp = full_params["dispersion_factor"]
+        disp_flag = " ⚠" if disp > 1.2 else ""
+        print(f"  Dispersion (diagnostic): {disp:.3f}{disp_flag}")
 
     return full_params
 
@@ -485,7 +536,6 @@ def calculate_lambdas_single(
     home_team: str,
     away_team: str,
     params: dict[str, Any],
-    home_log_odds_ratio: float = 0.0,
     home_npxgd_w5: float = 0.0,
     away_npxgd_w5: float = 0.0,
 ) -> tuple[float, float]:
@@ -496,16 +546,26 @@ def calculate_lambdas_single(
     def_a = params.get("defense", {}).get(away_team, 0.0)
 
     home_adv = params.get("home_adv", 0.0)
-    beta_odds = params.get("beta_odds", 0.0)
     beta_form = params.get("beta_form", 0.0)
 
-    # calculate strengths
-    home_strength = (
-        att_h + def_a + home_adv + beta_odds * home_log_odds_ratio + beta_form * home_npxgd_w5
-    )
-    away_strength = att_a + def_h - beta_odds * home_log_odds_ratio + beta_form * away_npxgd_w5
+    # baseline strength (no features)
+    baseline_home = att_h + def_a + home_adv
+    baseline_away = att_a + def_h
 
-    # convert to lambdas
+    # expected npxgd from baseline lambdas
+    baseline_lambda_h = np.exp(np.clip(baseline_home, -3, 3))
+    baseline_lambda_a = np.exp(np.clip(baseline_away, -3, 3))
+    expected_npxgd_home = baseline_lambda_h - baseline_lambda_a
+    expected_npxgd_away = baseline_lambda_a - baseline_lambda_h
+
+    # residual: actual form minus expected
+    home_residual = home_npxgd_w5 - expected_npxgd_home
+    away_residual = away_npxgd_w5 - expected_npxgd_away
+
+    # final strength with form residual adjustment
+    home_strength = baseline_home + beta_form * home_residual
+    away_strength = baseline_away + beta_form * away_residual
+
     lambda_home = np.clip(np.exp(home_strength), 0.1, 8.0)
     lambda_away = np.clip(np.exp(away_strength), 0.1, 8.0)
 
@@ -546,13 +606,6 @@ def calculate_lambdas(
     home_idx = np.array([team_to_idx[t] for t in df["home_team"]], dtype=np.int64)
     away_idx = np.array([team_to_idx[t] for t in df["away_team"]], dtype=np.int64)
 
-    # extract features
-    home_log_odds_ratio = (
-        df["home_log_odds_ratio"].fillna(0).values
-        if "home_log_odds_ratio" in df
-        else np.zeros(len(df))
-    )
-
     # form features
     home_npxgd_w5 = (
         df["home_npxgd_w5"].fillna(0).values if "home_npxgd_w5" in df else np.zeros(len(df))
@@ -561,20 +614,26 @@ def calculate_lambdas(
         df["away_npxgd_w5"].fillna(0).values if "away_npxgd_w5" in df else np.zeros(len(df))
     )
 
-    # calculate strengths
-    home_strength = (
-        attack_arr[home_idx]
-        + defense_arr[away_idx]
-        + params.get("home_adv", 0.0)
-        + params.get("beta_odds", 0.0) * home_log_odds_ratio
-        + params.get("beta_form", 0.0) * home_npxgd_w5
-    )
-    away_strength = (
-        attack_arr[away_idx]
-        + defense_arr[home_idx]
-        - params.get("beta_odds", 0.0) * home_log_odds_ratio
-        + params.get("beta_form", 0.0) * away_npxgd_w5
-    )
+    home_adv = params.get("home_adv", 0.0)
+    beta_form = params.get("beta_form", 0.0)
+
+    # baseline strength (no features)
+    baseline_home = attack_arr[home_idx] + defense_arr[away_idx] + home_adv
+    baseline_away = attack_arr[away_idx] + defense_arr[home_idx]
+
+    # expected npxgd from baseline lambdas
+    baseline_lambda_h = np.exp(np.clip(baseline_home, -3, 3))
+    baseline_lambda_a = np.exp(np.clip(baseline_away, -3, 3))
+    expected_npxgd_home = baseline_lambda_h - baseline_lambda_a
+    expected_npxgd_away = baseline_lambda_a - baseline_lambda_h
+
+    # residual: actual form minus expected
+    home_residual = home_npxgd_w5 - expected_npxgd_home
+    away_residual = away_npxgd_w5 - expected_npxgd_away
+
+    # final strength with form residual adjustment
+    home_strength = baseline_home + beta_form * home_residual
+    away_strength = baseline_away + beta_form * away_residual
 
     # convert to lambdas (expected goals)
     lambda_home = np.clip(np.exp(home_strength), 0.1, 8.0)

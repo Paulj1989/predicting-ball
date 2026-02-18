@@ -75,14 +75,9 @@ def simulate_remaining_season_calibrated(
     if not bootstrap_params:
         return None, None
 
-    # get dispersion factor
-    dispersion_factor = bootstrap_params[0].get("dispersion_factor", 1.0)
-
-    print(f"\nSimulating with dispersion factor: {dispersion_factor:.3f}")
-    if dispersion_factor > 1.2:
-        print("Using negative binomial distribution (overdispersed)")
-    else:
-        print("Using Poisson distribution")
+    dispersion = bootstrap_params[0].get("dispersion_factor", 1.0)
+    disp_flag = " ⚠ (> 1.2)" if dispersion > 1.2 else ""
+    print(f"\nDispersion (diagnostic): {dispersion:.3f}{disp_flag}")
 
     # setup teams
     teams_in_standings = set(current_standings.keys())
@@ -132,7 +127,7 @@ def simulate_remaining_season_calibrated(
             temp_df = future_fixtures[["home_team", "away_team"]].copy()
 
             # copy all feature columns that exist
-            feature_cols = ["home_log_odds_ratio", "home_npxgd_w5", "away_npxgd_w5"]
+            feature_cols = ["home_npxgd_w5", "away_npxgd_w5"]
             for col in feature_cols:
                 if col in future_fixtures.columns:
                     temp_df[col] = future_fixtures[col].fillna(0)
@@ -141,9 +136,8 @@ def simulate_remaining_season_calibrated(
 
             lambda_home, lambda_away = calculate_lambdas(temp_df, params)
 
-            # sample goals with calibrated distribution
-            hg = sample_goals_calibrated(lambda_home, dispersion_factor, size=1)
-            ag = sample_goals_calibrated(lambda_away, dispersion_factor, size=1)
+            hg = sample_goals_calibrated(lambda_home, size=1)
+            ag = sample_goals_calibrated(lambda_away, size=1)
 
             # calculate points
             hp = np.where(hg > ag, 3, np.where(hg == ag, 1, 0))
