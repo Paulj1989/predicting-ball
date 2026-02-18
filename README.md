@@ -18,7 +18,7 @@ A pipeline for fitting a two-stage Dixon-Coles Poisson model that predicts match
 │                                                                             │
 │   Fit two-stage Dixon-Coles Poisson model:                                  │
 │     Stage 1: Team strengths & home advantage                                │
-│     Stage 2: Match feature coefficients (odds, form)                        │
+│     Stage 2: Form residual coefficient + odds blend weight                  │
 │                                                                             │
 │   Model components:                                                         │
 │     - Informed priors (Elo + squad value + previous season rating)          │
@@ -55,8 +55,9 @@ A pipeline for fitting a two-stage Dixon-Coles Poisson model that predicts match
 │                          4. GENERATE PREDICTIONS                            │
 │                                                                             │
 │   Produce predictions and simulations:                                      │
-│     - Bootstrap parameter uncertainty (250 samples)                         │
+│     - Fisher information matrix for analytical MLE uncertainty              │
 │     - Monte Carlo season simulation (10,000 iterations)                     │
+│       with MLE posterior draws and natural gradient rating updates          │
 │     - Match-level predictions with calibrated probabilities                 │
 │                                                                             │
 │   Outputs uploaded to DO Spaces:                                            │
@@ -128,8 +129,9 @@ uv run scripts/modeling/validate_model.py \
 uv run scripts/modeling/generate_predictions.py \
     --model-path outputs/models/production_model.pkl \
     --calibrator-path outputs/models/calibrators.pkl \
-    --n-bootstrap 250 \
-    --n-simulations 10000
+    --n-simulations 10000 \
+    --hot-k-att 0.02 \
+    --hot-k-def 0.01
 ```
 
 ### Running the App Locally
@@ -143,43 +145,44 @@ streamlit run run.py
 ```text
 predicting-ball/
 ├── app/
-│   ├── main.py                 # App framework, loads data from DO Spaces
-│   ├── pages/                  # Individual app pages
-│   │   ├── projections.py      # Season projections table
-│   │   ├── team_strengths.py   # Attack/defense ratings visualisation
-│   │   ├── fixtures.py         # Match predictions
-│   │   └── about.py            # Model methodology
-│   ├── components/             # Reusable UI components
-│   └── styles/                 # Custom CSS
+│   ├── main.py                     # App framework, loads data from DO Spaces
+│   ├── pages/                      # Individual app pages
+│   │   ├── projections.py          # Season projections table
+│   │   ├── team_strengths.py       # Attack/defense ratings visualisation
+│   │   ├── fixtures.py             # Match predictions
+│   │   └── about.py                # Model methodology
+│   ├── components/                 # Reusable UI components
+│   └── styles/                     # Custom CSS
 ├── src/
-│   ├── models/                 # Core modeling code
-│   │   ├── poisson.py          # Team attack/defense ratings
-│   │   ├── dixon_coles.py      # Correction for low-scoring matches
-│   │   ├── priors.py           # Informed priors
-│   │   ├── hyperparameters.py  # Optuna-based tuning
-│   │   └── calibration.py      # Temperature scaling
-│   ├── simulation/             # Prediction and simulation
-│   │   ├── bootstrap.py        # Parameter uncertainty quantification
-│   │   ├── monte_carlo.py      # Season simulation
-│   │   └── predictions.py      # Match-level predictions
-│   ├── evaluation/             # Model evaluation
-│   │   ├── metrics.py          # RPS, log loss, Brier score
-│   │   └── baselines.py        # Bookmaker baseline comparisons
-│   ├── validation/             # Cross-validation and diagnostics
-│   ├── features/               # Feature engineering
-│   ├── processing/             # Data preparation
-│   ├── io/                     # Model I/O and DO Spaces integration
-│   └── visualisation/          # Plotting utilities
+│   ├── models/                     # Core modeling code
+│   │   ├── poisson.py              # Team attack/defense ratings
+│   │   ├── dixon_coles.py          # Correction for low-scoring matches
+│   │   ├── fisher_information.py   # Analytical MLE uncertainty
+│   │   ├── priors.py               # Informed priors
+│   │   ├── hyperparameters.py      # Optuna-based tuning
+│   │   └── calibration.py          # Temperature scaling
+│   ├── simulation/                 # Prediction and simulation
+│   │   ├── hot_simulation.py       # Season sim with MLE draws + rating updates
+│   │   ├── monte_carlo.py          # Legacy season simulation
+│   │   └── predictions.py          # Match-level predictions
+│   ├── evaluation/                 # Model evaluation
+│   │   ├── metrics.py              # RPS, log loss, Brier score
+│   │   └── baselines.py            # Bookmaker baseline comparisons
+│   ├── validation/                 # Cross-validation and diagnostics
+│   ├── features/                   # Feature engineering
+│   ├── processing/                 # Data preparation
+│   ├── io/                         # Model I/O and DO Spaces integration
+│   └── visualisation/              # Plotting utilities
 ├── scripts/
-│   ├── modeling/               # Pipeline scripts
+│   ├── modeling/                   # Pipeline scripts
 │   │   ├── run_model_pipeline.py   # Full pipeline orchestration
 │   │   ├── train_model.py          # Model training
 │   │   ├── run_calibration.py      # Probability calibration
 │   │   ├── validate_model.py       # Model validation
 │   │   └── generate_predictions.py # Prediction generation + upload
-│   └── automation/             # Database sync
-│       └── download_db.py      # Download DuckDB from DO Spaces
-└── run.py                      # Streamlit entry point
+│   └── automation/                 # Database sync
+│       └── download_db.py          # Download DuckDB from DO Spaces
+└── run.py                          # Streamlit entry point
 ```
 
 ## Automated Workflows
