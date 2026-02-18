@@ -62,7 +62,7 @@ def optimise_hyperparameters(
             "time_decay": trial.suggest_float("time_decay", 0.001, 0.01, log=True),
             "lambda_reg": trial.suggest_float("lambda_reg", 0.05, 1.0),
             "prior_decay_rate": trial.suggest_float("prior_decay_rate", 1.0, 20.0),
-            "rho": trial.suggest_float("rho", -0.3, -0.05),
+            "rho": trial.suggest_float("rho", -0.3, -0.1),
         }
 
         # prepare data

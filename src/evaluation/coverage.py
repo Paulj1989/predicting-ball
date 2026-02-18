@@ -31,9 +31,6 @@ def run_coverage_test(
     n_matches = len(test_data)
     covered_both = 0
 
-    # get dispersion factor from first bootstrap sample
-    dispersion_factor = bootstrap_params[0].get("dispersion_factor", 1.0)
-
     for i in range(n_matches):
         match = test_data.iloc[i]
         actual_h = int(match["home_goals"])
@@ -64,8 +61,8 @@ def run_coverage_test(
         away_goals_samples = []
 
         for lh, la in zip(lambda_h_samples, lambda_a_samples, strict=False):
-            hg = sample_goals_calibrated(lh, dispersion_factor, size=1)
-            ag = sample_goals_calibrated(la, dispersion_factor, size=1)
+            hg = sample_goals_calibrated(lh, size=1)
+            ag = sample_goals_calibrated(la, size=1)
             home_goals_samples.append(hg)
             away_goals_samples.append(ag)
 
@@ -92,7 +89,7 @@ def run_coverage_test(
         elif deviation < 0.10:
             print("⚠ Moderately calibrated")
         else:
-            print("✗ Poorly calibrated - consider adjusting dispersion")
+            print("✗ Poorly calibrated")
 
     return empirical_coverage
 

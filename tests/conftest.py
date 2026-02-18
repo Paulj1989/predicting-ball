@@ -82,7 +82,7 @@ def sample_model_params():
         },
         "home_adv": 0.27,
         "rho": -0.13,
-        "beta_odds": 0.45,
+        "odds_blend_weight": 0.85,
         "beta_form": 0.08,
         "dispersion_factor": 1.15,
         "teams": teams,
@@ -120,6 +120,9 @@ def sample_training_data():
                 "season_end_year": 2025,
                 "matchweek": (i // 5) + 1,
                 "home_log_odds_ratio": np.random.normal(0.1, 0.3),
+                "odds_home_prob": np.random.uniform(0.3, 0.5),
+                "odds_draw_prob": np.random.uniform(0.2, 0.35),
+                "odds_away_prob": np.random.uniform(0.2, 0.4),
                 "home_npxgd_w5": np.random.normal(0.0, 0.5),
                 "away_npxgd_w5": np.random.normal(0.0, 0.5),
                 "home_elo": np.random.normal(1500, 100),
@@ -184,7 +187,9 @@ def sample_bootstrap_params(sample_model_params):
             t: v + np.random.normal(0, 0.05) for t, v in sample_model_params["defense"].items()
         }
         p["home_adv"] = sample_model_params["home_adv"] + np.random.normal(0, 0.02)
-        p["beta_odds"] = max(0, sample_model_params["beta_odds"] + np.random.normal(0, 0.05))
+        p["odds_blend_weight"] = np.clip(
+            sample_model_params["odds_blend_weight"] + np.random.normal(0, 0.05), 0, 1
+        )
         p["beta_form"] = sample_model_params["beta_form"] + np.random.normal(0, 0.02)
         params_list.append(p)
     return params_list

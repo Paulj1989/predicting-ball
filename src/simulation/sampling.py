@@ -4,119 +4,66 @@
 import numpy as np
 from scipy.stats import poisson
 
+from src.models.dixon_coles import tau_dixon_coles
 
-def sample_goals_calibrated(
-    lambda_val: float | np.ndarray, dispersion_factor: float, size: int = 1
-) -> int | np.ndarray:
-    """
-    Sample goals accounting for overdispersion.
 
-    Uses Poisson distribution when dispersion ≈ 1, and negative binomial
-    when dispersion > 1.1 to account for extra variance in actual goals
-    compared to the model's fitted lambdas.
-
-    The hybrid architecture:
-    - Model fitted on weighted goals (npxG/npG) for stable parameters
-    - Sampling uses dispersion factor to match actual goal variance
-    """
-    # ensure lambda_val is array for consistent handling
+def sample_goals_calibrated(lambda_val: float | np.ndarray, size: int = 1) -> int | np.ndarray:
+    """Sample goals from a Poisson distribution with the given rate(s)"""
     lambda_val = np.atleast_1d(lambda_val)
     is_scalar = lambda_val.shape == (1,)
 
-    if dispersion_factor <= 1.1:
-        # use poisson distribution
-        result = np.random.poisson(lambda_val, size=(size, len(lambda_val)))
-    else:
-        # use negative binomial for overdispersion
-        # negative binomial parameterisation: NB(r, p)
-        # mean = r(1-p)/p, variance = r(1-p)/p^2
-        # for overdispersion: var = dispersion * mean
+    result = np.random.poisson(lambda_val, size=(size, len(lambda_val)))
 
-        # calculate parameters
-        r = lambda_val / (dispersion_factor - 1.0)
-        r = np.maximum(r, 0.1)  # avoid numerical issues
-        p = r / (r + lambda_val)
-
-        result = np.random.negative_binomial(r, p, size=(size, len(lambda_val)))
-
-    # return appropriate shape
     if size == 1:
-        result = result.squeeze(0)  # remove size dimension
+        result = result.squeeze(0)
         if is_scalar:
-            return result.item()  # return scalar if input was scalar
+            return result.item()
         return result
     else:
         if is_scalar:
-            return result.squeeze(-1)  # remove lambda dimension if scalar
+            return result.squeeze(-1)
         return result
 
 
 def sample_match_outcome(
     lambda_home: float,
     lambda_away: float,
-    dispersion_factor: float = 1.0,
     max_goals: int = 10,
 ) -> tuple[int, int]:
     """Sample a single match outcome"""
-    home_goals = sample_goals_calibrated(lambda_home, dispersion_factor, size=1)
-    away_goals = sample_goals_calibrated(lambda_away, dispersion_factor, size=1)
+    home_goals = sample_goals_calibrated(lambda_home, size=1)
+    away_goals = sample_goals_calibrated(lambda_away, size=1)
 
-    # cap at max_goals (safety for extreme cases)
     home_goals = min(home_goals, max_goals)
     away_goals = min(away_goals, max_goals)
 
     return int(home_goals), int(away_goals)
 
 
-def calculate_outcome_probabilities(
+def sample_scoreline_dixon_coles(
     lambda_home: float,
     lambda_away: float,
-    dispersion_factor: float = 1.0,
+    rho: float = -0.13,
     max_goals: int = 8,
-    use_poisson: bool = True,
-) -> tuple[float, float, float]:
-    """Calculate match outcome probabilities (home/draw/away)"""
-    home_win_prob = 0.0
-    draw_prob = 0.0
-    away_win_prob = 0.0
+) -> tuple[int, int]:
+    """Sample a scoreline from the full Dixon-Coles joint PMF"""
+    n = max_goals + 1
 
-    if use_poisson or dispersion_factor <= 1.1:
-        # use Poisson (faster)
-        for h in range(max_goals + 1):
-            for a in range(max_goals + 1):
-                p = poisson.pmf(h, lambda_home) * poisson.pmf(a, lambda_away)
+    pmf_h = np.array([poisson.pmf(g, lambda_home) for g in range(n)])
+    pmf_a = np.array([poisson.pmf(g, lambda_away) for g in range(n)])
 
-                if h > a:
-                    home_win_prob += p
-                elif h == a:
-                    draw_prob += p
-                else:
-                    away_win_prob += p
-    else:
-        # use negative binomial (more accurate but slower)
-        from scipy.stats import nbinom
+    # build joint probability grid with dixon-coles tau correction
+    grid = np.outer(pmf_h, pmf_a)
+    for h in range(min(2, n)):
+        for a in range(min(2, n)):
+            grid[h, a] *= tau_dixon_coles(h, a, lambda_home, lambda_away, rho)
 
-        # calculate NB parameters
-        r_h = lambda_home / (dispersion_factor - 1.0)
-        r_h = max(r_h, 0.1)
-        p_h = r_h / (r_h + lambda_home)
+    # flatten, normalise, and sample
+    flat = grid.ravel()
+    flat = np.maximum(flat, 0.0)
+    flat /= flat.sum()
 
-        r_a = lambda_away / (dispersion_factor - 1.0)
-        r_a = max(r_a, 0.1)
-        p_a = r_a / (r_a + lambda_away)
+    idx = np.random.choice(len(flat), p=flat)
+    home_goals, away_goals = divmod(idx, n)
 
-        for h in range(max_goals + 1):
-            for a in range(max_goals + 1):
-                p = nbinom.pmf(h, r_h, p_h) * nbinom.pmf(a, r_a, p_a)
-
-                if h > a:
-                    home_win_prob += p
-                elif h == a:
-                    draw_prob += p
-                else:
-                    away_win_prob += p
-
-    # normalise (should be close to 1.0 already)
-    total = home_win_prob + draw_prob + away_win_prob
-
-    return (home_win_prob / total, draw_prob / total, away_win_prob / total)
+    return int(home_goals), int(away_goals)

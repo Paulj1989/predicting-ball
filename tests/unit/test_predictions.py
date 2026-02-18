@@ -257,9 +257,11 @@ class TestPredictMatchProbabilities:
             {
                 "home_team": "Bayern",
                 "away_team": "Dortmund",
-                "home_log_odds_ratio": 0.1,
                 "home_npxgd_w5": 0.2,
                 "away_npxgd_w5": -0.1,
+                "odds_home_prob": 0.45,
+                "odds_draw_prob": 0.28,
+                "odds_away_prob": 0.27,
             }
         )
         result = predict_match_probabilities(sample_model_params, match)
@@ -273,12 +275,50 @@ class TestPredictMatchProbabilities:
             {
                 "home_team": "Bayern",
                 "away_team": "Dortmund",
-                "home_log_odds_ratio": np.nan,
                 "home_npxgd_w5": np.nan,
                 "away_npxgd_w5": np.nan,
+                "odds_home_prob": np.nan,
+                "odds_draw_prob": np.nan,
+                "odds_away_prob": np.nan,
             }
         )
         result = predict_match_probabilities(sample_model_params, match)
+        assert np.isclose(sum(result.values()), 1.0, atol=1e-6)
+
+    def test_odds_blending_changes_probabilities(self, sample_model_params):
+        """Odds-implied probs should affect output when blend weight < 1."""
+        params = sample_model_params.copy()
+        params["odds_blend_weight"] = 0.7
+
+        match = pd.Series(
+            {
+                "home_team": "Bayern",
+                "away_team": "Dortmund",
+                "odds_home_prob": 0.60,
+                "odds_draw_prob": 0.25,
+                "odds_away_prob": 0.15,
+            }
+        )
+
+        # with blending
+        blended = predict_match_probabilities(params, match)
+
+        # without blending (weight = 1.0)
+        params_no_blend = params.copy()
+        params_no_blend["odds_blend_weight"] = 1.0
+        model_only = predict_match_probabilities(params_no_blend, match)
+
+        assert blended["home_win"] != model_only["home_win"]
+
+    def test_no_odds_uses_model_only(self, sample_model_params):
+        """Missing odds columns should produce model-only output."""
+        params = sample_model_params.copy()
+        params["odds_blend_weight"] = 0.7
+
+        match = pd.Series({"home_team": "Bayern", "away_team": "Dortmund"})
+
+        # without odds columns, should still work (model only)
+        result = predict_match_probabilities(params, match)
         assert np.isclose(sum(result.values()), 1.0, atol=1e-6)
 
     def test_handles_missing_features(self, sample_model_params):

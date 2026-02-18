@@ -29,8 +29,8 @@ def plot_bootstrap_diagnostics(
     # extract parameters
     param_dict = {
         "Home Advantage": [p["home_adv"] for p in bootstrap_params],
-        "Odds Weight": [p["beta_odds"] for p in bootstrap_params],
-        "Penalty Weight": [p.get("beta_penalty", 0.0) for p in bootstrap_params],
+        "Odds Blend": [p.get("odds_blend_weight", 1.0) for p in bootstrap_params],
+        "Form Weight": [p.get("beta_form", 0.0) for p in bootstrap_params],
     }
 
     fig, axes = plt.subplots(1, 3, figsize=figsize)
@@ -51,8 +51,8 @@ def plot_bootstrap_diagnostics(
         # mark base value
         base_key = {
             "Home Advantage": "home_adv",
-            "Odds Weight": "beta_odds",
-            "Penalty Weight": "beta_penalty",
+            "Odds Blend": "odds_blend_weight",
+            "Form Weight": "beta_form",
         }[param_name]
 
         base_value = base_params.get(base_key, 0)

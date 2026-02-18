@@ -47,17 +47,20 @@ class TestCalculateLambdasSingle:
 
         assert lh_with > lh_without
 
-    def test_odds_feature_affects_lambda(self, sample_model_params):
-        """Non-zero log odds ratio should affect lambdas."""
-        lh_no_odds, la_no_odds = calculate_lambdas_single(
-            "Bayern", "Dortmund", sample_model_params, home_log_odds_ratio=0.0
+    def test_form_residual_affects_lambda(self, sample_model_params):
+        """Non-zero npxGD residual should affect lambdas when beta_form > 0."""
+        # with zero form (baseline only)
+        lh_base, la_base = calculate_lambdas_single("Bayern", "Dortmund", sample_model_params)
+        # with strong positive home form (exceeding expected)
+        lh_form, la_form = calculate_lambdas_single(
+            "Bayern",
+            "Dortmund",
+            sample_model_params,
+            home_npxgd_w5=3.0,
+            away_npxgd_w5=-1.0,
         )
-        lh_with_odds, la_with_odds = calculate_lambdas_single(
-            "Bayern", "Dortmund", sample_model_params, home_log_odds_ratio=1.0
-        )
-        # positive odds ratio should boost home, reduce away
-        assert lh_with_odds > lh_no_odds
-        assert la_with_odds < la_no_odds
+        # form residual should shift lambdas
+        assert lh_form != lh_base or la_form != la_base
 
     def test_unknown_team_uses_zero(self, sample_model_params):
         """Unknown teams should get 0 attack/defense."""
@@ -68,23 +71,20 @@ class TestCalculateLambdasSingle:
     @given(
         st.floats(min_value=-2.0, max_value=2.0),
         st.floats(min_value=-2.0, max_value=2.0),
-        st.floats(min_value=-2.0, max_value=2.0),
     )
     @settings(max_examples=20)
-    def test_lambdas_always_in_range(self, odds, form_h, form_a):
+    def test_lambdas_always_in_range(self, form_h, form_a):
         """Lambdas should always be in [0.1, 8.0] regardless of features."""
         params = {
             "attack": {"A": 0.3, "B": -0.3},
             "defense": {"A": -0.2, "B": 0.2},
             "home_adv": 0.25,
-            "beta_odds": 0.5,
             "beta_form": 0.1,
         }
         lh, la = calculate_lambdas_single(
             "A",
             "B",
             params,
-            home_log_odds_ratio=odds,
             home_npxgd_w5=form_h,
             away_npxgd_w5=form_a,
         )
@@ -197,13 +197,13 @@ class TestFitPoissonModelTwoStage:
         assert "attack" in result
         assert "defense" in result
         assert "home_adv" in result
-        assert "beta_odds" in result
+        assert "odds_blend_weight" in result
         assert "beta_form" in result
         assert "dispersion_factor" in result
         assert "attack_rating" in result
 
-    def test_beta_odds_non_negative(self, sample_training_data):
-        """Beta odds should be non-negative (bounded at 0)."""
+    def test_odds_blend_weight_in_range(self, sample_training_data):
+        """Odds blend weight should be between 0 and 1."""
         from src.models.hyperparameters import get_default_hyperparameters
 
         hyperparams = get_default_hyperparameters()
@@ -211,4 +211,4 @@ class TestFitPoissonModelTwoStage:
             sample_training_data, hyperparams, n_random_starts=1, verbose=False
         )
         assert result is not None
-        assert result["beta_odds"] >= 0
+        assert 0 <= result["odds_blend_weight"] <= 1

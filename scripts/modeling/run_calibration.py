@@ -27,7 +27,6 @@ from src.io.model_io import load_model, save_calibrators
 from src.models.calibration import (
     apply_outcome_specific_scaling,
     apply_temperature_scaling,
-    calibrate_model_comprehensively,
     fit_outcome_specific_temperatures,
     fit_temperature_scaler,
     validate_calibration_on_holdout,
@@ -76,12 +75,6 @@ def parse_args():
         "--outcome-specific",
         action="store_true",
         help="Use outcome-specific temperature scaling (recommended for draw issues)",
-    )
-
-    parser.add_argument(
-        "--comprehensive",
-        action="store_true",
-        help="Run comprehensive calibration (multiple confidence levels)",
     )
 
     parser.add_argument(
@@ -324,29 +317,9 @@ def main():
     )
 
     # ========================================================================
-    # DISPERSION CALIBRATION (Optional)
-    # ========================================================================
-    dispersion_calibrated = None
-
-    if args.comprehensive:
-        print("\n6. Running comprehensive dispersion calibration...")
-
-        dispersion_dict, _ = calibrate_model_comprehensively(
-            model["params"], calibration_data, verbose=True
-        )
-
-        dispersion_calibrated = {
-            "dispersion_dict": dispersion_dict,
-        }
-
-        print("   ✓ Dispersion calibration complete")
-    else:
-        print("\n6. Skipping comprehensive calibration (use --comprehensive to enable)")
-
-    # ========================================================================
     # SAVE CALIBRATORS
     # ========================================================================
-    print("\n7. Saving calibrators...")
+    print("\n6. Saving calibrators...")
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -354,7 +327,6 @@ def main():
     calibrator_package = {
         "temperature": temperature_value,
         "calibration_method": calibration_method,
-        "dispersion_calibrated": dispersion_calibrated,
         "calibration_data_size": len(calibration_data),
         "holdout_data_size": len(holdout_data),
         "brier_uncalibrated_cal": metrics_uncal_cal["brier_score"],
@@ -375,7 +347,7 @@ def main():
     # ========================================================================
     # CREATE CALIBRATION REPORT
     # ========================================================================
-    print("\n8. Creating calibration report...")
+    print("\n7. Creating calibration report...")
 
     figures_dir = Path("outputs/figures")
     figures_dir.mkdir(parents=True, exist_ok=True)
@@ -439,11 +411,6 @@ def main():
     print(
         f"    Improvement: {(holdout_metrics['draw_accuracy_calibrated'] - holdout_metrics['draw_accuracy_uncalibrated']) * 100:+.0f} percentage points"
     )
-
-    if dispersion_calibrated:
-        print("\nDispersion calibration: ✓ Enabled")
-    else:
-        print("\nDispersion calibration: Not applied (use --comprehensive)")
 
     # draw-specific assessment
     draw_improvement = (

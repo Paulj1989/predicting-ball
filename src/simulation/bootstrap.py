@@ -39,9 +39,6 @@ def parametric_bootstrap_with_residuals(
 
     bootstrap_params = [base_params]
 
-    # get dispersion factor from base model
-    dispersion_factor = base_params.get("dispersion_factor", 1.0)
-
     # calculate base model predictions
     lambda_home_base, lambda_away_base = calculate_lambdas(df_train, base_params)
     observed_home = df_train["home_goals_weighted"].values
@@ -78,18 +75,6 @@ def parametric_bootstrap_with_residuals(
             )
 
             if bootstrap_fit and bootstrap_fit["success"]:
-                # ensure calibration carries through
-                bootstrap_fit["dispersion_factor"] = dispersion_factor
-
-                # copy over any multi-level dispersions if present
-                if "dispersion_68" in base_params:
-                    bootstrap_fit["dispersion_68"] = base_params["dispersion_68"]
-                    bootstrap_fit["dispersion_80"] = base_params["dispersion_80"]
-                    bootstrap_fit["dispersion_95"] = base_params["dispersion_95"]
-
-                if "dispersion_func" in base_params:
-                    bootstrap_fit["dispersion_func"] = base_params["dispersion_func"]
-
                 bootstrap_params.append(bootstrap_fit)
 
         except Exception as e:
@@ -103,15 +88,17 @@ def parametric_bootstrap_with_residuals(
     if len(bootstrap_params) > 1:
         # calculate parameter uncertainty
         home_advs = [p["home_adv"] for p in bootstrap_params]
-        beta_odds = [p["beta_odds"] for p in bootstrap_params]
+        blend_weights = [p.get("odds_blend_weight", 1.0) for p in bootstrap_params]
         beta_form = [p.get("beta_form", 0.0) for p in bootstrap_params]
 
         if verbose:
             print("\nParameter uncertainty (mean ± std):")
             print(f"  Home advantage: {np.mean(home_advs):.3f} ± {np.std(home_advs):.3f}")
-            print(f"  Odds weight: {np.mean(beta_odds):.3f} ± {np.std(beta_odds):.3f}")
             print(f"  Form weight: {np.mean(beta_form):.3f} ± {np.std(beta_form):.3f}")
-            print(f"  Calibration: dispersion factor = {dispersion_factor:.3f}")
+            print(f"  Odds blend: {np.mean(blend_weights):.3f} ± {np.std(blend_weights):.3f}")
+            disp = base_params.get("dispersion_factor", 1.0)
+            disp_flag = " ⚠ (> 1.2)" if disp > 1.2 else ""
+            print(f"  Dispersion (diagnostic): {disp:.3f}{disp_flag}")
 
     return bootstrap_params
 
@@ -129,7 +116,7 @@ def plot_parameter_diagnostics(
     # extract parameters
     param_dict = {
         "home_adv": [p["home_adv"] for p in bootstrap_params],
-        "beta_odds": [p["beta_odds"] for p in bootstrap_params],
+        "odds_blend_weight": [p.get("odds_blend_weight", 1.0) for p in bootstrap_params],
         "beta_form": [p.get("beta_form", 0.0) for p in bootstrap_params],
     }
 
@@ -142,7 +129,7 @@ def plot_parameter_diagnostics(
     print("\nBoundary checks:")
     bounds_dict = {
         "home_adv": (0.05, 0.5),
-        "beta_odds": (0.0, 1.5),
+        "odds_blend_weight": (0.0, 1.0),
         "beta_form": (-0.5, 0.5),
     }
 

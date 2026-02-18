@@ -229,7 +229,7 @@ def main():
             historic_data, use_actual_goals=True, verbose=False
         )
 
-        # fit lightweight model on last season only
+        # fit lightweight model on last season only to extract team ratings as priors
         print(f"   Fitting model on season {last_complete_season}...")
         prev_params = fit_poisson_model_two_stage(
             last_season_data,
@@ -238,7 +238,7 @@ def main():
             home_adv_prior=home_adv_prior_temp,
             home_adv_std=home_adv_std_temp,
             n_random_starts=3,
-            verbose=True,
+            verbose=False,
         )
 
         if prev_params and prev_params.get("success"):

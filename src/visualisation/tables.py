@@ -61,7 +61,7 @@ def create_standings_table(
         .tab_style(style=[style.text(weight="bold")], locations=loc.stub())
         .tab_header(
             title="Bundesliga 2025/26 Season Projections",
-            subtitle="10,000 Monte Carlo simulations using calibrated Poisson regression with Dixon-Coles correction and parametric bootstrapping.",
+            subtitle="10,000 Monte Carlo simulations using a Dixon-Coles Poisson model with standard error distributions and hot simulation rating updates.",
         )
         .tab_options(
             table_width=table_width,

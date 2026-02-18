@@ -2,72 +2,57 @@
 """Tests for simulation sampling module."""
 
 import numpy as np
-from hypothesis import given, settings
-from hypothesis import strategies as st
 
 from src.simulation.sampling import (
-    calculate_outcome_probabilities,
     sample_goals_calibrated,
     sample_match_outcome,
+    sample_scoreline_dixon_coles,
 )
 
 
 class TestSampleGoalsCalibrated:
-    """Tests for calibrated goal sampling."""
+    """Tests for Poisson goal sampling."""
 
     def test_scalar_input_returns_scalar(self):
         """Scalar lambda with size=1 should return a Python int."""
         np.random.seed(42)
-        result = sample_goals_calibrated(1.5, dispersion_factor=1.0, size=1)
+        result = sample_goals_calibrated(1.5, size=1)
         assert isinstance(result, (int, np.integer))
 
     def test_array_input_returns_array(self):
         """Array lambda should return array."""
         np.random.seed(42)
-        result = sample_goals_calibrated(np.array([1.5, 1.2]), dispersion_factor=1.0, size=1)
+        result = sample_goals_calibrated(np.array([1.5, 1.2]), size=1)
         assert isinstance(result, np.ndarray)
         assert result.shape == (2,)
 
     def test_size_parameter(self):
         """size > 1 should return multiple samples."""
         np.random.seed(42)
-        result = sample_goals_calibrated(1.5, dispersion_factor=1.0, size=100)
+        result = sample_goals_calibrated(1.5, size=100)
         assert isinstance(result, np.ndarray)
         assert result.shape == (100,)
 
     def test_always_non_negative(self):
         """Goals should never be negative."""
         np.random.seed(42)
-        for disp in [1.0, 1.5, 2.0]:
-            result = sample_goals_calibrated(1.5, dispersion_factor=disp, size=1000)
-            assert np.all(result >= 0)
+        result = sample_goals_calibrated(1.5, size=1000)
+        assert np.all(result >= 0)
 
-    def test_poisson_path_low_dispersion(self):
-        """Dispersion <= 1.1 should use Poisson (variance ~ mean)."""
+    def test_mean_close_to_lambda(self):
+        """Mean of samples should be close to lambda."""
         np.random.seed(42)
         lam = 2.0
-        samples = sample_goals_calibrated(lam, dispersion_factor=1.0, size=10000)
+        samples = sample_goals_calibrated(lam, size=10000)
         assert isinstance(samples, np.ndarray)
         # poisson: mean ≈ variance ≈ lambda
         assert abs(samples.mean() - lam) < 0.15
         assert abs(samples.var() - lam) < 0.3
 
-    def test_negative_binomial_path_high_dispersion(self):
-        """Dispersion > 1.1 should use negative binomial (overdispersed)."""
-        np.random.seed(42)
-        lam = 2.0
-        disp = 2.0
-        samples = sample_goals_calibrated(lam, dispersion_factor=disp, size=10000)
-        assert isinstance(samples, np.ndarray)
-        # mean should still be close to lambda
-        assert abs(samples.mean() - lam) < 0.2
-        # variance should be greater than lambda (overdispersed)
-        assert samples.var() > lam
-
     def test_zero_lambda_gives_zero_goals(self):
         """Lambda of 0 should produce all zeros (or very close)."""
         np.random.seed(42)
-        result = sample_goals_calibrated(0.1, dispersion_factor=1.0, size=1000)
+        result = sample_goals_calibrated(0.1, size=1000)
         assert isinstance(result, np.ndarray)
         # with lambda=0.1, most should be 0
         assert (result == 0).sum() > 500
@@ -99,56 +84,52 @@ class TestSampleMatchOutcome:
             assert home <= 6
             assert away <= 6
 
-    def test_dispersion_factor_passed_through(self):
-        """Should work with non-default dispersion factor."""
+
+class TestSampleScorelineDixonColes:
+    """Tests for Dixon-Coles joint PMF scoreline sampling."""
+
+    def test_returns_valid_tuple(self):
+        """Should return a tuple of two non-negative integers."""
         np.random.seed(42)
-        home, away = sample_match_outcome(1.5, 1.2, dispersion_factor=1.5)
+        home, away = sample_scoreline_dixon_coles(1.5, 1.2)
         assert isinstance(home, int)
         assert isinstance(away, int)
+        assert home >= 0
+        assert away >= 0
 
+    def test_goals_capped_at_max(self):
+        """Neither goal count should exceed max_goals."""
+        np.random.seed(42)
+        for _ in range(200):
+            home, away = sample_scoreline_dixon_coles(3.0, 3.0, max_goals=6)
+            assert home <= 6
+            assert away <= 6
 
-class TestCalculateOutcomeProbabilities:
-    """Tests for match outcome probability calculation."""
+    def test_rho_affects_draw_rate(self):
+        """Negative rho should produce more draws than rho=0 for typical lambdas."""
+        n = 10000
 
-    def test_probabilities_sum_to_one(self):
-        """Home/draw/away probabilities should sum to 1."""
-        h, d, a = calculate_outcome_probabilities(1.5, 1.2)
-        assert np.isclose(h + d + a, 1.0, atol=1e-6)
+        np.random.seed(42)
+        draws_with_rho = 0
+        for _ in range(n):
+            h, a = sample_scoreline_dixon_coles(1.3, 1.3, rho=-0.13)
+            if h == a:
+                draws_with_rho += 1
 
-    def test_probabilities_in_valid_range(self):
-        """All probabilities should be in [0, 1]."""
-        h, d, a = calculate_outcome_probabilities(1.5, 1.2)
-        assert 0 <= h <= 1
-        assert 0 <= d <= 1
-        assert 0 <= a <= 1
+        np.random.seed(42)
+        draws_no_rho = 0
+        for _ in range(n):
+            h, a = sample_scoreline_dixon_coles(1.3, 1.3, rho=0.0)
+            if h == a:
+                draws_no_rho += 1
 
-    def test_stronger_home_team_favoured(self):
-        """Higher home lambda should give higher home win probability."""
-        h1, _, _ = calculate_outcome_probabilities(1.0, 1.0)
-        h2, _, _ = calculate_outcome_probabilities(2.5, 1.0)
-        assert h2 > h1
+        # rho=-0.13 boosts 0-0 and 1-1, so should produce more draws
+        assert draws_with_rho > draws_no_rho
 
-    def test_equal_lambdas_symmetric(self):
-        """Equal lambdas should give equal home/away probs."""
-        h, _, a = calculate_outcome_probabilities(1.5, 1.5)
-        assert np.isclose(h, a, atol=1e-6)
-
-    def test_negative_binomial_path(self):
-        """Should work with NB distribution when use_poisson=False and high dispersion."""
-        h, d, a = calculate_outcome_probabilities(
-            1.5, 1.2, dispersion_factor=2.0, use_poisson=False
-        )
-        assert np.isclose(h + d + a, 1.0, atol=1e-4)
-        assert 0 <= h <= 1
-        assert 0 <= d <= 1
-        assert 0 <= a <= 1
-
-    @given(
-        st.floats(min_value=0.3, max_value=4.0),
-        st.floats(min_value=0.3, max_value=4.0),
-    )
-    @settings(max_examples=20)
-    def test_probabilities_always_sum_to_one(self, lambda_h, lambda_a):
-        """Probabilities should always sum to 1 for any valid lambdas."""
-        h, d, a = calculate_outcome_probabilities(lambda_h, lambda_a)
-        assert np.isclose(h + d + a, 1.0, atol=1e-4)
+    def test_deterministic_with_seed(self):
+        """Same seed should produce same result."""
+        np.random.seed(123)
+        result1 = sample_scoreline_dixon_coles(1.5, 1.2)
+        np.random.seed(123)
+        result2 = sample_scoreline_dixon_coles(1.5, 1.2)
+        assert result1 == result2
