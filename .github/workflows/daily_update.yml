@@ -150,8 +150,8 @@ jobs:
             --calibrator-path outputs/models/calibrators.pkl \
             --validation-metrics outputs/validation/metrics.json \
             --n-simulations 10000 \
-            --hot-k-att 0.02 \
-            --hot-k-def 0.01
+            --hot-k-att 0.05 \
+            --hot-k-def 0.025
 
       - name: Notify training failure
         if: failure()
