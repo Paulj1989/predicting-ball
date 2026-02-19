@@ -116,6 +116,10 @@ def sample_training_data():
                 "away_goals": away_goals,
                 "home_goals_weighted": home_goals + np.random.normal(0, 0.1),
                 "away_goals_weighted": away_goals + np.random.normal(0, 0.1),
+                "home_npxg": np.random.uniform(0.5, 2.5),
+                "away_npxg": np.random.uniform(0.3, 2.0),
+                "home_npg": home_goals,
+                "away_npg": away_goals,
                 "date": pd.Timestamp("2024-08-01") + pd.Timedelta(days=i * 7),
                 "season_end_year": 2025,
                 "matchweek": (i // 5) + 1,
@@ -174,8 +178,8 @@ def sample_historic_data():
 
 
 @pytest.fixture
-def sample_bootstrap_params(sample_model_params):
-    """List of bootstrap parameter dicts simulating bootstrap output."""
+def sample_param_samples(sample_model_params):
+    """List of parameter dicts with small perturbations, representing uncertainty samples."""
     np.random.seed(99)
     params_list = [sample_model_params]
     for _ in range(9):

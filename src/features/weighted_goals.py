@@ -3,8 +3,8 @@
 import pandas as pd
 
 
-def calculate_weighted_goals(df: pd.DataFrame) -> pd.DataFrame:
-    """Create weighted goals (70% npxG + 30% npG) composite metric"""
+def calculate_weighted_goals(df: pd.DataFrame, xg_weight: float = 0.7) -> pd.DataFrame:
+    """Create weighted goals (xg_weight * npxG + (1-xg_weight) * npG) composite metric"""
     df = df.copy()
 
     # calculate non-penalty goals (npG)
@@ -16,9 +16,8 @@ def calculate_weighted_goals(df: pd.DataFrame) -> pd.DataFrame:
     df["away_npxg"] = df["away_npxg"].fillna(0)
 
     # create npxG/npG composite
-    df["home_goals_weighted"] = 0.7 * df["home_npxg"] + 0.3 * df["home_npg"]
-
-    df["away_goals_weighted"] = 0.7 * df["away_npxg"] + 0.3 * df["away_npg"]
+    df["home_goals_weighted"] = xg_weight * df["home_npxg"] + (1 - xg_weight) * df["home_npg"]
+    df["away_goals_weighted"] = xg_weight * df["away_npxg"] + (1 - xg_weight) * df["away_npg"]
 
     # fallback for missing data: use actual goals
     mask_missing = df["home_goals_weighted"].isna()
@@ -29,7 +28,7 @@ def calculate_weighted_goals(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def validate_weighted_goals(df: pd.DataFrame, verbose: bool = True) -> dict:
-    """Validate weighted goals calculation"""
+    """Validate weighted goals calculation — output reflects the xg_weight used in calculate_weighted_goals"""
     metrics = {
         "mean_home": df["home_goals_weighted"].mean(),
         "mean_away": df["away_goals_weighted"].mean(),

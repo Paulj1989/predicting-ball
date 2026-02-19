@@ -59,15 +59,15 @@ def parse_args():
     parser.add_argument(
         "--hot-k-att",
         type=float,
-        default=0.02,
-        help="Attack learning rate for hot simulation (0 = cold simulation, default: 0.02)",
+        default=0.05,
+        help="Attack learning rate for hot simulation (0 = cold simulation, default: 0.05)",
     )
 
     parser.add_argument(
         "--hot-k-def",
         type=float,
-        default=0.01,
-        help="Defence learning rate for hot simulation (default: 0.01)",
+        default=0.025,
+        help="Defence learning rate for hot simulation (default: 0.025)",
     )
 
     parser.add_argument(

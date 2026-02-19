@@ -20,7 +20,8 @@ class TestGetDefaultHyperparameters:
         assert "time_decay" in result
         assert "lambda_reg" in result
         assert "prior_decay_rate" in result
-        assert "rho" in result
+        # rho is fitted via MLE in stage 1, not a hyperparameter
+        assert "rho" not in result
 
     def test_time_decay_positive(self):
         """Time decay should be a small positive number."""
@@ -32,13 +33,8 @@ class TestGetDefaultHyperparameters:
         result = get_default_hyperparameters()
         assert result["lambda_reg"] > 0
 
-    def test_rho_negative(self):
-        """Dixon-Coles rho should be negative."""
-        result = get_default_hyperparameters()
-        assert -0.5 < result["rho"] < 0
-
     def test_prior_decay_rate_positive(self):
-        """Prior decay rate should be positive."""
+        """Prior decay rate default should be a positive number."""
         result = get_default_hyperparameters()
         assert result["prior_decay_rate"] > 0
 
@@ -47,6 +43,16 @@ class TestGetDefaultHyperparameters:
         result = get_default_hyperparameters()
         for v in result.values():
             assert isinstance(v, float)
+
+    def test_has_xg_weight(self):
+        """Default hyperparameters should include xg_weight."""
+        result = get_default_hyperparameters()
+        assert "xg_weight" in result
+
+    def test_xg_weight_in_range(self):
+        """Default xg_weight should be between 0.5 and 1.0."""
+        result = get_default_hyperparameters()
+        assert 0.5 <= result["xg_weight"] <= 1.0
 
 
 class TestOptimiseHyperparameters:
@@ -89,9 +95,16 @@ class TestOptimiseHyperparameters:
                     "home_goals_weighted": hg + np.random.normal(0, 0.1),
                     "away_goals_weighted": ag + np.random.normal(0, 0.1),
                     "date": pd.Timestamp("2022-08-01") + pd.Timedelta(days=i),
-                    "home_log_odds_ratio": np.random.normal(0.1, 0.3),
                     "home_npxgd_w5": np.random.normal(0.0, 0.5),
                     "away_npxgd_w5": np.random.normal(0.0, 0.5),
+                    "odds_home_prob": np.random.uniform(0.3, 0.5),
+                    "odds_draw_prob": np.random.uniform(0.2, 0.35),
+                    "odds_away_prob": np.random.uniform(0.2, 0.4),
+                    "home_npxg": np.random.uniform(0.5, 2.5),
+                    "away_npxg": np.random.uniform(0.3, 2.0),
+                    "home_npg": hg,
+                    "away_npg": ag,
+                    "result": "H" if hg > ag else ("A" if ag > hg else "D"),
                 }
             )
         return pd.DataFrame(rows)
@@ -106,7 +119,8 @@ class TestOptimiseHyperparameters:
         assert "time_decay" in result
         assert "lambda_reg" in result
         assert "prior_decay_rate" in result
-        assert "rho" in result
+        # rho is fitted by MLE, not returned as a hyperparameter
+        assert "rho" not in result
 
     @pytest.mark.slow
     def test_values_in_search_bounds(self, large_training_data):
@@ -116,8 +130,7 @@ class TestOptimiseHyperparameters:
         )
         assert 0.001 <= result["time_decay"] <= 0.01
         assert 0.05 <= result["lambda_reg"] <= 1.0
-        assert 1.0 <= result["prior_decay_rate"] <= 20.0
-        assert -0.3 <= result["rho"] <= -0.05
+        assert result["prior_decay_rate"] == 17.0
 
     @pytest.mark.slow
     def test_verbose_output(self, large_training_data):
@@ -126,3 +139,12 @@ class TestOptimiseHyperparameters:
             large_training_data, n_trials=2, n_jobs=1, verbose=True
         )
         assert isinstance(result, dict)
+
+    @pytest.mark.slow
+    def test_xg_weight_returned(self, large_training_data):
+        """Optimised params should include xg_weight."""
+        result = optimise_hyperparameters(
+            large_training_data, n_trials=2, n_jobs=1, verbose=False
+        )
+        assert "xg_weight" in result
+        assert 0.5 <= result["xg_weight"] <= 1.0

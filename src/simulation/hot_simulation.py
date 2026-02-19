@@ -20,8 +20,8 @@ def simulate_season_hot(
     current_standings: dict[str, dict[str, int]],
     state_teams: list[str],
     n_simulations: int = 10000,
-    K_att: float = 0.02,
-    K_def: float = 0.01,
+    K_att: float = 0.05,
+    K_def: float = 0.025,
     rho: float = -0.13,
     seed: int | None = None,
 ) -> tuple[dict[str, np.ndarray], list[str]]:

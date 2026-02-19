@@ -1,9 +1,5 @@
 # src/simulation/__init__.py
 
-from .bootstrap import (
-    parametric_bootstrap_with_residuals,
-    plot_parameter_diagnostics,
-)
 from .monte_carlo import (
     create_final_summary,
     get_current_standings,
@@ -24,9 +20,6 @@ __all__ = [
     "create_final_summary",
     "get_current_standings",
     "get_next_round_fixtures",
-    # bootstrap
-    "parametric_bootstrap_with_residuals",
-    "plot_parameter_diagnostics",
     "predict_match_probabilities",
     # predictions
     "predict_next_fixtures",

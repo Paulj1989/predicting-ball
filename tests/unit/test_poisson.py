@@ -181,6 +181,48 @@ class TestFitBaselineStrengths:
         assert abs(attack_mean) < 0.1
         assert abs(defense_mean) < 0.1
 
+    def test_xg_weight_affects_nll(self, sample_training_data):
+        """Different xg_weight hyperparameter should produce different NLL (when raw cols present)."""
+        from src.models.hyperparameters import get_default_hyperparameters
+
+        hyperparams_07 = {**get_default_hyperparameters(), "xg_weight": 0.7}
+        hyperparams_10 = {**get_default_hyperparameters(), "xg_weight": 1.0}
+
+        result_07 = fit_baseline_strengths(
+            sample_training_data, hyperparams_07, n_random_starts=1
+        )
+        result_10 = fit_baseline_strengths(
+            sample_training_data, hyperparams_10, n_random_starts=1
+        )
+
+        assert result_07 is not None and result_10 is not None
+        # different xg weights should yield different NLLs
+        assert result_07["nll"] != result_10["nll"]
+
+    def test_continuous_goals_produce_different_nll(self, sample_training_data):
+        """Fractional weighted goals should produce a different NLL than rounded."""
+        from src.models.hyperparameters import get_default_hyperparameters
+
+        # drop raw xg columns to force the pre-computed fallback path
+        raw_cols = ["home_npxg", "away_npxg", "home_npg", "away_npg"]
+
+        # inject fractional weighted goals (e.g. 0.35 and 1.47)
+        data_frac = sample_training_data.drop(columns=raw_cols, errors="ignore").copy()
+        data_frac["home_goals_weighted"] = data_frac["home_goals_weighted"] + 0.3
+        data_frac["away_goals_weighted"] = data_frac["away_goals_weighted"] + 0.3
+
+        data_int = sample_training_data.drop(columns=raw_cols, errors="ignore").copy()
+        data_int["home_goals_weighted"] = data_int["home_goals_weighted"].round()
+        data_int["away_goals_weighted"] = data_int["away_goals_weighted"].round()
+
+        hyperparams = get_default_hyperparameters()
+        result_frac = fit_baseline_strengths(data_frac, hyperparams, n_random_starts=1)
+        result_int = fit_baseline_strengths(data_int, hyperparams, n_random_starts=1)
+
+        assert result_frac is not None and result_int is not None
+        # continuous and rounded data should produce different NLLs
+        assert result_frac["nll"] != result_int["nll"]
+
 
 class TestFitPoissonModelTwoStage:
     """Tests for the full two-stage fitting pipeline."""
@@ -212,3 +254,46 @@ class TestFitPoissonModelTwoStage:
         )
         assert result is not None
         assert 0 <= result["odds_blend_weight"] <= 1
+
+    def test_fractional_weighted_goals_accepted(self, sample_training_data):
+        """Fractional weighted goals should not raise and should produce valid params."""
+        from src.models.hyperparameters import get_default_hyperparameters
+
+        data = sample_training_data.copy()
+        # explicit non-integer weighted goals
+        data["home_goals_weighted"] = [1.47, 0.35, 2.13, 0.89] * (len(data) // 4) + [0.5] * (
+            len(data) % 4
+        )
+        data["away_goals_weighted"] = [0.72, 1.61, 0.44, 1.88] * (len(data) // 4) + [1.1] * (
+            len(data) % 4
+        )
+
+        hyperparams = get_default_hyperparameters()
+        result = fit_poisson_model_two_stage(data, hyperparams, n_random_starts=1)
+        assert result is not None
+        assert result["success"] is True
+
+    def test_blend_holdout_df_is_used(self, sample_training_data):
+        """odds blend weight should differ when blend_holdout_df restricts the fitting data."""
+        from src.models.hyperparameters import get_default_hyperparameters
+
+        hyperparams = get_default_hyperparameters()
+        n = len(sample_training_data)
+
+        result_no_holdout = fit_poisson_model_two_stage(
+            sample_training_data,
+            hyperparams,
+            n_random_starts=1,
+        )
+        result_with_holdout = fit_poisson_model_two_stage(
+            sample_training_data,
+            hyperparams,
+            n_random_starts=1,
+            blend_holdout_df=sample_training_data.iloc[: n // 2].copy(),
+        )
+        assert result_no_holdout is not None
+        assert result_with_holdout is not None
+        # fitting on a different data subset should produce a different blend weight
+        assert (
+            result_no_holdout["odds_blend_weight"] != result_with_holdout["odds_blend_weight"]
+        )
