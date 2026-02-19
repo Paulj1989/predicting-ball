@@ -17,6 +17,7 @@ def prepare_model_features(
     include_squad_values: bool = True,
     include_odds: bool = True,
     include_weighted_goals: bool = True,
+    xg_weight: float = 0.7,
     verbose: bool = False,
 ) -> pd.DataFrame:
     """
@@ -109,7 +110,7 @@ def prepare_model_features(
         if verbose:
             logger.info("6. Calculating weighted goals")
 
-        df = calculate_weighted_goals(df)
+        df = calculate_weighted_goals(df, xg_weight=xg_weight)
 
     if verbose:
         logger.info("=" * 60)

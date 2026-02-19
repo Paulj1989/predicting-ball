@@ -1,7 +1,6 @@
 # src/visualisation/__init__.py
 
 from .diagnostics import (
-    plot_bootstrap_diagnostics,
     plot_prediction_intervals,
     plot_residual_analysis,
     plot_team_ratings,
@@ -24,7 +23,6 @@ __all__ = [
     "create_validation_summary_table",
     "format_probability",
     # diagnostics
-    "plot_bootstrap_diagnostics",
     "plot_prediction_intervals",
     "plot_residual_analysis",
     "plot_team_ratings",

@@ -14,8 +14,8 @@ def get_default_hyperparameters() -> dict[str, float]:
     return {
         "time_decay": 0.005,
         "lambda_reg": 0.5,
-        "prior_decay_rate": 15.0,
-        "rho": -0.13,
+        "prior_decay_rate": 17.0,
+        "xg_weight": 0.7,
     }
 
 
@@ -36,11 +36,15 @@ def optimise_hyperparameters(
 
     Search space:
         - time_decay: [0.001, 0.01] (log scale)
-        - lambda_reg: [0.5, 1.0] (linear scale)
-        - prior_decay_rate: [1.0, 20.0] (linear scale)
-        - rho: [-0.3, -0.05] (linear scale) - Dixon-Coles correlation
+        - lambda_reg: [0.05, 1.0] (linear scale)
+        - xg_weight: [0.5, 1.0] (linear scale)
+
+    Fixed values (not tuned):
+        - prior_decay_rate: 17 matches
+        - rho: fitted jointly with team ratings in stage 1 MLE
     """
     # import here to avoid circular dependency
+    from ..evaluation.metrics import evaluate_model_comprehensive
     from .poisson import fit_poisson_model_two_stage
 
     if verbose:
@@ -48,28 +52,33 @@ def optimise_hyperparameters(
         print("HYPERPARAMETER OPTIMISATION")
         print("=" * 60)
         print(f"Running {n_trials} trials with {n_jobs} parallel jobs")
-        print(f"Optimising {metric.upper()}")
-        print("Includes Dixon-Coles rho parameter\n")
+        print(f"Optimising {metric.upper()}\n")
 
     # suppress optuna logging if not verbose
     if not verbose:
         optuna.logging.set_verbosity(optuna.logging.WARNING)
 
+    # precompute once — train_val_data is constant across all trials
+    train_full = (
+        train_val_data.dropna(subset=["home_goals_weighted", "away_goals_weighted"])
+        .sort_values("date")
+        .reset_index(drop=True)
+    )
+
+    # oldest 30% of data for odds blend weight — held out from cv loop to prevent
+    # in-sample optimism in cv scores
+    holdout_size = max(30, int(0.3 * len(train_full)))
+    blend_holdout = train_full.iloc[:holdout_size].copy()
+
     def objective(trial: optuna.Trial) -> float:
         """Objective function for Optuna"""
-        # suggest hyperparameters
+        # suggest hyperparameters (rho fitted by MLE, prior_decay_rate fixed)
         hyperparams = {
             "time_decay": trial.suggest_float("time_decay", 0.001, 0.01, log=True),
             "lambda_reg": trial.suggest_float("lambda_reg", 0.05, 1.0),
-            "prior_decay_rate": trial.suggest_float("prior_decay_rate", 1.0, 20.0),
-            "rho": trial.suggest_float("rho", -0.3, -0.1),
+            "prior_decay_rate": 17.0,
+            "xg_weight": trial.suggest_float("xg_weight", 0.5, 0.8),
         }
-
-        # prepare data
-        train_full = train_val_data.dropna(
-            subset=["home_goals_weighted", "away_goals_weighted"]
-        )
-        train_full = train_full.sort_values("date").reset_index(drop=True)
 
         # time-series cross-validation
         tscv = TimeSeriesSplit(n_splits=5, test_size=153)
@@ -79,13 +88,17 @@ def optimise_hyperparameters(
             train_fold = train_full.iloc[train_idx]
             val_fold = train_full.iloc[val_idx]
 
-            params = fit_poisson_model_two_stage(train_fold, hyperparams, verbose=False)
+            # n_random_starts=1 is sufficient for cv evaluation
+            params = fit_poisson_model_two_stage(
+                train_fold,
+                hyperparams,
+                n_random_starts=1,
+                blend_holdout_df=blend_holdout,
+                verbose=False,
+            )
 
             if params is None or not params["success"]:
                 return float("inf")
-
-            # evaluate on validation fold
-            from ..evaluation.metrics import evaluate_model_comprehensive
 
             metrics_dict, _, _ = evaluate_model_comprehensive(
                 params, val_fold, use_dixon_coles=True
@@ -124,15 +137,11 @@ def optimise_hyperparameters(
             f"  time_decay: {study.best_params['time_decay']:.4f} ({half_life_years:.1f} year half-life)"
         )
         print(f"  lambda_reg: {study.best_params['lambda_reg']:.4f}")
-        print(f"  prior_decay_rate: {study.best_params['prior_decay_rate']:.2f} matches")
-        print(f"  rho (Dixon-Coles): {study.best_params['rho']:.4f}")
+        print(f"  xg_weight: {study.best_params['xg_weight']:.4f}")
+        print("  prior_decay_rate: 17 matches (fixed)")
+        print("  rho: fitted jointly with team ratings (see model params)")
 
-        # interpret rho
-        if study.best_params["rho"] < -0.18:
-            print("    -> Strong draw correction (more draws predicted)")
-        elif study.best_params["rho"] > -0.08:
-            print("    -> Weak draw correction")
-        else:
-            print("    -> Typical draw correction")
-
-    return study.best_params
+    return {
+        **study.best_params,
+        "prior_decay_rate": 17.0,
+    }

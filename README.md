@@ -32,7 +32,7 @@ A pipeline for fitting a two-stage Dixon-Coles Poisson model that predicts match
 │                          2. CALIBRATE                                       │
 │                                                                             │
 │   Apply probability calibration:                                            │
-│     - Outcome-specific temperature scaling (home/draw/away)                 │
+│     - Global temperature scaling                                            │
 │     - Holdout validation                                                    │
 │                                                                             │
 │   Output: calibrators.pkl                                                   │
@@ -55,9 +55,8 @@ A pipeline for fitting a two-stage Dixon-Coles Poisson model that predicts match
 │                          4. GENERATE PREDICTIONS                            │
 │                                                                             │
 │   Produce predictions and simulations:                                      │
-│     - Fisher information matrix for analytical MLE uncertainty              │
-│     - Monte Carlo season simulation (10,000 iterations)                     │
-│       with MLE posterior draws and natural gradient rating updates          │
+│     - MLE posterior draws for parameter uncertainty                         │
+│     - Hot Monte Carlo season simulation (10,000 iterations)                 │
 │     - Match-level predictions with calibrated probabilities                 │
 │                                                                             │
 │   Outputs uploaded to DO Spaces:                                            │
@@ -116,9 +115,7 @@ uv run scripts/modeling/train_model.py --tune --n-trials 50 --metric rps
 
 # calibrate model
 uv run scripts/modeling/run_calibration.py \
-    --model-path outputs/models/production_model.pkl \
-    --comprehensive \
-    --outcome-specific
+    --model-path outputs/models/production_model.pkl
 
 # validate model
 uv run scripts/modeling/validate_model.py \
@@ -130,8 +127,8 @@ uv run scripts/modeling/generate_predictions.py \
     --model-path outputs/models/production_model.pkl \
     --calibrator-path outputs/models/calibrators.pkl \
     --n-simulations 10000 \
-    --hot-k-att 0.02 \
-    --hot-k-def 0.01
+    --hot-k-att 0.05 \
+    --hot-k-def 0.025
 ```
 
 ### Running the App Locally

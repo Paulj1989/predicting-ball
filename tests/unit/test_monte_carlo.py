@@ -111,13 +111,13 @@ class TestSimulateRemainingSeason:
     """Tests for season simulation."""
 
     def test_returns_results_and_teams(
-        self, future_fixtures, sample_bootstrap_params, played_matches
+        self, future_fixtures, sample_param_samples, played_matches
     ):
         """Should return results dict and team list."""
         standings = get_current_standings(played_matches)
         results, teams = simulate_remaining_season_calibrated(
             future_fixtures,
-            sample_bootstrap_params,
+            sample_param_samples,
             standings,
             n_simulations=10,
             seed=42,
@@ -128,13 +128,13 @@ class TestSimulateRemainingSeason:
         assert "positions" in results
 
     def test_correct_number_of_simulations(
-        self, future_fixtures, sample_bootstrap_params, played_matches
+        self, future_fixtures, sample_param_samples, played_matches
     ):
         """Results should have n_simulations rows."""
         standings = get_current_standings(played_matches)
         results, _teams = simulate_remaining_season_calibrated(
             future_fixtures,
-            sample_bootstrap_params,
+            sample_param_samples,
             standings,
             n_simulations=20,
             seed=42,
@@ -152,13 +152,13 @@ class TestSimulateRemainingSeason:
         assert teams is None
 
     def test_points_non_decreasing_from_base(
-        self, future_fixtures, sample_bootstrap_params, played_matches
+        self, future_fixtures, sample_param_samples, played_matches
     ):
         """Simulated points should be >= base standing points."""
         standings = get_current_standings(played_matches)
         results, teams = simulate_remaining_season_calibrated(
             future_fixtures,
-            sample_bootstrap_params,
+            sample_param_samples,
             standings,
             n_simulations=10,
             seed=42,

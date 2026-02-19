@@ -66,6 +66,48 @@ def calculate_match_probabilities_dixon_coles(
     )
 
 
+def calculate_match_probabilities_dixon_coles_batch(
+    lambda_home: np.ndarray,
+    lambda_away: np.ndarray,
+    rho: float = -0.13,
+    max_goals: int = 8,
+) -> np.ndarray:
+    """Calculate outcome probabilities for arrays of matches.
+
+    Vectorised version of calculate_match_probabilities_dixon_coles.
+    Returns shape (n_matches, 3) with columns [home_win, draw, away_win].
+    """
+    goals = np.arange(max_goals + 1)
+
+    # P(h goals) and P(a goals) for each match: shape (n, max_goals+1)
+    P_h = poisson.pmf(goals[None, :], lambda_home[:, None])
+    P_a = poisson.pmf(goals[None, :], lambda_away[:, None])
+
+    # joint probability: shape (n, max_goals+1, max_goals+1)
+    P_joint = P_h[:, :, None] * P_a[:, None, :]
+
+    # tau correction (only 4 low-scoring outcomes are non-trivial)
+    tau = np.ones_like(P_joint)
+    tau[:, 0, 0] = 1 - lambda_home * lambda_away * rho
+    tau[:, 0, 1] = 1 + lambda_home * rho
+    tau[:, 1, 0] = 1 + lambda_away * rho
+    tau[:, 1, 1] = 1 - rho
+
+    P_corrected = P_joint * tau
+    P_corrected /= P_corrected.sum(axis=(1, 2), keepdims=True)
+
+    # score grid for outcome masks
+    h_grid, a_grid = np.meshgrid(goals, goals, indexing="ij")
+
+    return np.column_stack(
+        [
+            P_corrected[:, h_grid > a_grid].sum(axis=1),  # home win
+            P_corrected[:, h_grid == a_grid].sum(axis=1),  # draw
+            P_corrected[:, h_grid < a_grid].sum(axis=1),  # away win
+        ]
+    )
+
+
 def fit_rho_parameter(
     df: pd.DataFrame,
     params: dict,

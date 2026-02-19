@@ -62,15 +62,15 @@ def parse_args():
     parser.add_argument(
         "--hot-k-att",
         type=float,
-        default=0.02,
-        help="Attack learning rate for hot simulation (default: 0.02, 0 for cold)",
+        default=0.05,
+        help="Attack learning rate for hot simulation (default: 0.05, 0 for cold)",
     )
 
     parser.add_argument(
         "--hot-k-def",
         type=float,
-        default=0.01,
-        help="Defence learning rate for hot simulation (default: 0.01)",
+        default=0.025,
+        help="Defence learning rate for hot simulation (default: 0.025)",
     )
 
     parser.add_argument("--skip-validation", action="store_true", help="Skip validation step")

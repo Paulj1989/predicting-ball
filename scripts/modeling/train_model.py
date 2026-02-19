@@ -19,6 +19,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from src.features.weighted_goals import calculate_weighted_goals
 from src.io.model_io import save_model
 from src.models import (
     calculate_home_advantage_prior,
@@ -207,6 +208,14 @@ def main():
             print("\n   Default hyperparameters:")
             for key, val in hyperparams.items():
                 print(f"      {key}: {val}")
+
+    # recompute home_goals_weighted to match tuned xg_weight — feature engineering
+    # runs before hyperparams are known so the column is initially produced with the
+    # default (0.7); this update ensures all downstream consumers (simulation, priors)
+    # see a value consistent with what the model trains on
+    all_train_data = calculate_weighted_goals(
+        all_train_data, xg_weight=hyperparams.get("xg_weight", 0.7)
+    )
 
     # ========================================================================
     # EXTRACT PREVIOUS SEASON RATINGS
