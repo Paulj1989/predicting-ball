@@ -127,8 +127,8 @@ uv run scripts/modeling/generate_predictions.py \
     --model-path outputs/models/production_model.pkl \
     --calibrator-path outputs/models/calibrators.pkl \
     --n-simulations 10000 \
-    --hot-k-att 0.02 \
-    --hot-k-def 0.01
+    --hot-k-att 0.05 \
+    --hot-k-def 0.025
 ```
 
 ### Running the App Locally
