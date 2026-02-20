@@ -24,6 +24,9 @@ def _get_team_metric(df: pd.DataFrame, team: str, metric_col: str) -> float:
     home_val = team_rows[team_rows["home_team"] == team][home_col].mean()
     away_val = team_rows[team_rows["away_team"] == team][away_col].mean()
 
+    # if both are NaN (e.g. metric column is entirely missing), return NaN cleanly
+    if pd.isna(home_val) and pd.isna(away_val):
+        return np.nan
     return np.nanmean([home_val, away_val])
 
 
