@@ -22,7 +22,6 @@ import pandas as pd
 from src.features.weighted_goals import calculate_weighted_goals
 from src.io.model_io import save_model
 from src.models import (
-    calculate_home_advantage_prior,
     calculate_promoted_team_priors,
     fit_poisson_model_two_stage,
     get_default_hyperparameters,
@@ -83,13 +82,7 @@ def parse_args():
         "--prev-model",
         type=str,
         default=None,
-        help="Path to previous season's model for seasonal prior blending",
-    )
-
-    parser.add_argument(
-        "--skip-prev-season",
-        action="store_true",
-        help="Skip extracting previous season ratings (use squad values only)",
+        help="Path to previous model to load hyperparameters from",
     )
 
     parser.add_argument(
@@ -218,53 +211,9 @@ def main():
     )
 
     # ========================================================================
-    # EXTRACT PREVIOUS SEASON RATINGS
-    # ========================================================================
-    print("\n4. Extracting previous season ratings...")
-
-    previous_season_params = None
-
-    if not args.skip_prev_season and len(historic_data) > 0:
-        last_complete_season = historic_data["season_end_year"].max()
-        last_season_data = historic_data[
-            historic_data["season_end_year"] == last_complete_season
-        ]
-
-        print(f"   Season: {last_complete_season}")
-        print(f"   Matches: {len(last_season_data)}")
-
-        # calculate home advantage from all historic data
-        home_adv_prior_temp, home_adv_std_temp = calculate_home_advantage_prior(
-            historic_data, use_actual_goals=True, verbose=False
-        )
-
-        # fit lightweight model on last season only to extract team ratings as priors
-        print(f"   Fitting model on season {last_complete_season}...")
-        prev_params = fit_poisson_model_two_stage(
-            last_season_data,
-            hyperparams,
-            promoted_priors=None,
-            home_adv_prior=home_adv_prior_temp,
-            home_adv_std=home_adv_std_temp,
-            n_random_starts=3,
-            verbose=False,
-        )
-
-        if prev_params and prev_params.get("success"):
-            previous_season_params = prev_params
-            print(f"   ✓ Extracted ratings for {len(prev_params['teams'])} teams")
-        else:
-            print("   ✗ Fit failed, will use squad values only")
-    else:
-        if args.skip_prev_season:
-            print("   Skipped (--skip-prev-season)")
-        else:
-            print("   No historic data available")
-
-    # ========================================================================
     # IDENTIFY PROMOTED TEAMS AND CALCULATE PRIORS
     # ========================================================================
-    print("\n5. Identifying promoted teams and calculating priors...")
+    print("\n4. Identifying promoted teams and calculating priors...")
 
     last_historic_season = historic_data[
         historic_data["season_end_year"] == historic_data["season_end_year"].max()
@@ -273,24 +222,22 @@ def main():
     promoted_teams_info = identify_promoted_teams(last_historic_season, current_season)
 
     # calculate priors for all teams (promoted + returning)
-    # this handles Elo, squad values, and previous season blending
     all_priors, home_adv_prior, home_adv_std = calculate_promoted_team_priors(
         all_train_data,
         promoted_teams_info,
         current_season,
-        previous_season_params=previous_season_params,
         verbose=True,
     )
 
     # ========================================================================
     # FIT MODEL
     # ========================================================================
-    print("\n6. Fitting model...")
+    print("\n5. Fitting model...")
 
     fitted_params = fit_poisson_model_two_stage(
         all_train_data,
         hyperparams,
-        promoted_priors=all_priors,  # priors for all teams (Elo + squad + prev season)
+        promoted_priors=all_priors,  # priors for all teams (Elo + squad values)
         home_adv_prior=home_adv_prior,
         home_adv_std=home_adv_std,
         n_random_starts=5,
@@ -307,7 +254,7 @@ def main():
     # ========================================================================
     # PACKAGE MODEL
     # ========================================================================
-    print("\n7. Packaging model...")
+    print("\n6. Packaging model...")
 
     model_package = {
         "params": fitted_params,
@@ -325,14 +272,12 @@ def main():
         "teams": fitted_params.get("teams", []),
         "trained_at": datetime.now(),
         "hyperparams_optimised": args.tune,
-        "uses_seasonal_priors": previous_season_params is not None,
-        "blend_weight_prev": 0.7 if previous_season_params else 0.0,
     }
 
     # ========================================================================
     # SAVE MODEL
     # ========================================================================
-    print("\n8. Saving model...")
+    print("\n7. Saving model...")
 
     model_path = output_dir / f"{args.model_name}.pkl"
     save_model(model_package, model_path)
@@ -355,7 +300,7 @@ def main():
     print(f"Teams: {len(fitted_params.get('teams', []))}")
     print(f"Matches: {len(all_train_data)}")
     print(f"Hyperparams: {'Optimised' if args.tune else 'Loaded from Previous Tuning'}")
-    print(f"Priors: {'70/30 Blend' if previous_season_params else 'Squad Values Only'}")
+    print("Priors: Elo + Squad Values")
 
     if "log_likelihood" in fitted_params:
         print(f"Log-likelihood: {fitted_params['log_likelihood']:.2f}")

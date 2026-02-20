@@ -240,27 +240,22 @@ class TestCalculateAllTeamPriors:
         )
         assert set(result.keys()) == set(teams)
 
-    def test_promoted_teams_get_elo_squad_blend(self, sample_training_data):
-        """Promoted teams should use Elo+squad blend."""
+    def test_promoted_teams_flagged_correctly(self, sample_training_data):
+        """Promoted teams should be flagged and use elo_squad source."""
         teams = sorted(sample_training_data["home_team"].unique())
         promoted = {"Bayern": {"is_promoted": True}}
         result = calculate_all_team_priors(
             sample_training_data, teams, promoted_teams=promoted, verbose=False
         )
         assert result["Bayern"]["is_promoted"] is True
-        assert result["Bayern"]["source"] == "promoted_elo_squad"
+        assert result["Bayern"]["source"] in ("elo_squad", "squad_only")
 
-    def test_returning_teams_use_previous_params(self, sample_training_data):
-        """Returning teams should blend with previous season params."""
+    def test_all_teams_use_same_formula(self, sample_training_data):
+        """All teams should use the same elo+squad blend regardless of status."""
         teams = sorted(sample_training_data["home_team"].unique())
-        prev_params = {"team_params": {t: {"attack": 0.1, "defense": -0.1} for t in teams}}
         result = calculate_all_team_priors(
-            sample_training_data,
-            teams,
-            promoted_teams={},
-            previous_season_params=prev_params,
-            verbose=False,
+            sample_training_data, teams, promoted_teams={}, verbose=False
         )
-        # all teams should use returning blend
         for team in teams:
+            assert result[team]["source"] in ("elo_squad", "squad_only")
             assert not result[team]["is_promoted"]

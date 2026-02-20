@@ -85,16 +85,23 @@ def fit_baseline_strengths(
     attack_priors = np.zeros(n_teams)
     defense_priors = np.zeros(n_teams)
 
-    matches_played = np.zeros(n_teams)
+    current_season_year = df_train["season_end_year"].max()
+
+    current_season_matches = np.zeros(n_teams)
+    total_matches_played = np.zeros(n_teams)
     for i, team in enumerate(all_teams):
-        team_matches = df_train[
-            (df_train["home_team"] == team) | (df_train["away_team"] == team)
-        ]
-        matches_played[i] = len(team_matches)
+        team_mask = (df_train["home_team"] == team) | (df_train["away_team"] == team)
+        total_matches_played[i] = team_mask.sum()
+        current_season_matches[i] = (
+            df_train.loc[team_mask, "season_end_year"] == current_season_year
+        ).sum()
 
     prior_decay_rate = hyperparams.get("prior_decay_rate", 10.0)
     base_prior_weight = hyperparams.get("lambda_reg", 0.3)
-    prior_weights = base_prior_weight / (1 + matches_played / prior_decay_rate)
+    # prior erodes with current-season matches so it starts strong at matchweek 1
+    # and fades naturally over the season — total_matches_played is used only to
+    # identify teams with no bundesliga history (truly new/promoted sides)
+    prior_weights = base_prior_weight / (1 + current_season_matches / prior_decay_rate)
 
     if promoted_priors:
         for team, priors in promoted_priors.items():
@@ -107,9 +114,9 @@ def fit_baseline_strengths(
                 attack_priors[idx] = priors["attack_prior"]
                 defense_priors[idx] = priors["defense_prior"]
 
-            if matches_played[idx] == 0:
+            if total_matches_played[idx] == 0:
                 prior_weights[idx] = base_prior_weight * 1000
-            elif matches_played[idx] < 5:
+            elif total_matches_played[idx] < 5:
                 prior_weights[idx] = base_prior_weight * 10
 
     # home advantage prior
@@ -129,7 +136,6 @@ def fit_baseline_strengths(
     time_weights = np.exp(
         -lambda_decay * (df_train["date"].max() - df_train["date"]).dt.days.values
     )
-    time_weights = np.maximum(time_weights, 0.1)
 
     # ========================================================================
     # OBJECTIVE FUNCTION (WITH DIXON-COLES)
@@ -361,7 +367,7 @@ def fit_feature_coefficients(
     time_weights = np.exp(
         -lambda_decay * (df_train["date"].max() - df_train["date"]).dt.days.values
     )
-    time_weights = np.maximum(time_weights, 0.1)
+
     combined_weights = time_weights
 
     # ========================================================================
@@ -515,7 +521,6 @@ def fit_feature_coefficients(
     blend_time_weights = np.exp(
         -lambda_decay * (blend_data["date"].max() - blend_data["date"]).dt.days.values
     )
-    blend_time_weights = np.maximum(blend_time_weights, 0.1)
 
     if has_odds.sum() > 10:
         # actual outcomes for RPS calculation
