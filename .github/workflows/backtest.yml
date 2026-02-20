@@ -1,0 +1,71 @@
+name: Walk-Forward Backtest
+
+on:
+  workflow_dispatch:
+    inputs:
+      n_seasons:
+        description: 'Number of seasons for backtest window'
+        type: number
+        default: 3
+      hyperparams_from_model:
+        description: 'Use hyperparameters from saved production model'
+        type: boolean
+        default: true
+
+jobs:
+  walkforward:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install dependencies
+        run: uv pip install --system -e .
+
+      - name: Download DuckDB
+        env:
+          DO_SPACES_KEY: ${{ secrets.DO_SPACES_KEY }}
+          DO_SPACES_SECRET: ${{ secrets.DO_SPACES_SECRET }}
+          DO_SPACE_NAME: ${{ secrets.DO_SPACE_NAME }}
+          DO_SPACE_REGION: ${{ secrets.DO_SPACE_REGION }}
+        run: python scripts/automation/download_db.py
+
+      - name: Download production model
+        if: ${{ inputs.hyperparams_from_model }}
+        env:
+          DO_SPACES_KEY: ${{ secrets.DO_SPACES_KEY }}
+          DO_SPACES_SECRET: ${{ secrets.DO_SPACES_SECRET }}
+          DO_SPACE_NAME: ${{ secrets.DO_SPACE_NAME }}
+          DO_SPACE_REGION: ${{ secrets.DO_SPACE_REGION }}
+        run: python scripts/automation/download_db.py --model-only
+
+      - name: Run walk-forward backtest
+        run: |
+          mkdir -p outputs/evaluation/backtest
+          CMD="python scripts/evaluation/run_backtest.py --n-seasons ${{ inputs.n_seasons }}"
+          if [ "${{ inputs.hyperparams_from_model }}" = "true" ]; then
+            CMD="$CMD --hyperparams-from outputs/models/production_model.pkl"
+          fi
+          $CMD
+
+      - name: Upload walkforward results
+        uses: actions/upload-artifact@v4
+        with:
+          name: walkforward-results-${{ github.run_id }}
+          path: |
+            outputs/evaluation/backtest/walkforward_results.parquet
+            outputs/evaluation/backtest/walkforward_summary.json
+            outputs/evaluation/backtest/reliability_diagrams.png
+          retention-days: 90

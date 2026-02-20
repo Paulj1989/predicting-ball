@@ -192,3 +192,63 @@ def validate_split_quality(
                 print(f"  - {issue}")
 
     return results
+
+
+def matchweek_walkforward_splits(
+    data: pd.DataFrame,
+    min_train_seasons: int = 3,
+    matchweek_column: str = "matchweek",
+    season_column: str = "season_end_year",
+    date_column: str = "date",
+) -> Iterator[tuple[pd.DataFrame, pd.DataFrame]]:
+    """
+    Generate (train_data, predict_data) pairs for walk-forward evaluation.
+
+    Steps forward one matchweek at a time. Each yield provides all data
+    available strictly before the predict matchweek as training data,
+    and the predict matchweek's matches as the prediction target.
+    Requires min_train_seasons of data before the first prediction step.
+    """
+    data = data.sort_values(date_column).reset_index(drop=True)
+
+    available_seasons = sorted(data[season_column].unique())
+    if len(available_seasons) <= min_train_seasons:
+        raise ValueError(
+            f"Need more than {min_train_seasons} seasons of data for walk-forward, "
+            f"got {len(available_seasons)}"
+        )
+
+    # first season we will predict matchweeks from — must have min_train_seasons before it
+    first_predict_season = available_seasons[min_train_seasons]
+
+    # all (season, matchweek) periods in chronological order
+    periods = (
+        data.groupby([season_column, matchweek_column], sort=False)
+        .agg(period_start=(date_column, "min"))
+        .reset_index()
+        # secondary sort on season/matchweek makes ordering deterministic when
+        # two periods share the same earliest date (e.g. rearranged matches)
+        .sort_values(["period_start", season_column, matchweek_column])
+    )
+
+    for _, row in periods.iterrows():
+        season = row[season_column]
+        matchweek = row[matchweek_column]
+
+        # skip periods before the first prediction season
+        if season < first_predict_season:
+            continue
+
+        predict_mask = (data[season_column] == season) & (data[matchweek_column] == matchweek)
+        # training data: all matches strictly before this matchweek
+        train_mask = (data[season_column] < season) | (
+            (data[season_column] == season) & (data[matchweek_column] < matchweek)
+        )
+
+        train_data = data[train_mask].copy()
+        predict_data = data[predict_mask].copy()
+
+        if len(predict_data) == 0:
+            continue
+
+        yield train_data, predict_data
