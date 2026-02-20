@@ -288,12 +288,15 @@ def fit_feature_coefficients(
     baseline_params: dict[str, Any],
     hyperparams: dict[str, float],
     blend_holdout_df: pd.DataFrame | None = None,
+    reference_teams: list[str] | None = None,
     verbose: bool = False,
 ) -> dict[str, Any]:
     """Stage 2: Fit form residual coefficient and odds blend weight.
 
     When blend_holdout_df is provided, the odds blend weight is fitted on that
     external data rather than df_train, preventing in-sample optimism in CV.
+    reference_teams: passed to add_interpretable_ratings_to_params so ratings
+    are normalised against the current season's teams, not all training teams.
     """
 
     from .dixon_coles import calculate_match_probabilities_dixon_coles_batch
@@ -596,7 +599,9 @@ def fit_feature_coefficients(
         disp_flag = " ⚠ (> 1.2 — consider investigating)" if dispersion_factor > 1.2 else ""
         print(f"    Dispersion (diagnostic): {dispersion_factor:.3f}{disp_flag}")
 
-    full_params = add_interpretable_ratings_to_params(full_params)
+    full_params = add_interpretable_ratings_to_params(
+        full_params, reference_teams=reference_teams
+    )
 
     return full_params
 
@@ -634,12 +639,27 @@ def fit_poisson_model_two_stage(
     if baseline_params is None:
         return None
 
+    # normalise ratings against the current season's clubs only, so that
+    # relegated/historical teams in the training set don't skew the reference
+    current_season_year = df_train["season_end_year"].max()
+    current_teams = sorted(
+        set(
+            df_train.loc[
+                df_train["season_end_year"] == current_season_year, "home_team"
+            ].tolist()
+            + df_train.loc[
+                df_train["season_end_year"] == current_season_year, "away_team"
+            ].tolist()
+        )
+    )
+
     # stage 2: features
     full_params = fit_feature_coefficients(
         df_train=df_train,
         baseline_params=baseline_params,
         hyperparams=hyperparams,
         blend_holdout_df=blend_holdout_df,
+        reference_teams=current_teams,
         verbose=verbose,
     )
 
