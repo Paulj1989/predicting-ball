@@ -142,7 +142,7 @@ def plot_calibration_curve(
         plt.savefig(save_path, dpi=300, bbox_inches="tight", facecolor="white")
         print(f"✓ Calibration plot saved: {save_path}")
     else:
-        default_path = "outputs/figures/calibration_curve.png"
+        default_path = "outputs/evaluation/figures/calibration_curve.png"
         plt.savefig(default_path, dpi=300, bbox_inches="tight", facecolor="white")
         print(f"✓ Calibration plot saved: {default_path}")
 
@@ -329,7 +329,7 @@ def plot_calibration_comparison(
         plt.savefig(save_path, dpi=300, bbox_inches="tight", facecolor="white")
         print(f"✓ Calibration comparison saved: {save_path}")
     else:
-        default_path = "outputs/figures/calibration_comparison.png"
+        default_path = "outputs/evaluation/figures/calibration_comparison.png"
         plt.savefig(default_path, dpi=300, bbox_inches="tight", facecolor="white")
         print(f"✓ Calibration comparison saved: {default_path}")
 
@@ -459,8 +459,114 @@ def plot_confidence_histogram(
         plt.savefig(save_path, dpi=300, bbox_inches="tight", facecolor="white")
         print(f"✓ Confidence histogram saved: {save_path}")
     else:
-        default_path = "outputs/figures/confidence_histogram.png"
+        default_path = "outputs/evaluation/figures/confidence_histogram.png"
         plt.savefig(default_path, dpi=300, bbox_inches="tight", facecolor="white")
         print(f"✓ Confidence histogram saved: {default_path}")
 
     plt.close()
+
+
+def plot_reliability_diagram(
+    predictions: np.ndarray,
+    actuals: np.ndarray,
+    outcome_idx: int,
+    outcome_label: str,
+    ax: plt.Axes,
+    n_bins: int = 10,
+) -> None:
+    """
+    Plot a reliability diagram for one outcome on a given axis.
+
+    predictions: shape (N, 3) — columns are [home_win, draw, away_win]
+    actuals: integer array 0=H, 1=D, 2=A, length N
+    outcome_idx: which column of predictions and actuals value to plot (0, 1, or 2)
+    """
+    pred_probs = predictions[:, outcome_idx]
+    actual_binary = (actuals == outcome_idx).astype(float)
+
+    bin_edges = np.linspace(0.0, 1.0, n_bins + 1)
+    bin_centres = []
+    observed_freqs = []
+    bin_counts = []
+
+    for i in range(n_bins):
+        lo, hi = bin_edges[i], bin_edges[i + 1]
+        # include upper edge in the last bin
+        mask = (pred_probs >= lo) & (pred_probs < hi if i < n_bins - 1 else pred_probs <= hi)
+        if mask.sum() == 0:
+            continue
+        bin_centres.append(pred_probs[mask].mean())
+        observed_freqs.append(actual_binary[mask].mean())
+        bin_counts.append(mask.sum())
+
+    bin_centres = np.array(bin_centres)
+    observed_freqs = np.array(observed_freqs)
+    bin_counts = np.array(bin_counts)
+
+    # perfect calibration line
+    ax.plot([0, 1], [0, 1], "k--", linewidth=1, alpha=0.6, label="Perfect")
+
+    # calibration curve
+    ax.plot(
+        bin_centres,
+        observed_freqs,
+        "o-",
+        color=COLORS["primary"],
+        linewidth=2,
+        markersize=5,
+        label="Model",
+    )
+
+    # histogram of prediction density (secondary y-axis)
+    ax2 = ax.twinx()
+    ax2.bar(
+        bin_centres,
+        bin_counts,
+        width=0.08,
+        alpha=0.2,
+        color="steelblue",
+        label="Count",
+    )
+    ax2.set_ylabel("Predictions per bin", fontsize=9)
+    ax2.tick_params(labelsize=8)
+
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.set_xlabel("Mean predicted probability", fontsize=10)
+    ax.set_ylabel("Observed frequency", fontsize=10)
+    ax.set_title(outcome_label, fontsize=11)
+    ax.legend(fontsize=9, loc="upper left")
+    ax.tick_params(labelsize=9)
+
+
+def save_reliability_diagrams(
+    predictions: np.ndarray,
+    actuals: np.ndarray,
+    output_path: str | Path,
+    title: str = "Reliability Diagrams",
+    n_bins: int = 10,
+) -> None:
+    """
+    Save reliability diagrams for all three outcomes as a 3-panel figure.
+
+    predictions: shape (N, 3) — [home_win, draw, away_win]
+    actuals: integer array 0=H, 1=D, 2=A
+    """
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+    fig.suptitle(title, fontsize=13, fontweight="bold")
+
+    outcomes = [
+        (0, "Home Win"),
+        (1, "Draw"),
+        (2, "Away Win"),
+    ]
+
+    for ax, (idx, label) in zip(axes, outcomes, strict=False):
+        plot_reliability_diagram(predictions, actuals, idx, label, ax, n_bins=n_bins)
+
+    plt.tight_layout()
+    fig.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
