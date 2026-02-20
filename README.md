@@ -40,14 +40,12 @@ A pipeline for fitting a two-stage Dixon-Coles Poisson model that predicts match
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                          3. VALIDATE                                        │
+│                          3. CALIBRATION CHECK                               │
 │                                                                             │
-│   Evaluate model performance:                                               │
-│     - RPS, log loss, Brier score                                            │
-│     - Comparison against bookmaker baselines                                │
-│     - Calibration diagnostics                                               │
-│                                                                             │
-│   Output: validation/metrics.json                                           │
+│   Verify calibrators are still effective on recent data:                    │
+│     - RPS before and after applying calibrators                             │
+│     - Exits non-zero if calibration has degraded                            │
+│     - Skippable with --skip-check flag                                      │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
@@ -117,8 +115,8 @@ uv run scripts/modeling/train_model.py --tune --n-trials 50 --metric rps
 uv run scripts/modeling/run_calibration.py \
     --model-path outputs/models/production_model.pkl
 
-# validate model
-uv run scripts/modeling/validate_model.py \
+# calibration check (quick in-pipeline check)
+uv run scripts/evaluation/check_calibration.py \
     --model-path outputs/models/production_model.pkl \
     --calibrator-path outputs/models/calibrators.pkl
 
@@ -129,6 +127,20 @@ uv run scripts/modeling/generate_predictions.py \
     --n-simulations 10000 \
     --hot-k-att 0.05 \
     --hot-k-def 0.025
+```
+
+### Evaluation Scripts
+
+```bash
+# walk-forward backtest (genuine out-of-sample evaluation)
+uv run scripts/evaluation/run_backtest.py --n-seasons 3
+
+# in-sample diagnostics and odds blend ablation
+uv run scripts/evaluation/inspect_model.py \
+    --model-path outputs/models/production_model.pkl
+
+# weekly live monitoring (run from CI or manually)
+uv run scripts/evaluation/run_monitoring.py --lookback-days 60
 ```
 
 ### Running the App Locally
@@ -164,6 +176,8 @@ predicting-ball/
 │   │   └── predictions.py          # Match-level predictions
 │   ├── evaluation/                 # Model evaluation
 │   │   ├── metrics.py              # RPS, log loss, Brier score
+│   │   ├── significance.py         # Diebold-Mariano significance testing
+│   │   ├── calibration_plots.py    # Reliability diagrams and calibration plots
 │   │   └── baselines.py            # Bookmaker baseline comparisons
 │   ├── validation/                 # Cross-validation and diagnostics
 │   ├── features/                   # Feature engineering
@@ -175,8 +189,12 @@ predicting-ball/
 │   │   ├── run_model_pipeline.py   # Full pipeline orchestration
 │   │   ├── train_model.py          # Model training
 │   │   ├── run_calibration.py      # Probability calibration
-│   │   ├── validate_model.py       # Model validation
 │   │   └── generate_predictions.py # Prediction generation + upload
+│   ├── evaluation/                 # Evaluation and diagnostics
+│   │   ├── check_calibration.py    # Quick in-pipeline calibration check
+│   │   ├── inspect_model.py        # In-sample diagnostics and odds ablation
+│   │   ├── run_backtest.py         # Walk-forward backtesting
+│   │   └── run_monitoring.py       # Weekly live monitoring
 │   └── automation/                 # Database sync
 │       └── download_db.py          # Download DuckDB from DO Spaces
 └── run.py                          # Streamlit entry point
@@ -189,6 +207,8 @@ GitHub Actions handle daily updates:
 1. Downloads DuckDB from DigitalOcean Spaces
 2. Checks if hyperparameter tuning is needed (every 30 days)
 3. Trains model (with tuning if due, downloading previous model otherwise)
-4. Runs calibration and validation
+4. Runs calibration and calibration check
 5. Generates predictions and uploads to DO Spaces
 6. Triggers Streamlit app deployment
+
+A separate weekly workflow runs every Monday and scores recent production predictions against actual results, reporting rolling RPS trends and alerting on drift or calibration issues.
