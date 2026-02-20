@@ -349,7 +349,7 @@ def main():
     # ========================================================================
     print("\n7. Creating calibration report...")
 
-    figures_dir = Path("outputs/figures")
+    figures_dir = Path("outputs/models")
     figures_dir.mkdir(parents=True, exist_ok=True)
 
     # use holdout set for report (more honest assessment)

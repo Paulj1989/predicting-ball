@@ -7,7 +7,7 @@ Execute the full modelling pipeline:
 1. (Optional) Download fresh database/model from DO Spaces
 2. Train model
 3. Run calibration
-4. Validate
+4. Calibration check
 5. Generate predictions
 
 Usage:
@@ -60,20 +60,24 @@ def parse_args():
     )
 
     parser.add_argument(
+        "--skip-check",
+        action="store_true",
+        help="Skip calibration check step",
+    )
+
+    parser.add_argument(
         "--hot-k-att",
         type=float,
         default=0.05,
-        help="Attack learning rate for hot simulation (default: 0.05, 0 for cold)",
+        help="Attack learning rate for hot simulation (default: 0.05, 0 = cold)",
     )
 
     parser.add_argument(
         "--hot-k-def",
         type=float,
         default=0.025,
-        help="Defence learning rate for hot simulation (default: 0.025)",
+        help="Defence learning rate for hot simulation (default: 0.025, 0 = cold)",
     )
-
-    parser.add_argument("--skip-validation", action="store_true", help="Skip validation step")
 
     parser.add_argument(
         "--metric",
@@ -106,9 +110,9 @@ def main():
     """Run complete pipeline"""
     args = parse_args()
 
-    # get the modeling directory
     modeling_dir = Path(__file__).parent
     automation_dir = modeling_dir.parent / "automation"
+    evaluation_dir = modeling_dir.parent / "evaluation"
 
     print("=" * 70)
     print("RUNNING COMPLETE PIPELINE")
@@ -121,21 +125,16 @@ def main():
     refresh_model = args.refresh_model or args.refresh
 
     if refresh_db:
-        download_cmd = [
-            "python",
-            str(automation_dir / "download_db.py"),
-        ]
-
-        run_command(download_cmd, "STEP 0a: DOWNLOADING DATABASE FROM DO SPACES")
+        run_command(
+            ["python", str(automation_dir / "download_db.py")],
+            "STEP 0a: DOWNLOADING DATABASE FROM DO SPACES",
+        )
 
     if refresh_model:
-        download_model_cmd = [
-            "python",
-            str(automation_dir / "download_db.py"),
-            "--model-only",
-        ]
-
-        run_command(download_model_cmd, "STEP 0b: DOWNLOADING MODEL FROM DO SPACES")
+        run_command(
+            ["python", str(automation_dir / "download_db.py"), "--model-only"],
+            "STEP 0b: DOWNLOADING MODEL FROM DO SPACES",
+        )
 
     # ========================================================================
     # STEP 1 - TRAIN MODEL
@@ -155,63 +154,61 @@ def main():
     # ========================================================================
     # STEP 2 - CALIBRATE MODEL
     # ========================================================================
-    calibrate_cmd = [
-        "python",
-        str(modeling_dir / "run_calibration.py"),
-        "--model-path",
-        "outputs/models/production_model.pkl",
-        "--metric",
-        args.metric,
-    ]
-
-    run_command(calibrate_cmd, "STEP 2: CALIBRATING MODEL")
-
-    # ========================================================================
-    # STEP 3 - VALIDATE MODEL (OPTIONAL)
-    # ========================================================================
-    if not args.skip_validation:
-        validate_cmd = [
+    run_command(
+        [
             "python",
-            str(modeling_dir / "validate_model.py"),
+            str(modeling_dir / "run_calibration.py"),
             "--model-path",
             "outputs/models/production_model.pkl",
-            "--calibrator-path",
-            "outputs/models/calibrators.pkl",
             "--metric",
             args.metric,
-        ]
+        ],
+        "STEP 2: CALIBRATING MODEL",
+    )
 
-        run_command(validate_cmd, "STEP 3: VALIDATING MODEL")
+    # ========================================================================
+    # STEP 3 - CALIBRATION CHECK (OPTIONAL)
+    # ========================================================================
+    if not args.skip_check:
+        run_command(
+            [
+                "python",
+                str(evaluation_dir / "check_calibration.py"),
+                "--model-path",
+                "outputs/models/production_model.pkl",
+                "--calibrator-path",
+                "outputs/models/calibrators.pkl",
+            ],
+            "STEP 3: CALIBRATION CHECK",
+        )
 
     # ========================================================================
     # STEP 4 - GENERATE PREDICTIONS
     # ========================================================================
-    predict_cmd = [
-        "python",
-        str(modeling_dir / "generate_predictions.py"),
-        "--model-path",
-        "outputs/models/production_model.pkl",
-        "--calibrator-path",
-        "outputs/models/calibrators.pkl",
-        "--hot-k-att",
-        str(args.hot_k_att),
-        "--hot-k-def",
-        str(args.hot_k_def),
-    ]
+    run_command(
+        [
+            "python",
+            str(modeling_dir / "generate_predictions.py"),
+            "--model-path",
+            "outputs/models/production_model.pkl",
+            "--calibrator-path",
+            "outputs/models/calibrators.pkl",
+            "--hot-k-att",
+            str(args.hot_k_att),
+            "--hot-k-def",
+            str(args.hot_k_def),
+        ],
+        "STEP 4: GENERATING PREDICTIONS",
+    )
 
-    run_command(predict_cmd, "STEP 4: GENERATING PREDICTIONS")
-
-    # summary
     print("\n" + "=" * 70)
     print("PIPELINE COMPLETE")
     print("=" * 70)
     print("\nOutputs:")
-    print("  - Model: outputs/models/production_model.pkl")
+    print("  - Model:       outputs/models/production_model.pkl")
     print("  - Calibrators: outputs/models/calibrators.pkl")
-    if not args.skip_validation:
-        print("  - Validation: outputs/validation/")
     print("  - Predictions: outputs/predictions/")
-    print("  - Figures: outputs/figures/")
+    print("  - Figures:     outputs/figures/")
 
 
 if __name__ == "__main__":
