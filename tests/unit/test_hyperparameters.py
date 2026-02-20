@@ -86,6 +86,9 @@ class TestOptimiseHyperparameters:
                 away = teams[(i + 2) % len(teams)]
             hg = np.random.poisson(1.5)
             ag = np.random.poisson(1.2)
+            d = pd.Timestamp("2022-08-01") + pd.Timedelta(days=i)
+            # season ends in the year the second half of the season falls in
+            season_end_year = d.year + 1 if d.month >= 7 else d.year
             rows.append(
                 {
                     "home_team": home,
@@ -94,7 +97,8 @@ class TestOptimiseHyperparameters:
                     "away_goals": ag,
                     "home_goals_weighted": hg + np.random.normal(0, 0.1),
                     "away_goals_weighted": ag + np.random.normal(0, 0.1),
-                    "date": pd.Timestamp("2022-08-01") + pd.Timedelta(days=i),
+                    "date": d,
+                    "season_end_year": season_end_year,
                     "home_npxgd_w5": np.random.normal(0.0, 0.5),
                     "away_npxgd_w5": np.random.normal(0.0, 0.5),
                     "odds_home_prob": np.random.uniform(0.3, 0.5),
@@ -128,9 +132,9 @@ class TestOptimiseHyperparameters:
         result = optimise_hyperparameters(
             large_training_data, n_trials=2, n_jobs=1, verbose=False
         )
-        assert 0.001 <= result["time_decay"] <= 0.01
-        assert 0.05 <= result["lambda_reg"] <= 1.0
-        assert result["prior_decay_rate"] == 17.0
+        assert 0.001 <= result["time_decay"] <= 0.005
+        assert 0.1 <= result["lambda_reg"] <= 0.5
+        assert 5.0 <= result["prior_decay_rate"] <= 15.0
 
     @pytest.mark.slow
     def test_verbose_output(self, large_training_data):

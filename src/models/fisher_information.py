@@ -36,7 +36,6 @@ def compute_fisher_information(
     decay = hyperparams.get("time_decay", 0.001)
     days_ago = (df["date"].max() - df["date"]).dt.days.values
     weights = np.exp(-decay * days_ago)
-    weights = np.maximum(weights, 0.1)
 
     F = np.zeros((n_params, n_params))
 

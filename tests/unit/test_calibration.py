@@ -143,6 +143,9 @@ class TestApplyOutcomeSpecificScaling:
 class TestFitOutcomeSpecificTemperatures:
     """Tests for fitting outcome-specific temperatures."""
 
+    # small fixture has <20 draws and away wins — warning is expected, not the subject of these tests
+    pytestmark = pytest.mark.filterwarnings("ignore:Only.*calibration set:UserWarning")
+
     def test_returns_expected_keys(self, synthetic_predictions, synthetic_actuals):
         """Should return dict with temperature keys."""
         result = fit_outcome_specific_temperatures(
@@ -198,6 +201,9 @@ class TestFitTemperatureScalerEdgeCases:
 
 class TestFitOutcomeSpecificEdgeCases:
     """Additional tests for outcome-specific calibration."""
+
+    # small fixture has <20 draws and away wins — warning is expected, not the subject of these tests
+    pytestmark = pytest.mark.filterwarnings("ignore:Only.*calibration set:UserWarning")
 
     def test_raises_on_invalid_shape(self):
         """Should raise ValueError for wrong number of columns."""
@@ -278,6 +284,7 @@ class TestVerboseOutput:
         T = fit_temperature_scaler(synthetic_predictions, synthetic_actuals, verbose=True)
         assert isinstance(T, float)
 
+    @pytest.mark.filterwarnings("ignore:Only.*calibration set:UserWarning")
     def test_fit_outcome_specific_verbose(self, synthetic_predictions, synthetic_actuals):
         """Verbose output should not crash."""
         result = fit_outcome_specific_temperatures(

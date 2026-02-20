@@ -14,7 +14,7 @@ def get_default_hyperparameters() -> dict[str, float]:
     return {
         "time_decay": 0.005,
         "lambda_reg": 0.5,
-        "prior_decay_rate": 17.0,
+        "prior_decay_rate": 10.0,
         "xg_weight": 0.7,
     }
 
@@ -35,13 +35,10 @@ def optimise_hyperparameters(
     to stop unpromising trials early.
 
     Search space:
-        - time_decay: [0.001, 0.01] (log scale)
-        - lambda_reg: [0.05, 1.0] (linear scale)
-        - xg_weight: [0.5, 1.0] (linear scale)
-
-    Fixed values (not tuned):
-        - prior_decay_rate: 17 matches
-        - rho: fitted jointly with team ratings in stage 1 MLE
+        - time_decay: [0.001, 0.005] (log scale)
+        - lambda_reg: [0.1, 0.5] (log scale)
+        - prior_decay_rate: [5, 15] (log scale)
+        - xg_weight: [0.5, 0.8] (linear scale)
     """
     # import here to avoid circular dependency
     from ..evaluation.metrics import evaluate_model_comprehensive
@@ -74,9 +71,9 @@ def optimise_hyperparameters(
         """Objective function for Optuna"""
         # suggest hyperparameters (rho fitted by MLE, prior_decay_rate fixed)
         hyperparams = {
-            "time_decay": trial.suggest_float("time_decay", 0.001, 0.01, log=True),
-            "lambda_reg": trial.suggest_float("lambda_reg", 0.05, 1.0),
-            "prior_decay_rate": 17.0,
+            "time_decay": trial.suggest_float("time_decay", 0.001, 0.005, log=True),
+            "lambda_reg": trial.suggest_float("lambda_reg", 0.1, 0.5, log=True),
+            "prior_decay_rate": trial.suggest_float("prior_decay_rate", 5.0, 15.0, log=True),
             "xg_weight": trial.suggest_float("xg_weight", 0.5, 0.8),
         }
 
@@ -137,11 +134,7 @@ def optimise_hyperparameters(
             f"  time_decay: {study.best_params['time_decay']:.4f} ({half_life_years:.1f} year half-life)"
         )
         print(f"  lambda_reg: {study.best_params['lambda_reg']:.4f}")
+        print(f"  prior_decay_rate: {study.best_params['prior_decay_rate']:.4f}")
         print(f"  xg_weight: {study.best_params['xg_weight']:.4f}")
-        print("  prior_decay_rate: 17 matches (fixed)")
-        print("  rho: fitted jointly with team ratings (see model params)")
 
-    return {
-        **study.best_params,
-        "prior_decay_rate": 17.0,
-    }
+    return {**study.best_params}
