@@ -116,8 +116,8 @@ def parse_args():
 
 
 def create_matches_dataframe(
-    all_predictions: pd.DataFrame,
-    all_fixtures: pd.DataFrame,
+    all_predictions: pd.DataFrame | None,
+    all_fixtures: pd.DataFrame | None,
     next_fixtures: pd.DataFrame | None,
 ) -> pd.DataFrame:
     """Create the latest_buli_matches.parquet DataFrame by merging predictions with fixtures"""
@@ -249,8 +249,8 @@ def create_projections_dataframe(
 
 
 def create_run_snapshot(
-    all_predictions: pd.DataFrame,
-    all_fixtures: pd.DataFrame,
+    all_predictions: pd.DataFrame | None,
+    all_fixtures: pd.DataFrame | None,
     model_params: dict,
     model: dict,
     calibrators: dict | None,

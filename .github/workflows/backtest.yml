@@ -13,7 +13,7 @@ on:
         default: true
 
 jobs:
-  walkforward:
+  backtest:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     permissions:
@@ -60,12 +60,12 @@ jobs:
           fi
           $CMD
 
-      - name: Upload walkforward results
+      - name: Upload backtest results
         uses: actions/upload-artifact@v4
         with:
-          name: walkforward-results-${{ github.run_id }}
+          name: backtest-results-${{ github.run_id }}
           path: |
-            outputs/evaluation/backtest/walkforward_results.parquet
-            outputs/evaluation/backtest/walkforward_summary.json
+            outputs/evaluation/backtest/backtest_results.parquet
+            outputs/evaluation/backtest/backtest_summary.json
             outputs/evaluation/backtest/reliability_diagrams.png
           retention-days: 90

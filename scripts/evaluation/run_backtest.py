@@ -147,15 +147,24 @@ def main():
     # load hyperparameters
     # -------------------------------------------------------------------------
     if args.hyperparams_from:
-        with open(args.hyperparams_from, "rb") as f:
+        model_path = Path(args.hyperparams_from)
+    else:
+        # auto-detect from outputs/models/ — same logic as train_model.py
+        model_path = Path("outputs/models/production_model.pkl")
+        if not model_path.exists():
+            model_path = Path("outputs/models/buli_model.pkl")
+
+    if model_path.exists():
+        with open(model_path, "rb") as f:
             saved_model = pickle.load(f)
-        hyperparams = saved_model.get("hyperparameters", get_default_hyperparameters())
-        print(f"Hyperparameters loaded from {args.hyperparams_from}")
+        hyperparams = saved_model.get("hyperparams", get_default_hyperparameters())
+        print(f"Hyperparameters loaded from {model_path}")
     else:
         hyperparams = get_default_hyperparameters()
-        print("Using default hyperparameters")
+        print("No saved model found — using default hyperparameters")
 
-    print(f"  time_decay={hyperparams['time_decay']}, lambda_reg={hyperparams['lambda_reg']}")
+    for key, val in hyperparams.items():
+        print(f"  {key}={round(val, 4)}")
 
     # -------------------------------------------------------------------------
     # walk-forward loop
@@ -364,7 +373,7 @@ def main():
     # -------------------------------------------------------------------------
     # save outputs
     # -------------------------------------------------------------------------
-    results_path = output_dir / "walkforward_results.parquet"
+    results_path = output_dir / "backtest_results.parquet"
     results_df.to_parquet(results_path, index=False)
     print(f"\nResults saved to {results_path}")
 
@@ -379,7 +388,7 @@ def main():
         "dm_test": dm,
         "per_season": [
             {
-                "season": int(s),  # type: ignore[arg-type]
+                "season": int(str(s)),
                 "n_matches": len(g),
                 "mean_rps": float(g["model_rps"].mean()),
                 "mean_baseline_rps": (
@@ -391,7 +400,7 @@ def main():
             for s, g in results_df.groupby("season")
         ],
     }
-    summary_path = output_dir / "walkforward_summary.json"
+    summary_path = output_dir / "backtest_summary.json"
     with open(summary_path, "w") as f:
         json.dump(summary, f, indent=2, default=str)
     print(f"Summary saved to {summary_path}")
@@ -402,7 +411,7 @@ def main():
         preds_arr,
         outcome_int,
         diagram_path,
-        title="Walk-Forward Reliability Diagrams",
+        title="Backtest Reliability Diagrams",
     )
     print(f"Reliability diagrams saved to {diagram_path}")
 

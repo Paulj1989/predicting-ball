@@ -21,6 +21,10 @@ def _get_team_metric(df: pd.DataFrame, team: str, metric_col: str) -> float:
     home_col = f"home_{metric_col}" if "home_" not in metric_col else metric_col
     away_col = f"away_{metric_col}" if "away_" not in metric_col else metric_col
 
+    # check if columns exist
+    if home_col not in df.columns or away_col not in df.columns:
+        return np.nan
+
     home_val = team_rows[team_rows["home_team"] == team][home_col].mean()
     away_val = team_rows[team_rows["away_team"] == team][away_col].mean()
 
