@@ -34,23 +34,14 @@ A pipeline for fitting a two-stage Dixon-Coles Poisson model that predicts match
 │   Apply probability calibration:                                            │
 │     - Global temperature scaling                                            │
 │     - Holdout validation                                                    │
+│     - Verify RPS before and after applying calibrators                      │
 │                                                                             │
-│   Output: buli_calibrators.pkl                                                   │
+│   Output: buli_calibrators.pkl                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                          3. CALIBRATION CHECK                               │
-│                                                                             │
-│   Verify calibrators are still effective on recent data:                    │
-│     - RPS before and after applying calibrators                             │
-│     - Exits non-zero if calibration has degraded                            │
-│     - Skippable with --skip-check flag                                      │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                          4. GENERATE PREDICTIONS                            │
+│                          3. GENERATE PREDICTIONS                            │
 │                                                                             │
 │   Produce predictions and simulations:                                      │
 │     - MLE posterior draws for parameter uncertainty                         │
@@ -172,12 +163,9 @@ predicting-ball/
 │   │   └── calibration.py          # Temperature scaling
 │   ├── simulation/                 # Prediction and simulation
 │   │   ├── hot_simulation.py       # Season sim with MLE draws + rating updates
-│   │   ├── monte_carlo.py          # Legacy season simulation
 │   │   └── predictions.py          # Match-level predictions
 │   ├── evaluation/                 # Model evaluation
 │   │   ├── metrics.py              # RPS, log loss, Brier score
-│   │   ├── significance.py         # Diebold-Mariano significance testing
-│   │   ├── calibration_plots.py    # Reliability diagrams and calibration plots
 │   │   └── baselines.py            # Bookmaker baseline comparisons
 │   ├── validation/                 # Cross-validation and diagnostics
 │   ├── features/                   # Feature engineering
