@@ -56,7 +56,7 @@ jobs:
           mkdir -p outputs/evaluation/backtest
           CMD="python scripts/evaluation/run_backtest.py --n-seasons ${{ inputs.n_seasons }}"
           if [ "${{ inputs.hyperparams_from_model }}" = "true" ]; then
-            CMD="$CMD --hyperparams-from outputs/models/production_model.pkl"
+            CMD="$CMD --hyperparams-from outputs/models/buli_model.pkl"
           fi
           $CMD
 
