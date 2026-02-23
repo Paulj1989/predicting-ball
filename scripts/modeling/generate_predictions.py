@@ -6,8 +6,8 @@ Generate Predictions
 Generate season projections and match predictions, then upload to DO Spaces.
 
 Usage:
-    python scripts/modeling/generate_predictions.py --model-path outputs/models/production_model.pkl
-    python scripts/modeling/generate_predictions.py --model-path outputs/models/production_model.pkl --dry-run
+    python scripts/modeling/generate_predictions.py --model-path outputs/models/buli_model.pkl
+    python scripts/modeling/generate_predictions.py --model-path outputs/models/buli_model.pkl --dry-run
 """
 
 import argparse

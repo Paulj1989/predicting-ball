@@ -10,8 +10,8 @@ Note: all analysis is in-sample — the model was trained on this data.
 For genuine out-of-sample evaluation use scripts/evaluation/run_backtest.py.
 
 Usage:
-    python scripts/evaluation/inspect_model.py --model-path outputs/models/production_model.pkl
-    python scripts/evaluation/inspect_model.py --model-path outputs/models/production_model.pkl --output-dir outputs/evaluation/inspection
+    python scripts/evaluation/inspect_model.py --model-path outputs/models/buli_model.pkl
+    python scripts/evaluation/inspect_model.py --model-path outputs/models/buli_model.pkl --output-dir outputs/evaluation/inspection
 """
 
 import argparse

@@ -52,7 +52,7 @@ def validate_update():
 
     # Check model
     print("\n2. Checking model...")
-    model_path = Path("outputs/models/production_model.pkl")
+    model_path = Path("outputs/models/buli_model.pkl")
 
     if not model_path.exists():
         errors.append("Model file not found")
