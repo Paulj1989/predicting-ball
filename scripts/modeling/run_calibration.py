@@ -8,8 +8,8 @@ Fit post-hoc calibrators for improved probability estimates.
 Now includes outcome-specific temperature scaling for better draw calibration.
 
 Usage:
-    python scripts/modeling/run_calibration.py --model-path outputs/models/production_model.pkl
-    python scripts/modeling/run_calibration.py --model-path outputs/models/production_model.pkl --outcome-specific
+    python scripts/modeling/run_calibration.py --model-path outputs/models/buli_model.pkl
+    python scripts/modeling/run_calibration.py --model-path outputs/models/buli_model.pkl --outcome-specific
 """
 
 import argparse

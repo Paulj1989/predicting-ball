@@ -159,7 +159,7 @@ def main():
             "python",
             str(modeling_dir / "run_calibration.py"),
             "--model-path",
-            "outputs/models/production_model.pkl",
+            "outputs/models/buli_model.pkl",
             "--metric",
             args.metric,
         ],
@@ -175,7 +175,7 @@ def main():
                 "python",
                 str(evaluation_dir / "check_calibration.py"),
                 "--model-path",
-                "outputs/models/production_model.pkl",
+                "outputs/models/buli_model.pkl",
                 "--calibrator-path",
                 "outputs/models/calibrators.pkl",
             ],
@@ -190,7 +190,7 @@ def main():
             "python",
             str(modeling_dir / "generate_predictions.py"),
             "--model-path",
-            "outputs/models/production_model.pkl",
+            "outputs/models/buli_model.pkl",
             "--calibrator-path",
             "outputs/models/calibrators.pkl",
             "--hot-k-att",
@@ -205,7 +205,7 @@ def main():
     print("PIPELINE COMPLETE")
     print("=" * 70)
     print("\nOutputs:")
-    print("  - Model:       outputs/models/production_model.pkl")
+    print("  - Model:       outputs/models/buli_model.pkl")
     print("  - Calibrators: outputs/models/calibrators.pkl")
     print("  - Predictions: outputs/predictions/")
     print("  - Figures:     outputs/figures/")

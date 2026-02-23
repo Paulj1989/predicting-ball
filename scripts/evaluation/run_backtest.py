@@ -12,7 +12,7 @@ whenever a fundamental model change is made.
 Usage:
     python scripts/evaluation/run_backtest.py
     python scripts/evaluation/run_backtest.py --n-seasons 4 --output-dir outputs/evaluation/backtest
-    python scripts/evaluation/run_backtest.py --hyperparams-from outputs/models/production_model.pkl
+    python scripts/evaluation/run_backtest.py --hyperparams-from outputs/models/buli_model.pkl
 """
 
 import argparse
@@ -149,10 +149,8 @@ def main():
     if args.hyperparams_from:
         model_path = Path(args.hyperparams_from)
     else:
-        # auto-detect from outputs/models/ — same logic as train_model.py
-        model_path = Path("outputs/models/production_model.pkl")
-        if not model_path.exists():
-            model_path = Path("outputs/models/buli_model.pkl")
+        # auto-detect from outputs/models/
+        model_path = Path("outputs/models/buli_model.pkl")
 
     if model_path.exists():
         with open(model_path, "rb") as f:

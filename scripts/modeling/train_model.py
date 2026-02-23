@@ -8,7 +8,7 @@ Fit production model
 Usage:
     python scripts/modeling/train_model.py [--tune] [--dry-run] [--metric rps|log_loss|brier]
     python scripts/modeling/train_model.py --tune --n-trials 50 --metric brier
-    python scripts/modeling/train_model.py --prev-model outputs/models/production_model.pkl
+    python scripts/modeling/train_model.py --prev-model outputs/models/buli_model.pkl
 """
 
 import argparse
@@ -66,8 +66,8 @@ def parse_args():
     parser.add_argument(
         "--model-name",
         type=str,
-        default="production_model",
-        help="Name for saved model file (default: production_model)",
+        default="buli_model",
+        help="Name for saved model file (default: buli_model)",
     )
 
     parser.add_argument(
@@ -98,10 +98,8 @@ def parse_args():
 
 def load_previous_hyperparameters(model_dir: Path) -> dict | None:
     """Load previously optimised hyperparameters from existing model"""
-    # check for production model (local or downloaded from DO Spaces)
-    model_path = model_dir / "production_model.pkl"
-    if not model_path.exists():
-        model_path = model_dir / "buli_model.pkl"
+    # check for model downloaded from DO Spaces
+    model_path = model_dir / "buli_model.pkl"
 
     if model_path.exists():
         with open(model_path, "rb") as f:
@@ -181,7 +179,7 @@ def main():
     else:
         print("\n3. Loading hyperparameters...")
 
-        # load from existing model (production_model.pkl or buli_model.pkl)
+        # load from existing model (buli_model.pkl downloaded from DO Spaces)
         prod_dir = Path("outputs/models")
         previous_params = load_previous_hyperparameters(prod_dir)
 
