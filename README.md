@@ -24,7 +24,7 @@ A pipeline for fitting a two-stage Dixon-Coles Poisson model that predicts match
 │     - Informed priors (Elo + squad value + previous season rating)          │
 │     - Optuna hyperparameter optimisation (monthly)                          │
 │                                                                             │
-│   Output: production_model.pkl                                              │
+│   Output: buli_model.pkl                                                    │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
@@ -113,16 +113,16 @@ uv run scripts/modeling/train_model.py --tune --n-trials 50 --metric rps
 
 # calibrate model
 uv run scripts/modeling/run_calibration.py \
-    --model-path outputs/models/production_model.pkl
+    --model-path outputs/models/buli_model.pkl
 
 # calibration check (quick in-pipeline check)
 uv run scripts/evaluation/check_calibration.py \
-    --model-path outputs/models/production_model.pkl \
+    --model-path outputs/models/buli_model.pkl \
     --calibrator-path outputs/models/calibrators.pkl
 
 # generate (and upload) predictions
 uv run scripts/modeling/generate_predictions.py \
-    --model-path outputs/models/production_model.pkl \
+    --model-path outputs/models/buli_model.pkl \
     --calibrator-path outputs/models/calibrators.pkl \
     --n-simulations 10000 \
     --hot-k-att 0.05 \
@@ -137,7 +137,7 @@ uv run scripts/evaluation/run_backtest.py --n-seasons 3
 
 # in-sample diagnostics and odds blend ablation
 uv run scripts/evaluation/inspect_model.py \
-    --model-path outputs/models/production_model.pkl
+    --model-path outputs/models/buli_model.pkl
 
 # weekly live monitoring (run from CI or manually)
 uv run scripts/evaluation/run_monitoring.py --lookback-days 60
