@@ -35,7 +35,7 @@ A pipeline for fitting a two-stage Dixon-Coles Poisson model that predicts match
 │     - Global temperature scaling                                            │
 │     - Holdout validation                                                    │
 │                                                                             │
-│   Output: calibrators.pkl                                                   │
+│   Output: buli_calibrators.pkl                                                   │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
@@ -118,12 +118,12 @@ uv run scripts/modeling/run_calibration.py \
 # calibration check (quick in-pipeline check)
 uv run scripts/evaluation/check_calibration.py \
     --model-path outputs/models/buli_model.pkl \
-    --calibrator-path outputs/models/calibrators.pkl
+    --calibrator-path outputs/models/buli_calibrators.pkl
 
 # generate (and upload) predictions
 uv run scripts/modeling/generate_predictions.py \
     --model-path outputs/models/buli_model.pkl \
-    --calibrator-path outputs/models/calibrators.pkl \
+    --calibrator-path outputs/models/buli_calibrators.pkl \
     --n-simulations 10000 \
     --hot-k-att 0.05 \
     --hot-k-def 0.025

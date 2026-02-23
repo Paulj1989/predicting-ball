@@ -177,7 +177,7 @@ def main():
                 "--model-path",
                 "outputs/models/buli_model.pkl",
                 "--calibrator-path",
-                "outputs/models/calibrators.pkl",
+                "outputs/models/buli_calibrators.pkl",
             ],
             "STEP 3: CALIBRATION CHECK",
         )
@@ -192,7 +192,7 @@ def main():
             "--model-path",
             "outputs/models/buli_model.pkl",
             "--calibrator-path",
-            "outputs/models/calibrators.pkl",
+            "outputs/models/buli_calibrators.pkl",
             "--hot-k-att",
             str(args.hot_k_att),
             "--hot-k-def",
@@ -206,7 +206,7 @@ def main():
     print("=" * 70)
     print("\nOutputs:")
     print("  - Model:       outputs/models/buli_model.pkl")
-    print("  - Calibrators: outputs/models/calibrators.pkl")
+    print("  - Calibrators: outputs/models/buli_calibrators.pkl")
     print("  - Predictions: outputs/predictions/")
     print("  - Figures:     outputs/figures/")
 

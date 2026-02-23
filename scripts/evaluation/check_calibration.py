@@ -32,8 +32,8 @@ def parse_args():
     parser.add_argument(
         "--calibrator-path",
         type=str,
-        default="outputs/models/calibrators.pkl",
-        help="Path to calibrators (default: outputs/models/calibrators.pkl)",
+        default="outputs/models/buli_calibrators.pkl",
+        help="Path to calibrators (default: outputs/models/buli_calibrators.pkl)",
     )
     parser.add_argument(
         "--n-recent",
