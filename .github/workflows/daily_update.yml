@@ -99,7 +99,7 @@ jobs:
       - name: Calibrate
         run: |
           python scripts/modeling/run_calibration.py \
-            --model-path outputs/models/production_model.pkl
+            --model-path outputs/models/buli_model.pkl
 
       - name: Generate predictions and upload
         env:
@@ -109,7 +109,7 @@ jobs:
           DO_SPACE_REGION: ${{ secrets.DO_SPACE_REGION }}
         run: |
           python scripts/modeling/generate_predictions.py \
-            --model-path outputs/models/production_model.pkl \
+            --model-path outputs/models/buli_model.pkl \
             --calibrator-path outputs/models/calibrators.pkl \
             --n-simulations 10000 \
             --hot-k-att 0.05 \
