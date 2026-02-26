@@ -23,7 +23,7 @@ def render():
 
     - **Stage 1 (Team Strengths)** - Estimates each team's attack and defense ratings, along with home advantage, and uses a Dixon-Coles correction to reduce systematic undervaluing of low-scoring matches
 
-    - **Stage 2 (Match Features)** - Fixes team strengths and estimates coefficients for match-specific features, including a rolling 5-game form residual (npxGD adjusted for expected performance) and an odds blend weight that combines model probabilities with bookmaker-implied probabilities."
+    - **Stage 2 (Match Features)** - Fixes team strengths and estimates coefficients for match-specific features, including a rolling 5-game form residual and an odds blend weight that combines model probabilities with bookmaker-implied probabilities.
 
     **Informed Priors**: The model uses informed priors to handle data limitations. A blend of Transfermarkt's squad market values and Club Elo's team ratings serves as a ratings prior and a home advantage prior is estimated from historical Bundesliga data, accounting for season-to-season variance.
 
