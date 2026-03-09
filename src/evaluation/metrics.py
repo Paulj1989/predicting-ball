@@ -330,8 +330,7 @@ def compare_metrics(
     rows = []
 
     for model_name, metrics in metrics_dict.items():
-        row = {"model": model_name}
-        row.update(metrics)
+        row = {"model": model_name, **metrics}
         rows.append(row)
 
     df = pd.DataFrame(rows)
