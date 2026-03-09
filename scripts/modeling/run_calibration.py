@@ -67,8 +67,8 @@ def parse_args():
     parser.add_argument(
         "--calibrator-name",
         type=str,
-        default="calibrators",
-        help="Name for saved calibrator file (default: calibrators)",
+        default="buli_calibrators",
+        help="Name for saved calibrator file (default: buli_calibrators)",
     )
 
     parser.add_argument(

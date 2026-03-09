@@ -208,7 +208,6 @@ def main():
     print("  - Model:       outputs/models/buli_model.pkl")
     print("  - Calibrators: outputs/models/buli_calibrators.pkl")
     print("  - Predictions: outputs/predictions/")
-    print("  - Figures:     outputs/figures/")
 
 
 if __name__ == "__main__":
