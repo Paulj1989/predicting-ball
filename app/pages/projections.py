@@ -238,7 +238,6 @@ def _render_standings_table(projections):
                 gb.configure_column(col, headerStyle=style)
 
     gridOptions = gb.build()
-    gridOptions["domLayout"] = "autoHeight"
     gridOptions["suppressRowHoverHighlight"] = True
 
     if is_mobile:
@@ -253,7 +252,7 @@ def _render_standings_table(projections):
     AgGrid(
         display_df,
         gridOptions=gridOptions,
-        height=668 if not is_mobile else 600,
+        height=None,  # type: ignore[arg-type]  # library accepts None to enable autoHeight
         theme="streamlit",
         update_on=["SELECTION_CHANGED"],
         allow_unsafe_jscode=True,
