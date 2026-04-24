@@ -136,11 +136,9 @@ def _render_standings_table(projections):
     # create aggrid with custom styling
     gb = GridOptionsBuilder.from_dataframe(display_df)
     gb.configure_default_column(
-        groupable=False,
-        value=True,
         enableRowGroup=False,
         editable=False,
-        filterable=False,
+        filter=False,
         resizable=False,
     )
 
@@ -256,7 +254,6 @@ def _render_standings_table(projections):
         theme="streamlit",
         update_on=["SELECTION_CHANGED"],
         allow_unsafe_jscode=True,
-        fit_columns_on_grid_load=True,
     )
 
 
@@ -277,6 +274,7 @@ def _render_charts(projections):
                     "title_prob:Q",
                     title="Probability",
                     axis=alt.Axis(format="%"),
+                    stack=None,
                 ),
                 y=alt.Y("team:N", title=None, sort="-x"),
                 color=alt.Color(
@@ -303,15 +301,20 @@ def _render_charts(projections):
 
         rel_chart = (
             alt.Chart(relegation_candidates)
-            .mark_bar(color="#D93649")
+            .mark_bar()
             .encode(
                 x=alt.X(
                     "relegation_prob:Q",
                     title="Probability",
                     axis=alt.Axis(format="%"),
+                    stack=None,
                 ),
                 y=alt.Y("team:N", title=None, sort="-x"),
-                opacity=alt.Opacity("relegation_prob:Q", legend=None),
+                color=alt.Color(
+                    "relegation_prob:Q",
+                    scale=alt.Scale(range=["#f9b4bc", "#D93649"]),
+                    legend=None,
+                ),
                 tooltip=[
                     alt.Tooltip("team:N", title="Team"),
                     alt.Tooltip("relegation_prob:Q", title="Probability", format=".2%"),

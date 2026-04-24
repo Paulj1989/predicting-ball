@@ -125,7 +125,7 @@ def _render_comparison_charts(selected_team, projections):
             alt.Chart(ratings_sorted)
             .mark_bar()
             .encode(
-                x=alt.X("overall:Q", title="Overall Rating"),
+                x=alt.X("overall:Q", title="Overall Rating", stack=None),
                 y=alt.Y("team:N", title=None, sort="-x"),
                 color=alt.condition(
                     alt.datum.is_selected,
