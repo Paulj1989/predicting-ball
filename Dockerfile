@@ -8,8 +8,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml ./
-RUN uv pip compile pyproject.toml --output-file requirements.txt && \
+COPY pyproject.toml uv.lock ./
+RUN uv export --frozen --no-dev --no-emit-project --output-file requirements.txt && \
     pip install --no-cache-dir --user -r requirements.txt
 
 FROM python:3.12-slim
