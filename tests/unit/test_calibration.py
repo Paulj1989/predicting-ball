@@ -107,7 +107,7 @@ class TestFitTemperatureScaler:
         np.random.seed(42)
         df = pd.DataFrame(
             np.random.dirichlet([3, 2, 2], size=50),
-            columns=["home_win", "draw", "away_win"],  # type: ignore[arg-type]
+            columns=["home_win", "draw", "away_win"],  # type: ignore
         )
         T = fit_temperature_scaler(df, synthetic_actuals, verbose=False)
         assert isinstance(T, float)

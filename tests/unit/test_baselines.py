@@ -138,7 +138,7 @@ class TestEvaluateOddsOnlyModel:
         """Should return None when params is None."""
         from src.evaluation.baselines import evaluate_odds_only_model
 
-        result = evaluate_odds_only_model(valid_odds_data, None)  # type: ignore[arg-type]
+        result = evaluate_odds_only_model(valid_odds_data, None)  # type: ignore
         assert result is None
 
     def test_returns_none_for_failed_params(self, valid_odds_data):
