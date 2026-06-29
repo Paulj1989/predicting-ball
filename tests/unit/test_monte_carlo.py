@@ -258,3 +258,35 @@ class TestCreateFinalSummary:
         df = create_final_summary(results, params, teams, standings)
         for col in ["title_prob", "ucl_prob", "relegation_prob"]:
             assert df[col].between(0, 1).all()
+
+    def test_zero_simulations_returns_standings_from_current(self, sample_model_params):
+        """Season-complete case (no remaining fixtures) should not crash and return final standings"""
+        teams = ["Bayern", "Dortmund", "Leipzig"]
+        n_teams = len(teams)
+        results = {
+            "points": np.empty((0, n_teams)),
+            "goals_for": np.empty((0, n_teams)),
+            "goals_against": np.empty((0, n_teams)),
+            "positions": np.empty((0, n_teams)),
+        }
+        standings = {
+            "Bayern": {"points": 86, "goal_diff": 60, "games_played": 34},
+            "Dortmund": {"points": 70, "goal_diff": 30, "games_played": 34},
+            "Leipzig": {"points": 65, "goal_diff": 25, "games_played": 34},
+        }
+        params = sample_model_params.copy()
+        for t in teams:
+            if t not in params["attack_rating"]:
+                params["attack_rating"][t] = 0.0
+                params["defense_rating"][t] = 0.0
+                params["overall_rating"][t] = 0.0
+
+        df = create_final_summary(results, params, teams, standings)
+        assert isinstance(df, pd.DataFrame)
+        assert len(df) == n_teams
+        assert df.iloc[0]["team"] == "Bayern"
+        assert df.iloc[0]["title_prob"] == 1.0
+        assert df.iloc[1]["title_prob"] == 0.0
+        assert df.iloc[0]["projected_points"] == 86.0
+        for col in ["title_prob", "ucl_prob", "relegation_prob"]:
+            assert df[col].between(0, 1).all()
