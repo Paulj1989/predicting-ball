@@ -350,7 +350,7 @@ class TestPredictNextFixtures:
 
     def test_returns_none_for_none(self, sample_model_params):
         """Should return None for None input."""
-        result = predict_next_fixtures(None, sample_model_params)  # type: ignore[arg-type]
+        result = predict_next_fixtures(None, sample_model_params)  # type: ignore
         assert result is None
 
     def test_output_has_expected_columns(self, sample_model_params):

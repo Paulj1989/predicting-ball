@@ -109,7 +109,7 @@ def optimise_hyperparameters(
             if trial.should_prune():
                 raise optuna.TrialPruned()
 
-        return np.mean(cv_scores)
+        return float(np.mean(cv_scores))
 
     # create study
     study = optuna.create_study(

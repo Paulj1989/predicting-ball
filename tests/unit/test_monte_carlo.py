@@ -72,7 +72,7 @@ class TestGetCurrentStandings:
     def test_empty_dataframe(self):
         """Should return empty dict for no matches."""
         standings = get_current_standings(
-            pd.DataFrame(columns=["home_team", "away_team", "home_goals", "away_goals"])  # type: ignore[arg-type]
+            pd.DataFrame(columns=["home_team", "away_team", "home_goals", "away_goals"])  # type: ignore
         )
         assert standings == {}
 

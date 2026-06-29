@@ -113,7 +113,7 @@ def calculate_squad_value_priors(
     df_train: pd.DataFrame,
     all_teams: list,
     verbose: bool = False,
-) -> dict[str, dict[str, float]]:
+) -> dict[str, dict[str, Any]]:
     """
     Calculate attack/defense priors from squad values for all teams.
 
@@ -197,7 +197,7 @@ def calculate_elo_priors(
     df_train: pd.DataFrame,
     all_teams: list,
     verbose: bool = False,
-) -> dict[str, dict[str, float]]:
+) -> dict[str, dict[str, Any]]:
     """Calculate attack/defense priors from Elo ratings for all teams"""
     # extract elo ratings using helper function
     elo_ratings = {team: _get_team_metric(df_train, team, "elo") for team in all_teams}
@@ -268,7 +268,7 @@ def calculate_all_team_priors(
     all_teams: list,
     promoted_teams: dict[str, dict[str, Any]],
     verbose: bool = True,
-) -> dict[str, dict[str, float]]:
+) -> dict[str, dict[str, Any]]:
     """Calculate priors for all teams using 2/3 Elo + 1/3 squad value blend.
 
     All teams use the same formula regardless of whether they are promoted or

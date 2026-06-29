@@ -324,7 +324,7 @@ def _render_standings_table(projections):
     AgGrid(
         display_df,
         gridOptions=gridOptions,
-        height=None,  # type: ignore[arg-type]  # library accepts None to enable autoHeight
+        height=None,  # type: ignore  # library accepts None to enable autoHeight
         theme="streamlit",
         update_on=["SELECTION_CHANGED"],
         allow_unsafe_jscode=True,
