@@ -189,6 +189,9 @@ def create_final_summary(
     n_simulations = len(results["points"])
     n_teams = len(teams)
 
+    if n_simulations == 0:
+        return _create_final_standings_from_current(teams, params, current_standings, n_teams)
+
     rows = []
     for i, team in enumerate(teams):
         mean_points = results["points"][:, i].mean()
@@ -198,7 +201,7 @@ def create_final_summary(
 
         # calculate probabilities
         positions = np.clip(results["positions"][:, i], 1, n_teams) - 1
-        pos_counts = np.bincount(positions, minlength=n_teams)
+        pos_counts = np.bincount(positions.astype(int), minlength=n_teams)
         title_prob = pos_counts[0] / n_simulations
         ucl_prob = pos_counts[:4].sum() / n_simulations
         relegation_prob = pos_counts[-2:].sum() / n_simulations
@@ -229,3 +232,41 @@ def create_final_summary(
     df = df.drop(columns=["points_rounded"])
 
     return df
+
+
+def _create_final_standings_from_current(
+    teams: list[str],
+    params: dict[str, Any],
+    current_standings: dict[str, dict[str, int]],
+    n_teams: int,
+) -> pd.DataFrame:
+    """Build a deterministic summary when no simulations remain (season complete)"""
+    sorted_teams = sorted(
+        teams,
+        key=lambda t: (
+            current_standings.get(t, {}).get("points", 0),
+            current_standings.get(t, {}).get("goal_diff", 0),
+        ),
+        reverse=True,
+    )
+
+    rows = []
+    for rank, team in enumerate(sorted_teams):
+        standing = current_standings.get(team, {})
+        # position 16 (rank n_teams-3) plays relegation playoff
+        relegation_prob = 1.0 if rank >= n_teams - 2 else 0.5 if rank == n_teams - 3 else 0.0
+        rows.append(
+            {
+                "team": team,
+                "projected_points": float(standing.get("points", 0)),
+                "projected_gd": float(standing.get("goal_diff", 0)),
+                "overall_rating": params["overall_rating"].get(team, np.nan),
+                "attack_rating": params["attack_rating"].get(team, np.nan),
+                "defense_rating": params["defense_rating"].get(team, np.nan),
+                "title_prob": 1.0 if rank == 0 else 0.0,
+                "ucl_prob": 1.0 if rank < 4 else 0.0,
+                "relegation_prob": relegation_prob,
+            }
+        )
+
+    return pd.DataFrame(rows)

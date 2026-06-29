@@ -597,8 +597,9 @@ def main():
     # ========================================================================
     print("\n7. Creating output DataFrames...")
 
-    assert all_predictions is not None, "No predictions available to create outputs"
-    assert all_fixtures is not None, "No fixtures available to create outputs"
+    if all_predictions is None or all_fixtures is None:
+        # no remaining fixtures means the season is complete
+        print("   Season complete — no remaining fixtures to predict.")
 
     matches_df = create_matches_dataframe(all_predictions, all_fixtures, next_fixtures)
     print(f"   Matches DataFrame: {len(matches_df)} rows")

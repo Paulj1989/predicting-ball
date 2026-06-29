@@ -61,12 +61,20 @@ def _convert_kickoff_time(date_val, time_val, target_tz: ZoneInfo) -> str | None
         return None
 
 
-def render(fixtures):
+def render(fixtures, season_state=None):
     """Display fixture predictions page - shows next matchday only"""
     st.markdown(
         '<h2 style="font-size: 1.8rem; text-align: center;">Upcoming Fixture Predictions</h2>',
         unsafe_allow_html=True,
     )
+
+    if season_state is not None and season_state.is_over:
+        st.markdown(
+            '<div class="sub-header">The season is complete</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown("Fixture predictions will return for the next season.")
+        return
 
     if fixtures is None or len(fixtures) == 0:
         st.info("No upcoming fixtures available")

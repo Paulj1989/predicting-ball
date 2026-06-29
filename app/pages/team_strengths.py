@@ -5,16 +5,23 @@ import pandas as pd
 import streamlit as st
 
 
-def render(model, projections):
+def render(model, projections, season_state=None):
     """Display team analysis page with rating visualisations"""
     st.markdown(
         '<h2 style="font-size: 1.8rem; text-align: center;">Team Strength Ratings</h2>',
         unsafe_allow_html=True,
     )
-    st.markdown(
-        '<div class="sub-header">Ratings are Z-scores approximately bound to a [-1, 1] scale.</div>',
-        unsafe_allow_html=True,
-    )
+
+    if season_state is not None and season_state.is_over:
+        st.markdown(
+            '<div class="sub-header">End-of-season ratings from the completed campaign. Z-scores approximately bound to a [-1, 1] scale.</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            '<div class="sub-header">Ratings are Z-scores approximately bound to a [-1, 1] scale.</div>',
+            unsafe_allow_html=True,
+        )
 
     if projections is None or len(projections) == 0:
         st.error("Projections data not available")

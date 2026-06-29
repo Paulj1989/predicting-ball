@@ -1,13 +1,87 @@
 # app/pages/projections.py
 
 import altair as alt
+import pandas as pd
 import streamlit as st
 from st_aggrid import AgGrid, GridOptionsBuilder
 from st_aggrid.shared import JsCode
 
 
-def render(projections):
+def _build_final_standings_display(projections: pd.DataFrame) -> pd.DataFrame:
+    """Build a sorted display DataFrame for the end-of-season final standings table"""
+    cols = ["team", "current_points", "current_gd", "matches_played"]
+    available = [c for c in cols if c in projections.columns]
+    df = projections[available].copy()
+
+    sort_cols = [c for c in ["current_points", "current_gd"] if c in df.columns]
+    if sort_cols:
+        df = df.sort_values(sort_cols, ascending=False).reset_index(drop=True)
+
+    # 1-based index so the dataframe shows positions 1-18
+    df.index = range(1, len(df) + 1)
+
+    rename = {
+        "team": "Team",
+        "current_points": "Points",
+        "current_gd": "GD",
+        "matches_played": "Played",
+    }
+    df = df.rename(columns={k: v for k, v in rename.items() if k in df.columns})
+
+    if "Points" in df.columns:
+        df["Points"] = df["Points"].round(0).astype(int)
+    if "GD" in df.columns:
+        df["GD"] = df["GD"].round(0).astype(int)
+
+    return df
+
+
+def _render_final_metrics(projections, season_state):
+    """Render end-of-season summary metrics"""
+    standings = projections.copy()
+    sort_cols = [c for c in ["current_points", "current_gd"] if c in standings.columns]
+    if sort_cols:
+        standings = standings.sort_values(sort_cols, ascending=False)
+
+    winner = standings.iloc[0]
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.metric("Champions", season_state.champion or str(winner["team"]))
+
+    with col2:
+        final_pts = int(winner["current_points"]) if "current_points" in winner else "—"
+        st.metric("Final Points", final_pts, "points")
+
+    with col3:
+        # bottom 3: 2 auto-relegated + 1 relegation playoff
+        st.metric("Relegation Zone", "3 teams", "bottom 3")
+
+
+def _render_final_standings_table(projections):
+    """Render the actual final league table using current standings"""
+    st.subheader("Final League Table")
+    display_df = _build_final_standings_display(projections)
+    st.dataframe(display_df, use_container_width=True)
+
+
+def render(projections, season_state=None):
     """Display the season projections page"""
+    if season_state is not None and season_state.is_over:
+        st.markdown(
+            '<h2 style="font-size: 1.8rem; text-align: center;">Bundesliga Final Standings</h2>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            '<div class="sub-header">Final league positions</div>',
+            unsafe_allow_html=True,
+        )
+        _render_final_metrics(projections, season_state)
+        st.markdown("---")
+        _render_final_standings_table(projections)
+        return
+
     st.markdown(
         '<h2 style="font-size: 1.8rem; text-align: center;">Bundesliga 2025/26 Season Projections</h2>',
         unsafe_allow_html=True,
