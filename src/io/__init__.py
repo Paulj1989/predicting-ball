@@ -6,6 +6,11 @@ from .model_io import (
     save_calibrators,
     save_model,
 )
+from .output_builders import (
+    create_matches_dataframe,
+    create_projections_dataframe,
+    create_run_snapshot,
+)
 from .spaces import (
     DATABASE_PREFIX,
     INCOMING_PREFIX,
@@ -26,6 +31,9 @@ __all__ = [
     "DATABASE_PREFIX",
     "INCOMING_PREFIX",
     "SERVING_PREFIX",
+    "create_matches_dataframe",
+    "create_projections_dataframe",
+    "create_run_snapshot",
     "download_file",
     "file_exists",
     "get_public_url",
