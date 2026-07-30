@@ -32,7 +32,7 @@ dependencies = [
     "streamlit-js-eval>=0.1.7",
     "boto3>=1.43.36",
     "statsmodels>=0.14.5",
-    "setuptools>=82.0.1",
+    "setuptools>=83.0.0",
     "selenium>=4.45.0",
 ]
 
