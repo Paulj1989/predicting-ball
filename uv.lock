@@ -650,7 +650,7 @@ wheels = [
 
 [[package]]
 name = "great-tables"
-version = "0.23.0"
+version = "1.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "babel" },
@@ -662,9 +662,9 @@ dependencies = [
     { name = "nokap" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ad/f0/72c6d96ffbd8ae7ce75dc3420573aea7ba24b09ecd2cdab48ddabf84ea5a/great_tables-0.23.0.tar.gz", hash = "sha256:dc45bb80642e109608688e38edd88e6883cbf38fd00e4617fc0dadfa51b9bad4", size = 26910044, upload-time = "2026-07-27T23:35:15.476Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8b/eb/815148ae97a09bde651877260b609bf2d31bc3348bc3f9f5c518af269373/great_tables-1.0.0.tar.gz", hash = "sha256:d0d4a05f6cc15bd553c4654dc9e7a8b38288b1f7219444056bb68b698f0791c7", size = 27638269, upload-time = "2026-09-25T19:47:23.864Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/af/6a/5962971b5a4015ca5ded52def3b21f323a4521d5946552abaefff7516682/great_tables-0.23.0-py3-none-any.whl", hash = "sha256:6a0f20b2ce66cdd45c6633d01ca3d0970c17e9be8397ea932ad17ef9603af531", size = 1464927, upload-time = "2026-07-27T23:35:13.207Z" },
+    { url = "https://files.pythonhosted.org/packages/44/7a/f30cf6a8f046e97a0b7eb2c273d1ff63b0d40f118c50700e7876644d2303/great_tables-1.0.0-py3-none-any.whl", hash = "sha256:bbe12456b3c6f3c29da94aa6931973d03cee957d790ea4d9bcad679b5f3e9d94", size = 1638623, upload-time = "2026-09-25T19:47:22.015Z" },
 ]
 
 [[package]]
@@ -1428,7 +1428,7 @@ wheels = [
 
 [[package]]
 name = "optuna"
-version = "4.9.0"
+version = "5.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "alembic" },
@@ -1439,9 +1439,9 @@ dependencies = [
     { name = "sqlalchemy" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f4/aa/05f5e3f662cc96a4c478fc3446b8ed6359825a2b504ecb614a9ac84e4a4d/optuna-4.9.0.tar.gz", hash = "sha256:b322e5cbdf1655fb84c37646c4a7a1f391de1b47806bbe222e015825d0a82b87", size = 485834, upload-time = "2026-06-01T06:23:30.424Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/27/6d/7bd33b5ed3a83f1c1517fb20c54c7dbf59e6c76430d9b26d3205074ff6b0/optuna-5.0.0.tar.gz", hash = "sha256:358bb878b7b1e20e90dc944ac4261796dd3d5c2b7860aa960a08fc10e0b5beff", size = 508726, upload-time = "2026-09-07T05:16:21.136Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ab/f3/e5fcd5d9b15771ed6dc10e3a7eeddc672e418f4f4c4653d216cc1d857e2d/optuna-4.9.0-py3-none-any.whl", hash = "sha256:f52f3be6148654850c92a5860d398fd88ec6b2c84ab68d9c3d07dcff02e7afee", size = 425553, upload-time = "2026-06-01T06:23:28.804Z" },
+    { url = "https://files.pythonhosted.org/packages/90/e5/7c5e8cdda8c9f0cd8aca0a376dee9cff6b8c30692cf614960d9e80f59689/optuna-5.0.0-py3-none-any.whl", hash = "sha256:5fff892ae6baf4948c810c5b8635ec67e08efb0709b41cb73b14e30391d44720", size = 442352, upload-time = "2026-09-07T05:16:19.943Z" },
 ]
 
 [[package]]
@@ -2460,11 +2460,11 @@ wheels = [
 
 [[package]]
 name = "setuptools"
-version = "83.0.0"
+version = "84.0.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/34/26/f5d29e25ffdb535afef2d35cdb55b325298f96debd670da4c325e08d70f4/setuptools-83.0.0.tar.gz", hash = "sha256:025bccbbf0fa05b6192bc64ae1e7b16e001fd6d6d4d5de03c97b1c1ade523bef", size = 1154254, upload-time = "2026-07-04T15:31:22.699Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6d/44/f5da03a8ef95d369145c5bb53050e7877c9f3d312e128605fd9504829143/setuptools-84.0.0.tar.gz", hash = "sha256:f4695c21257f0d9b537ec2692c941d02ee143b7cc1276941349a546573b2ef73", size = 1168449, upload-time = "2026-08-08T18:27:58.365Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5d/40/e1e72872c6354b306daef1703549e8e83b4d43cfea356311bf722a043752/setuptools-83.0.0-py3-none-any.whl", hash = "sha256:29b23c360f22f414dc7336bb39178cc7bcbf6021ed2733cde173f09dba19abb3", size = 1008090, upload-time = "2026-07-04T15:31:20.885Z" },
+    { url = "https://files.pythonhosted.org/packages/95/9c/c510029fc6ef33a6275cd2c5d3cecd6613dfd6aa401d57c54f1c18852ccf/setuptools-84.0.0-py3-none-any.whl", hash = "sha256:51a52592b3b99e102b609654876bd65f19f999935166d1352678931132b0c670", size = 818216, upload-time = "2026-08-08T18:27:56.719Z" },
 ]
 
 [[package]]
