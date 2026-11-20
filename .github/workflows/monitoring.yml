@@ -99,6 +99,7 @@ jobs:
     needs: monitoring
     if: always()
     runs-on: ubuntu-latest
+    permissions: {}
     steps:
       - name: Create job summary
         env:
